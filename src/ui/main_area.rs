@@ -113,29 +113,38 @@ impl MainArea {
                     // Create a scrollable area for the table
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
+                        .auto_shrink([false; 2])  // 防止自动收缩，让表格充满整个宽度
                         .show(ui, |ui| {
+                            // 使表格使用所有可用宽度
+                            ui.set_min_width(ui.available_width());
                             // Table header
                             ui.push_id("audio_files_table", |ui| {
                                 egui::Grid::new("audio_files_grid")
                                     .num_columns(5)
                                     .striped(true)
-                                    .spacing([10.0, 4.0])
+                                    .spacing([10.0, 8.0])  // 增加行间距以增加行高
+                                    .min_col_width(100.0)  // 设置最小列宽度
                                     .show(ui, |ui| {
-                                        // Table header
-                                        ui.strong("Name");
-                                        ui.strong("ID");
-                                        ui.strong("Size (bytes)");
-                                        ui.strong("Filename");
-                                        ui.strong("Type");
+                                        // Table header with improved styling
+                                        let heading_size = 16.0; // 设置表头字体大小
+                                        ui.strong(egui::RichText::new("Name").size(heading_size)).on_hover_text("Audio file name");
+                                        ui.strong(egui::RichText::new("ID").size(heading_size)).on_hover_text("Audio file ID");
+                                        ui.strong(egui::RichText::new("Size (bytes)").size(heading_size)).on_hover_text("File size in bytes");
+                                        ui.strong(egui::RichText::new("Filename").size(heading_size)).on_hover_text("Audio filename");
+                                        ui.strong(egui::RichText::new("Type").size(heading_size)).on_hover_text("Audio file type");
                                         ui.end_row();
                                         
-                                        // Table rows
+                                        // Table rows with improved styling
                                         for file in audio_files {
-                                            ui.label(&file.name);
-                                            ui.label(&file.id);
-                                            ui.label(format!("{}", file.size));
-                                            ui.label(&file.filename);
-                                            ui.label(&file.file_type);
+                                            // 为所有列设置一致的行高
+                                            let row_height = 30.0; // 设置更高的行高
+                                            
+                                            // 为所有列应用相同的高度
+                                            ui.add_sized([0.0, row_height], egui::Label::new(&file.name));
+                                            ui.add_sized([0.0, row_height], egui::Label::new(&file.id));
+                                            ui.add_sized([0.0, row_height], egui::Label::new(format!("{}", file.size)));
+                                            ui.add_sized([0.0, row_height], egui::Label::new(&file.filename));
+                                            ui.add_sized([0.0, row_height], egui::Label::new(&file.file_type));
                                             ui.end_row();
                                         }
                                     });
