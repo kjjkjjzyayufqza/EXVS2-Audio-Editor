@@ -1,6 +1,6 @@
 {
-  "name": "egui Template PWA",
-  "short_name": "egui-template-pwa",
+  "name": "EXVS2 Audio Editor",
+  "short_name": "EXVS2-Audio-Editor",
   "icons": [
     {
       "src": "./assets/icon-256.png",
@@ -23,6 +23,6 @@
   "id": "/index.html",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "white",
-  "theme_color": "white"
+  "background_color": "#2b2b2b",
+  "theme_color": "#2b2b2b"
 }
