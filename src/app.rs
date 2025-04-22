@@ -1,15 +1,17 @@
+use crate::ui::{TopPanel, FileList};
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
     #[serde(skip)]
-    selected_file: Option<String>,
+    file_list: FileList,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            selected_file: None,
+            file_list: FileList::new(),
         }
     }
 }
@@ -38,40 +40,50 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Top panel with just the File menu
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                }
-                // Removed theme toggle and other buttons
-            });
-        });
+        // Display top menu panel
+        TopPanel::show(ctx);
 
-        // Central panel with just a Select File button
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(100.0); // Add some space at the top
-
-                if ui.button("Select File").clicked() {
-                    // Open file dialog
-                    if let Some(path) = rfd::FileDialog::new().pick_file() {
-                        let path_str = path.to_string_lossy().to_string();
-                        println!("Selected file: {}", path_str);
-                        self.selected_file = Some(path_str);
+        // First create the side panel with file list
+        egui::SidePanel::left("file_list_panel")
+            .resizable(true)
+            .min_width(200.0)
+            .default_width(350.0)
+            .show(ctx, |ui| {
+                // Display file list component
+                if self.file_list.show(ui) {
+                    // If a file is selected, handle it here
+                    if let Some(selected) = &self.file_list.selected_file {
+                        println!("Processing file: {}", selected);
+                        // Add file processing logic here
                     }
                 }
+            });
 
-                // If a file was selected, show its path
-                if let Some(path) = &self.selected_file {
+        // Then create the central panel for the main editing area
+        // This ensures it doesn't overlap with SidePanel as they are separate containers
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // Main editing area
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                
+                // Add other UI components here
+                ui.heading("Audio Editor");
+                
+                if let Some(selected) = &self.file_list.selected_file {
+                    ui.label(format!("Currently editing: {}", selected));
+                    
+                    // Add audio editor controls here
                     ui.add_space(20.0);
-                    ui.label(format!("Selected: {}", path));
+                    ui.label("Audio waveform display area");
+                    
+                    // Simulate audio waveform area
+                    let rect = egui::Rect::from_min_size(
+                        ui.cursor().min,
+                        egui::vec2(ui.available_width(), 200.0),
+                    );
+                    ui.painter().rect_filled(rect, 4.0, egui::Color32::from_rgb(80, 80, 80));
+                } else {
+                    ui.label("Please select a file from the list on the left to edit");
                 }
             });
         });
