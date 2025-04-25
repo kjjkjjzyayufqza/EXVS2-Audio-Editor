@@ -65,5 +65,10 @@ impl eframe::App for TemplateApp {
 
         // Display the main editing area
         self.main_area.show(ctx);
+        
+        // Display audio player (if initialized)
+        if let Some(audio_player) = &mut self.main_area.audio_player {
+            audio_player.show(ctx);
+        }
     }
 }

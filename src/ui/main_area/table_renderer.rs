@@ -8,7 +8,7 @@ use super::audio_file_info::AudioFileInfo;
 pub struct TableRenderer;
 
 impl TableRenderer {
-    /// Render table UI with a callback for export button click
+/// Render table UI with callbacks for export and play buttons
     pub fn render_table(
         ui: &mut Ui,
         audio_files: &[AudioFileInfo],
@@ -19,6 +19,7 @@ impl TableRenderer {
         available_height: f32,
         available_width: f32,
         on_export_clicked: &mut dyn FnMut(usize),
+        on_play_clicked: &mut dyn FnMut(usize),
     ) {
         // Set row height and text style
         let text_height = egui::TextStyle::Body
@@ -228,14 +229,28 @@ impl TableRenderer {
 
                         ui.add_sized([col_width_type, row_height], egui::Label::new(type_text));
                         
-                        // Column 6: Action - Add "Output to WAV" button
-                        if ui.add_sized(
-                            [40.0, 20.0],
-                            Button::new(RichText::new("Output to WAV").size(text_size))
-                        ).clicked() {
-                            // Call the callback to handle the export
-                            on_export_clicked(row_index);
-                        }
+                        // Column 6: Actions - Add Play and Export buttons
+                        ui.horizontal(|ui| {
+                            // Play button
+                            if ui.add_sized(
+                                [30.0, 20.0],
+                                Button::new(RichText::new("▶").size(text_size).color(Color32::from_rgb(100, 255, 150)))
+                            ).clicked() {
+                                // Call the callback to play audio
+                                on_play_clicked(row_index);
+                            }
+                            
+                            ui.add_space(5.0);
+                            
+                            // Export button
+                            if ui.add_sized(
+                                [70.0, 20.0],
+                                Button::new(RichText::new("Export").size(text_size))
+                            ).clicked() {
+                                // Call the callback to handle the export
+                                on_export_clicked(row_index);
+                            }
+                        });
 
                         ui.end_row();
 

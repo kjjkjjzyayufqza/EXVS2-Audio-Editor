@@ -4,11 +4,13 @@ use egui::{
 use nus3audio::Nus3audioFile;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use super::audio_file_info::AudioFileInfo;
 use super::export_utils::ExportUtils;
 use super::search_column::SearchColumn;
 use super::table_renderer::TableRenderer;
+use crate::ui::audio_player::{AudioPlayer, AudioState};
 
 /// Main editing area component
 pub struct MainArea {
@@ -28,6 +30,8 @@ pub struct MainArea {
     pub search_query: String,
     pub search_column: SearchColumn,
     pub show_advanced_search: bool,
+    // Audio player
+    pub audio_player: Option<AudioPlayer>,
 }
 
 impl MainArea {
@@ -48,6 +52,8 @@ impl MainArea {
             search_query: String::new(),
             search_column: SearchColumn::All,
             show_advanced_search: false,
+            // Create new audio player
+            audio_player: Some(AudioPlayer::new()),
         }
     }
     
@@ -331,8 +337,9 @@ impl MainArea {
                             ui.label("No audio files match the search criteria.");
                         }
                         
-                        // Variable to store which file was exported
+                        // Variables to store action indices
                         let mut export_index = None;
+                        let mut play_index = None;
                         
                         // Use table renderer to render the table
                         TableRenderer::render_table(
@@ -343,15 +350,23 @@ impl MainArea {
                             self.clickable,
                             self.show_grid_lines,
                             available_height - 100.0, // Adjusted for header and spacing
-                            available_width - 16.0, // Adjusted for padding
+                            available_width - 16.0,  // Adjusted for padding
                             &mut |index| {
                                 export_index = Some(index);
+                            },
+                            &mut |index| {
+                                play_index = Some(index);
                             },
                         );
                         
                         // Process export if needed
                         if let Some(idx) = export_index {
                             self.handle_export(ui, &filtered_audio_files, idx);
+                        }
+                        
+                        // Process play if needed
+                        if let Some(idx) = play_index {
+                            self.handle_play_audio(ui, &filtered_audio_files, idx);
                         }
                         
                         ui.add_space(8.0);
@@ -380,6 +395,47 @@ impl MainArea {
                         ui.add_space(8.0);
                         ui.colored_label(Color32::RED, e);
                     }
+                }
+            } else {
+                ui.add_space(8.0);
+                ui.colored_label(Color32::RED, "No file selected");
+            }
+        } else {
+            ui.add_space(8.0);
+            ui.colored_label(Color32::RED, "Invalid audio file index");
+        }
+    }
+    
+    /// Handle playing an audio file
+    pub fn handle_play_audio(&mut self, ui: &mut Ui, filtered_audio_files: &[AudioFileInfo], index: usize) {
+        if index < filtered_audio_files.len() {
+            let audio_info = &filtered_audio_files[index];
+            
+            // Get the selected file path
+            if let Some(file_path) = &self.selected_file {
+                // Try to load and play the audio
+                if let Some(audio_player) = &mut self.audio_player {
+                    match audio_player.load_audio(audio_info, &file_path) {
+                        Ok(()) => {
+                            ui.add_space(8.0);
+                            ui.colored_label(Color32::GREEN, 
+                                format!("Now playing: {}", audio_info.name));
+                            
+                            // Start playing
+                            let state = audio_player.get_audio_state();
+                            let mut state = state.lock().unwrap();
+                            if !state.is_playing {
+                                state.toggle_play();
+                            }
+                        },
+                        Err(e) => {
+                            ui.add_space(8.0);
+                            ui.colored_label(Color32::RED, format!("Failed to load audio: {}", e));
+                        }
+                    }
+                } else {
+                    ui.add_space(8.0);
+                    ui.colored_label(Color32::RED, "Audio player is not initialized");
                 }
             } else {
                 ui.add_space(8.0);
