@@ -1,6 +1,6 @@
 use egui::{
-    Color32, Context, Frame, Grid, Rect, RichText, Rounding, ScrollArea, Stroke, TextStyle,
-    TextWrapMode, Ui, Vec2,
+    Color32, Context, Frame, Grid, Rect, RichText, Rounding, ScrollArea, Stroke, TextWrapMode, Ui,
+    Vec2,
 };
 use nus3audio::Nus3audioFile;
 use std::collections::HashSet;
@@ -56,6 +56,8 @@ impl MainArea {
         striped: bool,
         clickable: bool,
         show_grid_lines: bool,
+        available_height: f32,
+        available_width: f32,
     ) {
         // Set row height and text style
         let text_height = egui::TextStyle::Body
@@ -64,8 +66,6 @@ impl MainArea {
             .max(ui.spacing().interact_size.y);
 
         ui.set_height(text_height * 2.0); // Set height to twice the text height
-        let available_height = ui.available_height();
-        let available_width = ui.available_width();
 
         // Define column width with minimum sizes
         let col_width_name = available_width / 5.0; // Adjusted for better fit
@@ -73,7 +73,12 @@ impl MainArea {
         let col_width_size = available_width / 8.0;
         let col_width_filename = available_width / 5.0;
         let col_width_type = available_width / 8.0;
-        let col_action = available_width - col_width_name - col_width_id - col_width_size - col_width_filename - col_width_type;
+        let col_action = available_width
+            - col_width_name
+            - col_width_id
+            - col_width_size
+            - col_width_filename
+            - col_width_type;
 
         // Header text size
         let heading_size = 17.0;
@@ -126,11 +131,12 @@ impl MainArea {
                     egui::Label::new(RichText::new("Type").size(heading_size).strong()),
                 )
                 .on_hover_text("Audio file type");
-            
+
                 ui.add_sized(
                     [col_action, 35.0],
                     egui::Label::new(RichText::new("Action").size(heading_size).strong()),
-                ).on_hover_text("Action");
+                )
+                .on_hover_text("Action");
                 ui.end_row();
             });
 
@@ -138,10 +144,8 @@ impl MainArea {
         let row_height = text_height * 2.0;
         let text_size = 16.0;
         // let row_height = ui.spacing().interact_size.y; // if you are adding buttons instead of labels.
+        ui.set_min_height(available_height - 200.0); // Adjusted for header and spacing
 
-        ui.set_min_height(500.0);
-        // println!("Available height: {}", egui::ctx.input(|i: &egui::InputState| i.screen_rect()));
-        // 使用滚动区域显示表格内容
         ScrollArea::vertical().show_rows(ui, row_height, audio_files.len(), |ui, row_range| {
             Grid::new("table_content")
                 .num_columns(6)
@@ -342,6 +346,9 @@ impl MainArea {
 
     /// Render the main area content
     pub fn render(&mut self, ui: &mut Ui) {
+        let available_height = ui.available_height();
+        let available_width = ui.available_width();
+
         ui.vertical_centered(|ui| {
             ui.add_space(10.0); // Reduced space to allow more content
 
@@ -433,7 +440,6 @@ impl MainArea {
                                     });
 
                                     ui.add_space(5.0);
-
                                     // Use static method to render table, passing the required state
                                     Self::render_table(
                                         ui,
@@ -442,6 +448,8 @@ impl MainArea {
                                         striped,
                                         clickable,
                                         show_grid_lines,
+                                        available_height - 100.0, // Adjusted for header and spacing
+                                        available_width - 16.0, // Adjusted for padding
                                     );
                                     ui.add_space(8.0);
                                 });
