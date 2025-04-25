@@ -1,8 +1,9 @@
 use egui::{Ui, ScrollArea};
 use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 
 /// File item structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FileItem {
     pub path: String,
     pub name: String,
@@ -10,10 +11,11 @@ pub struct FileItem {
 }
 
 /// File list component
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct FileList {
     pub files: Vec<FileItem>,
     pub selected_file: Option<String>,
+    #[serde(skip)]
     pub search_query: String,
 }
 

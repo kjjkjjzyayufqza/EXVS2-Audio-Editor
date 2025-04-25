@@ -4,7 +4,7 @@ use crate::ui::{TopPanel, FileList, MainArea};
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    #[serde(skip)]
+    // Remove skip attribute to persist file list between sessions
     file_list: FileList,
     #[serde(skip)]
     main_area: MainArea,
