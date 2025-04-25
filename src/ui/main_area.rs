@@ -63,15 +63,17 @@ impl MainArea {
             .size
             .max(ui.spacing().interact_size.y);
 
+        ui.set_height(text_height * 2.0); // Set height to twice the text height
         let available_height = ui.available_height();
         let available_width = ui.available_width();
 
         // Define column width with minimum sizes
         let col_width_name = available_width / 5.0; // Adjusted for better fit
-        let col_width_id = 220.0; // Increased for long IDs
-        let col_width_size = 80.0;
+        let col_width_id = available_width / 8.0; // Increased for long IDs
+        let col_width_size = available_width / 8.0;
         let col_width_filename = available_width / 5.0;
-        let col_width_type = 100.0;
+        let col_width_type = available_width / 8.0;
+        let col_action = available_width - col_width_name - col_width_id - col_width_size - col_width_filename - col_width_type;
 
         // Header text size
         let heading_size = 17.0;
@@ -91,7 +93,7 @@ impl MainArea {
         );
 
         Grid::new("table_header")
-            .num_columns(5)
+            .num_columns(6)
             .spacing([5.0, 0.0])
             .show(ui, |ui| {
                 // Header
@@ -124,7 +126,11 @@ impl MainArea {
                     egui::Label::new(RichText::new("Type").size(heading_size).strong()),
                 )
                 .on_hover_text("Audio file type");
-
+            
+                ui.add_sized(
+                    [col_action, 35.0],
+                    egui::Label::new(RichText::new("Action").size(heading_size).strong()),
+                ).on_hover_text("Action");
                 ui.end_row();
             });
 
@@ -133,9 +139,12 @@ impl MainArea {
         let text_size = 16.0;
         // let row_height = ui.spacing().interact_size.y; // if you are adding buttons instead of labels.
 
+        ui.set_min_height(500.0);
+        // println!("Available height: {}", egui::ctx.input(|i: &egui::InputState| i.screen_rect()));
+        // 使用滚动区域显示表格内容
         ScrollArea::vertical().show_rows(ui, row_height, audio_files.len(), |ui, row_range| {
             Grid::new("table_content")
-                .num_columns(5)
+                .num_columns(6)
                 .spacing([5.0, 2.0])
                 .show(ui, |ui| {
                     for row_index in row_range {
