@@ -14,6 +14,7 @@ pub struct FileItem {
 pub struct FileList {
     pub files: Vec<FileItem>,
     pub selected_file: Option<String>,
+    pub search_query: String,
 }
 
 impl FileList {
@@ -53,6 +54,23 @@ impl FileList {
         }
     }
     
+    /// Get filtered files based on search query
+    fn filtered_files(&self) -> Vec<&FileItem> {
+        if self.search_query.is_empty() {
+            // If no search query, return all files
+            return self.files.iter().collect();
+        }
+        
+        let query = self.search_query.to_lowercase();
+        self.files
+            .iter()
+            .filter(|file| {
+                file.name.to_lowercase().contains(&query) || 
+                file.path.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+    
     /// Display the file list
     pub fn show(&mut self, ui: &mut Ui) -> bool {
         let mut file_selected = false;
@@ -61,27 +79,47 @@ impl FileList {
         ui.heading("File List");
         ui.add_space(8.0);
         
+        // Add search box
+        ui.horizontal(|ui| {
+            ui.label("Search:");
+            if ui.text_edit_singleline(&mut self.search_query).changed() {
+                // When search query changes, no need to do anything special
+                // as filtered_files() will be called below
+            }
+            if !self.search_query.is_empty() && ui.button("✖").clicked() {
+                self.search_query.clear();
+            }
+        });
+        ui.add_space(4.0);
+        
         if self.files.is_empty() {
             ui.label("No files selected. Click the 'Add File' button below.");
         } else {
-            ScrollArea::vertical()
-                .max_height(400.0)
-                .show(ui, |ui| {
-                    // Copy paths to avoid borrowing conflicts
-                    let file_paths: Vec<(bool, String, String)> = self.files
-                        .iter()
-                        .map(|f| (f.is_selected, f.path.clone(), f.name.clone()))
-                        .collect();
-                    
-                    for (is_selected, path, name) in file_paths {
-                        let response = ui.selectable_label(is_selected, &name);
+            // Get filtered files
+            let filtered = self.filtered_files();
+            
+            if filtered.is_empty() {
+                ui.label("No matching files found.");
+            } else {
+                ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        // Copy filtered files to avoid borrowing conflicts
+                        let file_paths: Vec<(bool, String, String)> = filtered
+                            .iter()
+                            .map(|f| (f.is_selected, f.path.clone(), f.name.clone()))
+                            .collect();
                         
-                        if response.clicked() {
-                            selected_path = Some(path.clone());
-                            file_selected = true;
+                        for (is_selected, path, name) in file_paths {
+                            let response = ui.selectable_label(is_selected, &name);
+                            
+                            if response.clicked() {
+                                selected_path = Some(path.clone());
+                                file_selected = true;
+                            }
                         }
-                    }
-                });
+                    });
+            }
         }
         
         // Update selection outside ScrollArea to avoid borrowing conflicts

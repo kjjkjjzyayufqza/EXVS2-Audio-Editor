@@ -29,6 +29,8 @@ pub struct MainArea {
     pub selected_rows: HashSet<usize>,
     // Whether to display table grid lines
     pub show_grid_lines: bool,
+    // Search functionality
+    pub search_query: String,
 }
 
 impl MainArea {
@@ -45,6 +47,33 @@ impl MainArea {
             clickable: true,
             selected_rows: HashSet::new(),
             show_grid_lines: false,
+            // Initialize search query as empty
+            search_query: String::new(),
+        }
+    }
+    
+    /// Get filtered audio files based on search query
+    fn filtered_audio_files(&self) -> Vec<AudioFileInfo> {
+        if let Some(audio_files) = &self.audio_files {
+            if self.search_query.is_empty() {
+                // If no search query, return all audio files
+                return audio_files.clone();
+            }
+            
+            // Filter audio files based on search query
+            let query = self.search_query.to_lowercase();
+            audio_files
+                .iter()
+                .filter(|file| {
+                    file.name.to_lowercase().contains(&query) ||
+                    file.id.to_lowercase().contains(&query) ||
+                    file.filename.to_lowercase().contains(&query) ||
+                    file.file_type.to_lowercase().contains(&query)
+                })
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
@@ -382,9 +411,21 @@ impl MainArea {
                         ui.add_space(5.0);
                     }
 
-                    // Clone data in advance to avoid borrowing conflicts later
-                    let audio_files_copy = audio_files.clone();
-                    let files_count = audio_files.len();
+                    // Add search box before the table
+                    ui.horizontal(|ui| {
+                        ui.label("Search:");
+                        if ui.text_edit_singleline(&mut self.search_query).changed() {
+                            // Search query changed - will be applied automatically
+                        }
+                        if !self.search_query.is_empty() && ui.button("✖").clicked() {
+                            self.search_query.clear();
+                        }
+                    });
+                    ui.add_space(5.0);
+
+                    // Get filtered audio files
+                    let filtered_audio_files = self.filtered_audio_files();
+                    let files_count = filtered_audio_files.len();
                     let striped = self.striped;
                     let clickable = self.clickable;
                     let show_grid_lines = self.show_grid_lines;
@@ -434,16 +475,25 @@ impl MainArea {
                                         ui.with_layout(
                                             egui::Layout::right_to_left(egui::Align::Center),
                                             |ui| {
-                                                ui.label(format!("Total: {} files", files_count));
+                                                if !self.search_query.is_empty() {
+                                                    ui.label(format!("Found: {} / {} files", files_count, self.file_count.unwrap_or(0)));
+                                                } else {
+                                                    ui.label(format!("Total: {} files", files_count));
+                                                }
                                             },
                                         );
                                     });
 
                                     ui.add_space(5.0);
-                                    // Use static method to render table, passing the required state
+                                    // Show message if no files match the search query
+                                    if !self.search_query.is_empty() && filtered_audio_files.is_empty() {
+                                        ui.label("No audio files match the search criteria.");
+                                    }
+                                    
+                                    // Use static method to render table with filtered files
                                     Self::render_table(
                                         ui,
-                                        &audio_files_copy,
+                                        &filtered_audio_files,
                                         &mut self.selected_rows,
                                         striped,
                                         clickable,
