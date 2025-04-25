@@ -1,9 +1,11 @@
 use egui::{
-    Color32, Context, Frame, Grid, Rect, RichText, Rounding, ScrollArea, Stroke, TextWrapMode, Ui,
-    Vec2,
+    Align, Button, Color32, Context, Frame, Grid, Rect, RichText, Rounding, ScrollArea, Stroke, 
+    TextWrapMode, Ui, Vec2,
 };
 use nus3audio::Nus3audioFile;
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 
 /// Structure to hold audio file information
 #[derive(Clone)]
@@ -13,6 +15,41 @@ pub struct AudioFileInfo {
     pub size: usize,
     pub filename: String,
     pub file_type: String,
+}
+
+/// Enum to represent the column to search in
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SearchColumn {
+    All,
+    Name,
+    Id,
+    Size,
+    Filename,
+    Type,
+}
+
+impl SearchColumn {
+    fn display_name(&self) -> &'static str {
+        match self {
+            SearchColumn::All => "All Columns",
+            SearchColumn::Name => "Name",
+            SearchColumn::Id => "ID",
+            SearchColumn::Size => "Size",
+            SearchColumn::Filename => "Filename",
+            SearchColumn::Type => "Type",
+        }
+    }
+    
+    fn all_columns() -> Vec<SearchColumn> {
+        vec![
+            SearchColumn::All,
+            SearchColumn::Name,
+            SearchColumn::Id, 
+            SearchColumn::Size,
+            SearchColumn::Filename,
+            SearchColumn::Type,
+        ]
+    }
 }
 
 /// Main editing area component
@@ -31,6 +68,8 @@ pub struct MainArea {
     pub show_grid_lines: bool,
     // Search functionality
     pub search_query: String,
+    pub search_column: SearchColumn,
+    pub show_advanced_search: bool,
 }
 
 impl MainArea {
@@ -49,10 +88,12 @@ impl MainArea {
             show_grid_lines: false,
             // Initialize search query as empty
             search_query: String::new(),
+            search_column: SearchColumn::All,
+            show_advanced_search: false,
         }
     }
     
-    /// Get filtered audio files based on search query
+    /// Get filtered audio files based on search query and column
     fn filtered_audio_files(&self) -> Vec<AudioFileInfo> {
         if let Some(audio_files) = &self.audio_files {
             if self.search_query.is_empty() {
@@ -60,15 +101,26 @@ impl MainArea {
                 return audio_files.clone();
             }
             
-            // Filter audio files based on search query
+            // Filter audio files based on search query and selected column
             let query = self.search_query.to_lowercase();
             audio_files
                 .iter()
                 .filter(|file| {
-                    file.name.to_lowercase().contains(&query) ||
-                    file.id.to_lowercase().contains(&query) ||
-                    file.filename.to_lowercase().contains(&query) ||
-                    file.file_type.to_lowercase().contains(&query)
+                    match self.search_column {
+                        SearchColumn::All => {
+                            file.name.to_lowercase().contains(&query) ||
+                            file.id.to_lowercase().contains(&query) ||
+                            // For size, convert to various formats for more flexible searching
+                            self.size_matches(file.size, &query) ||
+                            file.filename.to_lowercase().contains(&query) ||
+                            file.file_type.to_lowercase().contains(&query)
+                        },
+                        SearchColumn::Name => file.name.to_lowercase().contains(&query),
+                        SearchColumn::Id => file.id.to_lowercase().contains(&query),
+                        SearchColumn::Size => self.size_matches(file.size, &query),
+                        SearchColumn::Filename => file.filename.to_lowercase().contains(&query),
+                        SearchColumn::Type => file.file_type.to_lowercase().contains(&query),
+                    }
                 })
                 .cloned()
                 .collect()
@@ -76,8 +128,79 @@ impl MainArea {
             Vec::new()
         }
     }
+    
+    /// Helper function to match size values in different formats
+    fn size_matches(&self, size: usize, query: &str) -> bool {
+        // Convert size to different formats for more flexible searching
+        let size_bytes = format!("{} B", size).to_lowercase();
+        let size_kb = format!("{:.1} KB", size as f32 / 1024.0).to_lowercase();
+        let size_mb = format!("{:.1} MB", size as f32 / (1024.0 * 1024.0)).to_lowercase();
+        
+        // Also check raw size value as string
+        let size_raw = size.to_string();
+        
+        size_bytes.contains(query) ||
+        size_kb.contains(query) || 
+        size_mb.contains(query) ||
+        size_raw.contains(query)
+    }
 
-    /// Static method to render table UI, doesn't need &mut self
+    /// Export audio data to a WAV file
+    fn export_to_wav(&self, audio_file_index: usize) -> Result<(), String> {
+        // Check if audio files are loaded
+        let audio_files = match &self.audio_files {
+            Some(files) => files,
+            None => return Err("No audio files loaded".to_string()),
+        };
+
+        // Check if index is valid
+        if audio_file_index >= audio_files.len() {
+            return Err("Invalid audio file index".to_string());
+        }
+
+        // Get the selected audio file info
+        let audio_file_info = &audio_files[audio_file_index];
+        
+        // Get the original file path
+        let original_file_path = match &self.selected_file {
+            Some(path) => path,
+            None => return Err("No file selected".to_string()),
+        };
+
+        // Load the NUS3AUDIO file
+        let nus3_file = match Nus3audioFile::open(original_file_path) {
+            Ok(file) => file,
+            Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
+        };
+
+        // Find the audio file by name
+        let audio_file = nus3_file.files.iter().find(|f| f.name == audio_file_info.name);
+        let audio_file = match audio_file {
+            Some(file) => file,
+            None => return Err("Audio file not found in NUS3AUDIO file".to_string()),
+        };
+
+        // Create output file path (same directory as original file with .wav extension)
+        let original_path = Path::new(original_file_path);
+        let parent_dir = match original_path.parent() {
+            Some(dir) => dir,
+            None => return Err("Failed to get parent directory".to_string()),
+        };
+        
+        let output_filename = format!("{}.wav", audio_file_info.name);
+        let output_path = parent_dir.join(output_filename);
+        
+        // Write audio data to WAV file
+        match fs::write(&output_path, &audio_file.data) {
+            Ok(_) => {
+                println!("Successfully exported WAV file to: {:?}", output_path);
+                Ok(())
+            },
+            Err(e) => Err(format!("Failed to write WAV file: {}", e)),
+        }
+    }
+
+    /// Static method to render table UI with a callback for export button click
     fn render_table(
         ui: &mut Ui,
         audio_files: &[AudioFileInfo],
@@ -87,6 +210,7 @@ impl MainArea {
         show_grid_lines: bool,
         available_height: f32,
         available_width: f32,
+        on_export_clicked: &mut dyn FnMut(usize),
     ) {
         // Set row height and text style
         let text_height = egui::TextStyle::Body
@@ -295,6 +419,15 @@ impl MainArea {
                         };
 
                         ui.add_sized([col_width_type, row_height], egui::Label::new(type_text));
+                        
+                        // Column 6: Action - Add "Output to WAV" button
+                        if ui.add_sized(
+                            [col_action, row_height],
+                            Button::new(RichText::new("Output to WAV").size(text_size))
+                        ).clicked() {
+                            // Call the callback to handle the export
+                            on_export_clicked(row_index);
+                        }
 
                         ui.end_row();
 
@@ -341,10 +474,10 @@ impl MainArea {
                                 match &audio_file.data[..4] {
                                     b"OPUS" => "OPUS Audio",
                                     b"IDSP" => "IDSP Audio",
-                                    _ => "Unknown Format",
+                                    _ => "Audio",
                                 }
                             } else {
-                                "Unknown Format"
+                                "Audio"
                             };
 
                             audio_files.push(AudioFileInfo {
@@ -412,16 +545,57 @@ impl MainArea {
                     }
 
                     // Add search box before the table
-                    ui.horizontal(|ui| {
-                        ui.label("Search:");
-                        if ui.text_edit_singleline(&mut self.search_query).changed() {
-                            // Search query changed - will be applied automatically
-                        }
-                        if !self.search_query.is_empty() && ui.button("✖").clicked() {
-                            self.search_query.clear();
-                        }
-                    });
-                    ui.add_space(5.0);
+                    Frame::group(ui.style())
+                        .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
+                        .rounding(Rounding::same(5.0))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.heading("Search");
+                                
+                                // Toggle advanced search
+                                if ui.button(if self.show_advanced_search { "▲ Basic" } else { "▼ Advanced" }).clicked() {
+                                    self.show_advanced_search = !self.show_advanced_search;
+                                }
+                            });
+                            ui.add_space(5.0);
+                            
+                            // Basic search - always visible
+                            ui.horizontal(|ui| {
+                                ui.label("Query:");
+                                if ui.text_edit_singleline(&mut self.search_query).changed() {
+                                    // Search query changed - will be applied automatically
+                                }
+                                if !self.search_query.is_empty() && ui.button("✖").clicked() {
+                                    self.search_query.clear();
+                                }
+                            });
+                            
+                            // Advanced search options
+                            if self.show_advanced_search {
+                                ui.add_space(5.0);
+                                
+                                // Column selection
+                                ui.horizontal(|ui| {
+                                    ui.label("Search in:");
+                                    egui::ComboBox::from_id_source("search_column")
+                                        .selected_text(self.search_column.display_name())
+                                        .show_ui(ui, |ui| {
+                                            for column in SearchColumn::all_columns() {
+                                                ui.selectable_value(
+                                                    &mut self.search_column,
+                                                    column,
+                                                    column.display_name()
+                                                );
+                                            }
+                                        });
+                                });
+                                
+                                // Search tips
+                                ui.add_space(5.0);
+                                ui.small("Tip: For size column, you can search by 'KB', 'MB', etc.");
+                            }
+                        });
+                    ui.add_space(10.0);
 
                     // Get filtered audio files
                     let filtered_audio_files = self.filtered_audio_files();
@@ -487,8 +661,12 @@ impl MainArea {
                                     ui.add_space(5.0);
                                     // Show message if no files match the search query
                                     if !self.search_query.is_empty() && filtered_audio_files.is_empty() {
+                                        ui.add_space(8.0); // Adjusted for better spacing
                                         ui.label("No audio files match the search criteria.");
                                     }
+                                    
+                                    // Variable to store which file was exported
+                                    let mut export_index = None;
                                     
                                     // Use static method to render table with filtered files
                                     Self::render_table(
@@ -500,7 +678,64 @@ impl MainArea {
                                         show_grid_lines,
                                         available_height - 100.0, // Adjusted for header and spacing
                                         available_width - 16.0, // Adjusted for padding
+                                        &mut |index| {
+                                            export_index = Some(index);
+                                        },
                                     );
+                                    
+                                    // Process export if needed
+                                    if let Some(idx) = export_index {
+                                        if idx < filtered_audio_files.len() {
+                                            let audio_info = &filtered_audio_files[idx];
+                                            
+                                            // Load the NUS3AUDIO file again to get the data
+                                            if let Some(file_path) = &self.selected_file {
+                                                match Nus3audioFile::open(file_path) {
+                                                    Ok(nus3_file) => {
+                                                        if let Some(audio_file) = nus3_file.files.iter().find(|f| f.name == audio_info.name) {
+                                                            // Create output directory (same as input file)
+                                                            let path = Path::new(file_path);
+                                                            if let Some(dir) = path.parent() {
+                                                                let wav_path = dir.join(format!("{}.wav", audio_info.name));
+                                                                
+                                                                // Write the data
+                                                                match fs::write(&wav_path, &audio_file.data) {
+                                                                    Ok(_) => {
+                                                                        ui.add_space(8.0);
+                                                                        ui.colored_label(Color32::GREEN, 
+                                                                            format!("Successfully exported to: {}", wav_path.display()));
+                                                                    },
+                                                                    Err(e) => {
+                                                                        ui.add_space(8.0);
+                                                                        ui.colored_label(Color32::RED, 
+                                                                            format!("Failed to write WAV file: {}", e));
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                ui.add_space(8.0);
+                                                                ui.colored_label(Color32::RED, "Failed to get parent directory");
+                                                            }
+                                                        } else {
+                                                            ui.add_space(8.0);
+                                                            ui.colored_label(Color32::RED, "Audio file not found in NUS3AUDIO file");
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        ui.add_space(8.0);
+                                                        ui.colored_label(Color32::RED, 
+                                                            format!("Failed to open NUS3AUDIO file: {}", e));
+                                                    }
+                                                }
+                                            } else {
+                                                ui.add_space(8.0);
+                                                ui.colored_label(Color32::RED, "No file selected");
+                                            }
+                                        } else {
+                                            ui.add_space(8.0);
+                                            ui.colored_label(Color32::RED, "Invalid audio file index");
+                                        }
+                                    }
+                                    
                                     ui.add_space(8.0);
                                 });
                                 ui.add_space(8.0);
