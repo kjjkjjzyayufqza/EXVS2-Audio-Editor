@@ -1,5 +1,6 @@
-use egui::{Context, Ui};
+use egui::{Context, Ui, TextStyle, TextWrapMode, Grid, ScrollArea, RichText, Color32, Rect, Vec2, Stroke, Rounding, Frame};
 use nus3audio::Nus3audioFile;
+use std::collections::HashSet;
 
 /// Structure to hold audio file information
 #[derive(Clone)]
@@ -17,6 +18,14 @@ pub struct MainArea {
     pub file_count: Option<usize>,
     pub audio_files: Option<Vec<AudioFileInfo>>,
     pub error_message: Option<String>,
+    // Table configuration
+    pub striped: bool,
+    pub resizable: bool,
+    pub clickable: bool,
+    // Set of selected row indices
+    pub selected_rows: HashSet<usize>,
+    // Whether to display table grid lines
+    pub show_grid_lines: bool,
 }
 
 impl MainArea {
@@ -27,7 +36,212 @@ impl MainArea {
             file_count: None,
             audio_files: None,
             error_message: None,
+            // Set default table style
+            striped: true,
+            resizable: true,
+            clickable: true,
+            selected_rows: HashSet::new(),
+            show_grid_lines: false,
         }
+    }
+
+    /// Static method to render table UI, doesn't need &mut self
+    fn render_table(
+        ui: &mut Ui, 
+        audio_files: &[AudioFileInfo], 
+        selected_rows: &mut HashSet<usize>,
+        striped: bool, 
+        clickable: bool, 
+        show_grid_lines: bool
+    ) {
+        // Set row height and text style
+        let text_height = egui::TextStyle::Body
+            .resolve(ui.style())
+            .size
+            .max(ui.spacing().interact_size.y);
+        
+        let available_height = ui.available_height();
+        
+        // Define column width
+        let col_width_name = 150.0;
+        let col_width_id = 60.0;
+        let col_width_size = 80.0;
+        let col_width_filename = 200.0;
+        let col_width_type = 100.0;
+        
+        // Header text size
+        let heading_size = 17.0;
+        
+        // Create header
+        let header_bg_color = if ui.visuals().dark_mode {
+            Color32::from_rgb(50, 50, 60)
+        } else {
+            Color32::from_rgb(220, 220, 230)
+        };
+        
+        let header_rect = ui.available_rect_before_wrap();
+        ui.painter().rect_filled(
+            Rect::from_min_size(header_rect.min, Vec2::new(header_rect.width(), 35.0)),
+            0.0,
+            header_bg_color,
+        );
+        
+        Grid::new("table_header")
+            .num_columns(5)
+            .spacing([5.0, 0.0])
+            .min_col_width(0.0)
+            .show(ui, |ui| {
+                // Header
+                ui.add_sized([col_width_name, 35.0], 
+                    egui::Label::new(RichText::new("Name").size(heading_size).strong())
+                ).on_hover_text("Audio file name");
+                
+                ui.add_sized([col_width_id, 35.0], 
+                    egui::Label::new(RichText::new("ID").size(heading_size).strong())
+                ).on_hover_text("Audio file ID");
+                
+                ui.add_sized([col_width_size, 35.0], 
+                    egui::Label::new(RichText::new("Size").size(heading_size).strong())
+                ).on_hover_text("File size in bytes");
+                
+                ui.add_sized([col_width_filename, 35.0], 
+                    egui::Label::new(RichText::new("Filename").size(heading_size).strong())
+                ).on_hover_text("Audio filename");
+                
+                ui.add_sized([col_width_type, 35.0], 
+                    egui::Label::new(RichText::new("Type").size(heading_size).strong())
+                ).on_hover_text("Audio file type");
+                
+                ui.end_row();
+            });
+        
+        // Create table content
+        let row_height = text_height * 2.0;
+        let text_size = 16.0;
+        
+        ScrollArea::vertical()
+            .max_height(available_height - 35.0)
+            .show_rows(ui, row_height, audio_files.len(), |ui, row_range| {
+                Grid::new("table_content")
+                    .num_columns(5)
+                    .spacing([5.0, 2.0])
+                    .min_col_width(0.0)
+                    .show(ui, |ui| {
+                        for row_index in row_range {
+                            let file = &audio_files[row_index];
+                            let is_selected = selected_rows.contains(&row_index);
+                            
+                            // Striped background
+                            if striped && row_index % 2 == 1 {
+                                let row_rect = ui.available_rect_before_wrap();
+                                ui.painter().rect_filled(
+                                    Rect::from_min_size(
+                                        row_rect.min, 
+                                        Vec2::new(row_rect.width(), row_height)
+                                    ),
+                                    0.0,
+                                    ui.visuals().faint_bg_color,
+                                );
+                            }
+                            
+                            // Highlight selected row
+                            if is_selected {
+                                let row_rect = ui.available_rect_before_wrap();
+                                ui.painter().rect_filled(
+                                    Rect::from_min_size(
+                                        row_rect.min, 
+                                        Vec2::new(row_rect.width(), row_height)
+                                    ),
+                                    0.0,
+                                    ui.visuals().selection.bg_fill,
+                                );
+                            }
+
+                            // Create a responsive area that includes the entire row
+                            let row_rect = ui.available_rect_before_wrap();
+                            let sense = if clickable { egui::Sense::click() } else { egui::Sense::hover() };
+                            let row_response = ui.interact(
+                                Rect::from_min_size(row_rect.min, Vec2::new(row_rect.width(), row_height)),
+                                ui.id().with(row_index),
+                                sense
+                            );
+                            
+                            // Handle row click events
+                            if row_response.clicked() && clickable {
+                                if selected_rows.contains(&row_index) {
+                                    selected_rows.remove(&row_index);
+                                } else {
+                                    selected_rows.insert(row_index);
+                                }
+                            }
+                            
+                            // Column 1: Name
+                            ui.add_sized(
+                                [col_width_name, row_height],
+                                egui::Label::new(RichText::new(&file.name).size(text_size))
+                            );
+                            
+                            // Column 2: ID
+                            ui.add_sized(
+                                [col_width_id, row_height],
+                                egui::Label::new(RichText::new(&file.id).size(text_size))
+                            );
+                            
+                            // Column 3: Size
+                            let size_text = if file.size < 1024 {
+                                format!("{} B", file.size)
+                            } else if file.size < 1024 * 1024 {
+                                format!("{:.1} KB", file.size as f32 / 1024.0)
+                            } else {
+                                format!("{:.1} MB", file.size as f32 / (1024.0 * 1024.0))
+                            };
+                            
+                            ui.add_sized(
+                                [col_width_size, row_height],
+                                egui::Label::new(RichText::new(size_text).size(text_size))
+                            );
+                            
+                            // Column 4: Filename
+                            ui.add_sized(
+                                [col_width_filename, row_height],
+                                egui::Label::new(RichText::new(&file.filename).size(text_size))
+                            );
+                            
+                            // Column 5: Type
+                            ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
+                            
+                            // Set different colors based on file type
+                            let type_text = match file.file_type.as_str() {
+                                "OPUS Audio" => RichText::new(&file.file_type)
+                                    .size(text_size)
+                                    .color(Color32::from_rgb(100, 200, 100)), // Green
+                                "IDSP Audio" => RichText::new(&file.file_type)
+                                    .size(text_size)
+                                    .color(Color32::from_rgb(100, 150, 255)), // Blue
+                                _ => RichText::new(&file.file_type)
+                                    .size(text_size)
+                                    .color(Color32::from_rgb(200, 150, 100)), // Yellow/Brown
+                            };
+                            
+                            ui.add_sized(
+                                [col_width_type, row_height],
+                                egui::Label::new(type_text)
+                            );
+                            
+                            ui.end_row();
+                            
+                            // Add grid lines
+                            if show_grid_lines && row_index < audio_files.len() - 1 {
+                                let line_start = row_rect.min + Vec2::new(0.0, row_height);
+                                let line_end = line_start + Vec2::new(row_rect.width(), 0.0);
+                                ui.painter().line_segment(
+                                    [line_start, line_end],
+                                    Stroke::new(0.5, ui.visuals().widgets.noninteractive.bg_stroke.color)
+                                );
+                            }
+                        }
+                    });
+            });
     }
 
     /// Update the selected file and load NUS3AUDIO info if applicable
@@ -111,124 +325,88 @@ impl MainArea {
                         ui.add_space(5.0);
                     }
 
-                    // Create a scrollable area for the table
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        // Table header
-                        ui.push_id("audio_files_table", |ui| {
-                            egui::Grid::new("audio_files_grid")
-                                .num_columns(5)
-                                .striped(true)
-                                .spacing([10.0, 12.0]) // 增加行间距以增加行高
-                                // Let egui manage column widths automatically based on content and available space
-                                .show(ui, |ui| {
-                                    // Table header with improved styling
-                                    let heading_size = 17.0; // 增大表头字体大小
-                                    let header_height = 36.0; // 设置表头行高
+                    // Clone data in advance to avoid borrowing conflicts later
+                    let audio_files_copy = audio_files.clone();
+                    let files_count = audio_files.len();
+                    let striped = self.striped;
+                    let clickable = self.clickable;
+                    let show_grid_lines = self.show_grid_lines;
 
-                                    ui.add_sized(
-                                        [0.0, header_height],
-                                        egui::Label::new(
-                                            egui::RichText::new("Name").size(heading_size).strong(),
-                                        ),
-                                    )
-                                    .on_hover_text("Audio file name");
-
-                                    ui.add_sized(
-                                        [0.0, header_height],
-                                        egui::Label::new(
-                                            egui::RichText::new("ID").size(heading_size).strong(),
-                                        ),
-                                    )
-                                    .on_hover_text("Audio file ID");
-
-                                    ui.add_sized(
-                                        [0.0, header_height],
-                                        egui::Label::new(
-                                            egui::RichText::new("Size (bytes)")
-                                                .size(heading_size)
-                                                .strong(),
-                                        ),
-                                    )
-                                    .on_hover_text("File size in bytes");
-
-                                    ui.add_sized(
-                                        [0.0, header_height],
-                                        egui::Label::new(
-                                            egui::RichText::new("Filename")
-                                                .size(heading_size)
-                                                .strong(),
-                                        ),
-                                    )
-                                    .on_hover_text("Audio filename");
-
-                                    ui.add_sized(
-                                        [0.0, header_height],
-                                        egui::Label::new(
-                                            egui::RichText::new("Type").size(heading_size).strong(),
-                                        ),
-                                    )
-                                    .on_hover_text("Audio file type");
-                                    ui.end_row();
-
-                                    // Table rows with improved styling
-                                    for file in audio_files {
-                                        // 为所有列设置一致的行高
-                                        let row_height = 40.0; // 设置更高的行高
-
-                                        // 为所有列应用相同的高度，添加更多的样式
-                                        let text_size = 15.0; // 设置行文本大小
-
-                                        ui.add_sized(
-                                            [0.0, row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(&file.name).size(text_size),
-                                            ),
-                                        );
-
-                                        ui.add_sized(
-                                            [0.0, row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(&file.id).size(text_size),
-                                            ),
-                                        );
-
-                                        ui.add_sized(
-                                            [0.0, row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(format!("{}", file.size))
-                                                    .size(text_size),
-                                            ),
-                                        );
-
-                                        ui.add_sized(
-                                            [0.0, row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(&file.filename).size(text_size),
-                                            ),
-                                        );
-
-                                        ui.add_sized(
-                                            [0.0, row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(&file.file_type)
-                                                    .size(text_size),
-                                            ),
-                                        );
-                                        ui.end_row();
-                                    }
-                                });
+                    // Add table configuration interface - use group frame to make it more beautiful
+                    Frame::group(ui.style())
+                        .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill)) 
+                        .rounding(Rounding::same(5.0))
+                        .show(ui, |ui| {
+                            ui.heading("Table Settings");
+                            ui.add_space(5.0);
+                            
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut self.striped, "Striped Background");
+                                ui.checkbox(&mut self.resizable, "Resizable Columns");
+                                ui.checkbox(&mut self.clickable, "Clickable Rows");
+                                ui.checkbox(&mut self.show_grid_lines, "Show Grid Lines");
+                            });
+                            
+                            if self.clickable {
+                                ui.label(format!(
+                                    "Selected {} items", 
+                                    self.selected_rows.len()
+                                ));
+                                
+                                if !self.selected_rows.is_empty() && ui.button("Clear Selection").clicked() {
+                                    self.selected_rows.clear();
+                                }
+                            }
                         });
-                    });
+                    
+                    ui.add_space(10.0);
+
+                    // Add a nice border to the table
+                    Frame::group(ui.style())
+                        .stroke(Stroke::new(1.0, ui.visuals().faint_bg_color))
+                        .rounding(Rounding::same(4.0))
+                        // Remove non-existent padding method
+                        .show(ui, |ui| {
+                            // Manually add margins
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.vertical(|ui| {
+                                    // Table title and information
+                                    ui.horizontal(|ui| {
+                                        ui.heading("Audio File List");
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            ui.label(format!("Total: {} files", files_count));
+                                        });
+                                    });
+                                    
+                                    ui.add_space(5.0);
+                                    
+                                    // Use static method to render table, passing the required state
+                                    Self::render_table(
+                                        ui, 
+                                        &audio_files_copy, 
+                                        &mut self.selected_rows,
+                                        striped,
+                                        clickable,
+                                        show_grid_lines
+                                    );
+                                    ui.add_space(8.0);
+                                });
+                                ui.add_space(8.0);
+                            });
+                            ui.add_space(8.0);
+                        });
                 } else if let Some(error) = &self.error_message {
                     ui.add_space(10.0);
-                    ui.colored_label(egui::Color32::RED, error);
+                    ui.colored_label(Color32::RED, error);
                 } else {
-                    let rect = egui::Rect::from_min_size(
+                    let rect = Rect::from_min_size(
                         ui.cursor().min,
-                        egui::vec2(ui.available_width(), 200.0),
+                        Vec2::new(ui.available_width(), 200.0),
                     );
                     ui.painter()
-                        .rect_filled(rect, 4.0, egui::Color32::from_rgb(80, 80, 80));
+                        .rect_filled(rect, 4.0, Color32::from_rgb(80, 80, 80));
                     ui.add_space(200.0); // Add space to account for the rect
 
                     if selected.to_lowercase().ends_with(".nus3audio")
