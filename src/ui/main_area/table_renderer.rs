@@ -230,7 +230,7 @@ impl TableRenderer {
                         
                         // Column 6: Action - Add "Output to WAV" button
                         if ui.add_sized(
-                            [col_action, row_height],
+                            [40.0, 20.0],
                             Button::new(RichText::new("Output to WAV").size(text_size))
                         ).clicked() {
                             // Call the callback to handle the export

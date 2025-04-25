@@ -209,10 +209,6 @@ impl MainArea {
                     let clickable = self.clickable;
                     let show_grid_lines = self.show_grid_lines;
 
-                    // Add table configuration interface
-                    self.render_table_settings(ui);
-                    ui.add_space(10.0);
-
                     // Render the table with audio files
                     self.render_audio_table(
                         ui, 
@@ -297,34 +293,6 @@ impl MainArea {
                     // Search tips
                     ui.add_space(5.0);
                     ui.small("Tip: For size column, you can search by 'KB', 'MB', etc.");
-                }
-            });
-    }
-    
-    /// Render table settings UI
-    fn render_table_settings(&mut self, ui: &mut Ui) {
-        Frame::group(ui.style())
-            .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-            .rounding(Rounding::same(5.0))
-            .show(ui, |ui| {
-                ui.heading("Table Settings");
-                ui.add_space(5.0);
-
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.striped, "Striped Background");
-                    ui.checkbox(&mut self.resizable, "Resizable Columns");
-                    ui.checkbox(&mut self.clickable, "Clickable Rows");
-                    ui.checkbox(&mut self.show_grid_lines, "Show Grid Lines");
-                });
-
-                if self.clickable {
-                    ui.label(format!("Selected {} items", self.selected_rows.len()));
-
-                    if !self.selected_rows.is_empty()
-                        && ui.button("Clear Selection").clicked()
-                    {
-                        self.selected_rows.clear();
-                    }
                 }
             });
     }
