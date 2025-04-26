@@ -20,6 +20,16 @@ impl Default for TemplateApp {
 }
 
 impl TemplateApp {
+    /// Get a reference to the main area
+    pub fn main_area(&self) -> &MainArea {
+        &self.main_area
+    }
+    
+    /// Get a mutable reference to the main area
+    pub fn main_area_mut(&mut self) -> &mut MainArea {
+        &mut self.main_area
+    }
+    
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut fonts = egui::FontDefinitions::default();
@@ -51,7 +61,7 @@ impl eframe::App for TemplateApp {
         // Enable dark mode
         ctx.set_visuals(egui::Visuals::dark());
         // Display top menu panel
-        TopPanel::show(ctx);
+        TopPanel::show(ctx, Some(self));
 
         // First create the side panel with file list
         egui::SidePanel::left("file_list_panel")

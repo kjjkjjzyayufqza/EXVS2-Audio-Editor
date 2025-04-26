@@ -14,7 +14,7 @@ impl MainArea {
                     ui.heading("Search");
                     
                     // Toggle advanced search
-                    if ui.button(if self.show_advanced_search { "▲ Basic" } else { "▼ Advanced" }).clicked() {
+                    if ui.button(if self.show_advanced_search { "Basic" } else { "Advanced" }).clicked() {
                         self.show_advanced_search = !self.show_advanced_search;
                     }
                 });
