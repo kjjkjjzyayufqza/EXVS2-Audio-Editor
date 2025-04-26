@@ -218,7 +218,7 @@ impl MainArea {
 
                 if let Some(file_path) = &selected_file {
                     // Use ReplaceUtils to replace the audio file in memory
-                    match ReplaceUtils::replace_with_file_dialog(audio_info, file_path) {
+                    match ReplaceUtils::replace_with_file_dialog(audio_info) {
                         Ok(new_audio_info) => {
                             // Update the audio file in memory if we have audio_files
                             if let Some(ref mut audio_files) = self.audio_files {

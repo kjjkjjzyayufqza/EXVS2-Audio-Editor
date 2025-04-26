@@ -114,8 +114,7 @@ impl ReplaceUtils {
     
     /// Show file dialog to select replacement audio file and replace the target audio in memory
     pub fn replace_with_file_dialog(
-        audio_file_info: &AudioFileInfo,
-        original_file_path: &str,
+        audio_file_info: &AudioFileInfo
     ) -> Result<AudioFileInfo, String> {
         // Open a file dialog to select the replacement audio file
         let file_path = match FileDialog::new()

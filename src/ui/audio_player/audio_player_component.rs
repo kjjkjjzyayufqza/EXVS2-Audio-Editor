@@ -5,7 +5,7 @@ use nus3audio::Nus3audioFile;
 
 use super::audio_controls::AudioControls;
 use super::audio_state::{AudioFile, AudioState};
-use crate::ui::main_area::AudioFileInfo;
+use crate::ui::main_area::{AudioFileInfo, ReplaceUtils};
 
 /// Main audio player component
 pub struct AudioPlayer {
@@ -87,10 +87,19 @@ impl AudioPlayer {
             .find(|f| f.name == file_info.name)
             .ok_or_else(|| format!("Audio file '{}' not found in NUS3AUDIO file", file_info.name))?;
         
+        // Check if there's a replacement audio data in memory
+        let audio_data = match ReplaceUtils::get_replacement_data(&file_info.name, &file_info.id) {
+            Some(replacement_data) => {
+                log::info!("Using replacement audio data for: {}", file_info.name);
+                replacement_data
+            },
+            None => audio_file.data.clone(),
+        };
+        
         // Create an audio file struct
         let audio = AudioFile {
             file_path: file_path.to_string(),
-            data: audio_file.data.clone(),
+            data: audio_data,
             name: file_info.name.clone(),
             file_type: file_info.file_type.clone(),
             id: file_info.id.clone(),
