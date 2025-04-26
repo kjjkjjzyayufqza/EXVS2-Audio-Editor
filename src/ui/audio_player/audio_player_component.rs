@@ -49,9 +49,9 @@ impl AudioPlayer {
     pub fn render(&mut self, ui: &mut Ui) {
         // Use a frame to make it look nicer with gradient background
         Frame::group(ui.style())
-            .rounding(Rounding::same(8.0))
+            .rounding(Rounding::same(8))
             .stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
-            .inner_margin(egui::Margin::same(12.0))
+            .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.vertical(|ui| {

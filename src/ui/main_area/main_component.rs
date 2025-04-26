@@ -253,7 +253,7 @@ impl MainArea {
     fn render_search_box(&mut self, ui: &mut Ui) {
         Frame::group(ui.style())
             .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-            .rounding(Rounding::same(5.0))
+            .rounding(Rounding::same(5))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Search");
@@ -308,7 +308,7 @@ impl MainArea {
         // Add a nice border to the table
         Frame::group(ui.style())
             .stroke(Stroke::new(1.0, ui.visuals().faint_bg_color))
-            .rounding(Rounding::same(4.0))
+            .rounding(Rounding::same(4))
             .show(ui, |ui| {
                 // Manually add margins
                 ui.add_space(8.0);

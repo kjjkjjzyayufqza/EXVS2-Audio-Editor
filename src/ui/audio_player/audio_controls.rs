@@ -34,7 +34,7 @@ impl AudioControls {
 
         // Frame around the controls
         Frame::group(ui.style())
-            .rounding(Rounding::same(6.0))
+            .rounding(Rounding::same(6))
             .stroke(Stroke::new(
                 1.0,
                 ui.visuals().widgets.noninteractive.bg_stroke.color,
