@@ -1,6 +1,7 @@
 use egui::{
-    Color32, Context, Frame, Rect, Rounding, Stroke, Ui, Vec2,
+    Align2, Color32, Context, Frame, Rect, Rounding, Stroke, Ui, Vec2,
 };
+use std::time::{Instant, Duration};
 use nus3audio::Nus3audioFile;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -36,6 +37,14 @@ use super::search_column::SearchColumn;
 use super::table_renderer::TableRenderer;
 use crate::ui::audio_player::AudioPlayer;
 
+/// Toast notification message
+#[derive(Clone)]
+struct ToastMessage {
+    message: String,
+    expires_at: Instant,
+    color: Color32,
+}
+
 /// Main editing area component
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct MainArea {
@@ -68,6 +77,9 @@ pub struct MainArea {
     pub audio_player: Option<AudioPlayer>,
     // Output path configuration
     pub output_path: Option<String>,
+    // Toast notifications
+    #[serde(skip)]
+    toast_messages: Vec<ToastMessage>,
 }
 
 impl MainArea {
@@ -97,7 +109,19 @@ impl MainArea {
             audio_player: Some(AudioPlayer::new()),
             // Initialize output path as None
             output_path: None,
+            // Initialize toast messages
+            toast_messages: Vec::new(),
         }
+    }
+    
+    /// Add a toast notification
+    fn add_toast(&mut self, message: String, color: Color32) {
+        let expires_at = Instant::now() + Duration::from_secs(3); // Display for 3 seconds
+        self.toast_messages.push(ToastMessage {
+            message,
+            expires_at,
+            color,
+        });
     }
     
     /// Ensure that the audio player is initialized
@@ -260,6 +284,9 @@ impl MainArea {
 
     /// Render the main area content
     pub fn render(&mut self, ui: &mut Ui) {
+        // First, clean up expired toast messages
+        let now = Instant::now();
+        self.toast_messages.retain(|toast| toast.expires_at > now);
         let available_height = ui.available_height();
         let available_width = ui.available_width();
 
@@ -267,6 +294,9 @@ impl MainArea {
             ui.add_space(10.0); // Reduced space to allow more content
 
             ui.heading("Audio Editor");
+            
+            // Render toast messages at the top
+            self.render_toasts(ui);
 
             if let Some(selected) = &self.selected_file {
                 // Display filename with ellipsis if too long
@@ -461,56 +491,70 @@ impl MainArea {
                         self.output_path = None;
                     }
                 });
-                // Help text
+                // Help text and warnings
                 ui.add_space(5.0);
+                // Show warning if output path is not set
+                if self.output_path.is_none() {
+                    ui.colored_label(Color32::GOLD, 
+                        "No output directory set. Please set an output directory in the Output Path section.");
+                }
             });
     }
     
-    /// Render the audio file table
+    /// Render the audio file table and handle export/play actions
     fn render_audio_table(&mut self, ui: &mut Ui, filtered_audio_files: Vec<AudioFileInfo>, files_count: usize, available_height: f32, available_width: f32) {
-        // Add a nice border to the table
+        // Use these variables to capture action information outside the immediate UI context
+        // This way we can perform actions after all UI rendering is done to avoid multiple self borrowing
+        struct ActionData {
+            export_index: Option<usize>,
+            play_index: Option<usize>,
+            export_all: bool
+        }
+        
+        let mut action_data = ActionData {
+            export_index: None,
+            play_index: None,
+            export_all: false
+        };
+        
+        // First, render the UI
         Frame::group(ui.style())
             .stroke(Stroke::new(1.0, ui.visuals().faint_bg_color))
             .rounding(Rounding::same(4))
             .show(ui, |ui| {
-                // Manually add margins
+                // Margins
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.add_space(8.0);
                     ui.vertical(|ui| {
-                        // Table title and information
+                        // Table header
                         ui.horizontal(|ui| {
                             ui.heading("Audio File List");
                             
-                            // Add Export All button
+                            // Capture Export All button click, don't act on it yet
                             if ui.button("Export All").clicked() {
-                                self.handle_export_all(ui);
+                                action_data.export_all = true;
                             }
                             
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if !self.search_query.is_empty() {
-                                        ui.label(format!("Found: {} / {} files", files_count, self.file_count.unwrap_or(0)));
-                                    } else {
-                                        ui.label(format!("Total: {} files", files_count));
-                                    }
-                                },
-                            );
+                            // File count display
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if !self.search_query.is_empty() {
+                                    ui.label(format!("Found: {} / {} files", files_count, self.file_count.unwrap_or(0)));
+                                } else {
+                                    ui.label(format!("Total: {} files", files_count));
+                                }
+                            });
                         });
 
                         ui.add_space(5.0);
-                        // Show message if no files match the search query
+                        
+                        // Empty results message
                         if !self.search_query.is_empty() && filtered_audio_files.is_empty() {
-                            ui.add_space(8.0); // Adjusted for better spacing
+                            ui.add_space(8.0);
                             ui.label("No audio files match the search criteria.");
                         }
                         
-                        // Variables to store action indices
-                        let mut export_index = None;
-                        let mut play_index = None;
-                        
-                        // Use table renderer to render the table
+                        // The actual table rendering - capture actions but don't execute them yet
                         TableRenderer::render_table(
                             ui,
                             &filtered_audio_files,
@@ -518,27 +562,17 @@ impl MainArea {
                             self.striped,
                             self.clickable,
                             self.show_grid_lines,
-                            available_height - 100.0, // Adjusted for header and spacing
-                            available_width - 16.0,  // Adjusted for padding
+                            available_height - 100.0,
+                            available_width - 16.0,
                             &mut |index| {
-                                export_index = Some(index);
+                                action_data.export_index = Some(index);
                             },
                             &mut |index| {
-                                play_index = Some(index);
+                                action_data.play_index = Some(index);
                             },
                             &mut self.sort_column,
                             &mut self.sort_ascending,
                         );
-                        
-                        // Process export if needed
-                        if let Some(idx) = export_index {
-                            self.handle_export(ui, &filtered_audio_files, idx);
-                        }
-                        
-                        // Process play if needed
-                        if let Some(idx) = play_index {
-                            self.handle_play_audio(ui, &filtered_audio_files, idx);
-                        }
                         
                         ui.add_space(8.0);
                     });
@@ -546,113 +580,167 @@ impl MainArea {
                 });
                 ui.add_space(8.0);
             });
-    }
-    
-    /// Handle exporting an audio file
-    fn handle_export(&self, ui: &mut Ui, filtered_audio_files: &[AudioFileInfo], index: usize) {
-        if index < filtered_audio_files.len() {
-            let audio_info = &filtered_audio_files[index];
+        
+        // Collect toast messages to add - we'll add them all at once to avoid multiple self.add_toast calls
+        let mut toasts_to_add = Vec::new();
+        
+        // Process all actions and collect toast messages
+        
+        // Handle "Export All" action if clicked
+        if action_data.export_all {
+            let selected_file = self.selected_file.clone();
+            let output_path = self.output_path.clone();
             
-            // Get the selected file path
-            if let Some(file_path) = &self.selected_file {
-                // Check if output path is set
-                if let Some(output_dir) = &self.output_path {
-                    // Use the ExportUtils to export the file to custom directory
-                    match ExportUtils::export_to_wav_with_custom_dir(audio_info, file_path, output_dir) {
-                        Ok(path) => {
-                            ui.add_space(8.0);
-                            ui.colored_label(Color32::GREEN, 
-                                format!("Successfully exported to: {}", path));
+            if let Some(file_path) = &selected_file {
+                if let Some(output_dir) = &output_path {
+                    // Use ExportUtils to export all files
+                    match ExportUtils::export_all_to_wav(file_path, output_dir) {
+                        Ok(paths) => {
+                            toasts_to_add.push((
+                                format!("Successfully exported {} files to: {}", paths.len(), output_dir),
+                                Color32::GREEN
+                            ));
                         },
                         Err(e) => {
-                            ui.add_space(8.0);
-                            ui.colored_label(Color32::RED, e);
+                            toasts_to_add.push((
+                                format!("Export failed: {}", e),
+                                Color32::RED
+                            ));
                         }
                     }
                 } else {
-                    // No output path set, show warning
-                    ui.add_space(8.0);
-                    ui.colored_label(Color32::GOLD, 
-                        "No output directory set. Please set an output directory in the Output Path section.");
+                    toasts_to_add.push((
+                        "No output directory set. Please set an output directory.".to_string(),
+                        Color32::GOLD
+                    ));
                 }
             } else {
-                ui.add_space(8.0);
-                ui.colored_label(Color32::RED, "No file selected");
+                toasts_to_add.push((
+                    "No file selected".to_string(),
+                    Color32::RED
+                ));
             }
-        } else {
-            ui.add_space(8.0);
-            ui.colored_label(Color32::RED, "Invalid audio file index");
         }
-    }
-    
-    /// Handle exporting all audio files
-    fn handle_export_all(&self, ui: &mut Ui) {
-        // Get the selected file path
-        if let Some(file_path) = &self.selected_file {
-            // Check if output path is set
-            if let Some(output_dir) = &self.output_path {
-                // Use the ExportUtils to export all files to custom directory
-                match ExportUtils::export_all_to_wav(file_path, output_dir) {
-                    Ok(paths) => {
-                        ui.add_space(8.0);
-                        ui.colored_label(Color32::GREEN, 
-                            format!("Successfully exported {} files to: {}", paths.len(), output_dir));
-                    },
-                    Err(e) => {
-                        ui.add_space(8.0);
-                        ui.colored_label(Color32::RED, e);
-                    }
-                }
-            } else {
-                // No output path set, show warning
-                ui.add_space(8.0);
-                ui.colored_label(Color32::GOLD, 
-                    "No output directory set. Please set an output directory in the Output Path section.");
-            }
-        } else {
-            ui.add_space(8.0);
-            ui.colored_label(Color32::RED, "No file selected");
-        }
-    }
-    
-    /// Handle playing an audio file
-    pub fn handle_play_audio(&mut self, ui: &mut Ui, filtered_audio_files: &[AudioFileInfo], index: usize) {
-        if index < filtered_audio_files.len() {
-            let audio_info = &filtered_audio_files[index];
-            
-            // Get the selected file path
-            if let Some(file_path) = &self.selected_file {
-                // Try to load and play the audio
-                if let Some(audio_player) = &mut self.audio_player {
-                    match audio_player.load_audio(audio_info, &file_path) {
-                        Ok(()) => {
-                            ui.add_space(8.0);
-                            ui.colored_label(Color32::GREEN, 
-                                format!("Now playing: {}", audio_info.name));
-                            
-                            // Start playing
-                            let state = audio_player.get_audio_state();
-                            let mut state = state.lock().unwrap();
-                            if !state.is_playing {
-                                state.toggle_play();
+        
+        // Handle "Export" action for a specific file if clicked
+        if let Some(idx) = action_data.export_index {
+            if idx < filtered_audio_files.len() {
+                let audio_info = &filtered_audio_files[idx];
+                let selected_file = self.selected_file.clone();
+                let output_path = self.output_path.clone();
+                
+                if let Some(file_path) = &selected_file {
+                    if let Some(output_dir) = &output_path {
+                        match ExportUtils::export_to_wav_with_custom_dir(audio_info, file_path, output_dir) {
+                            Ok(path) => {
+                                toasts_to_add.push((
+                                    format!("Successfully exported to: {}", path),
+                                    Color32::GREEN
+                                ));
+                            },
+                            Err(e) => {
+                                toasts_to_add.push((
+                                    format!("Export failed: {}", e),
+                                    Color32::RED
+                                ));
                             }
-                        },
-                        Err(e) => {
-                            ui.add_space(8.0);
-                            ui.colored_label(Color32::RED, format!("Failed to load audio: {}", e));
                         }
+                    } else {
+                        toasts_to_add.push((
+                            "No output directory set. Please set an output directory.".to_string(),
+                            Color32::GOLD
+                        ));
                     }
                 } else {
-                    ui.add_space(8.0);
-                    ui.colored_label(Color32::RED, "Audio player is not initialized");
+                    toasts_to_add.push((
+                        "No file selected".to_string(),
+                        Color32::RED
+                    ));
                 }
-            } else {
-                ui.add_space(8.0);
-                ui.colored_label(Color32::RED, "No file selected");
             }
-        } else {
-            ui.add_space(8.0);
-            ui.colored_label(Color32::RED, "Invalid audio file index");
+        }
+        
+        // Handle "Play" action if clicked
+        let mut play_started = false;
+        if let Some(idx) = action_data.play_index {
+            if idx < filtered_audio_files.len() {
+                let audio_info = &filtered_audio_files[idx];
+                let audio_name = audio_info.name.clone();
+                let file_path = self.selected_file.clone();
+                
+                if let Some(path) = &file_path {
+                    if let Some(audio_player) = &mut self.audio_player {
+                        match audio_player.load_audio(audio_info, path) {
+                            Ok(()) => {
+                                // Start playing
+                                let state = audio_player.get_audio_state();
+                                let mut state = state.lock().unwrap();
+                                if !state.is_playing {
+                                    state.toggle_play();
+                                    play_started = true;
+                                }
+                                
+                                toasts_to_add.push((
+                                    format!("Now playing: {}", audio_name),
+                                    Color32::GREEN
+                                ));
+                            },
+                            Err(e) => {
+                                toasts_to_add.push((
+                                    format!("Failed to load audio: {}", e),
+                                    Color32::RED
+                                ));
+                            }
+                        }
+                    } else {
+                        toasts_to_add.push((
+                            "Audio player is not initialized".to_string(),
+                            Color32::RED
+                        ));
+                    }
+                } else {
+                    toasts_to_add.push((
+                        "No file selected".to_string(),
+                        Color32::RED
+                    ));
+                }
+            }
+        }
+        
+        // Add all collected toast messages at once
+        for (message, color) in toasts_to_add {
+            self.add_toast(message, color);
         }
     }
+    
+    /// Render toast notifications
+    fn render_toasts(&self, ui: &mut Ui) {
+        if self.toast_messages.is_empty() {
+            return;
+        }
+        
+        // Calculate spacing from top
+        let spacing = 50.0;
+        
+        // Show toast messages
+        for (i, toast) in self.toast_messages.iter().enumerate() {
+            // Create a toast window at the top center of the screen
+            let window_id = egui::Id::new("toast_message").with(i);
+            let pos = [0.0, spacing + (i as f32 * 60.0)];
+            
+            egui::containers::Window::new("Toast")
+                .id(window_id)
+                .title_bar(false)
+                .resizable(false)
+                .movable(false)
+                .anchor(Align2::CENTER_TOP, pos)
+                .default_size([300.0, 40.0])
+                .show(ui.ctx(), |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.colored_label(toast.color, &toast.message);
+                    });
+                });
+        }
+    }
+    
 }
