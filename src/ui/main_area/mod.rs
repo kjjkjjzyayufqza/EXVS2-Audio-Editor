@@ -3,6 +3,7 @@ mod audio_file_info;
 mod search_column;
 mod table_renderer;
 mod export_utils;
+mod replace_utils;
 
 // New modular components
 mod sort_column;

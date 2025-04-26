@@ -10,7 +10,7 @@ use super::sort_column::SortColumn;
 pub struct TableRenderer;
 
 impl TableRenderer {
-/// Render table UI with callbacks for export and play buttons
+/// Render table UI with callbacks for export, play and replace buttons
     pub fn render_table(
         ui: &mut Ui,
         audio_files: &[AudioFileInfo],
@@ -22,6 +22,7 @@ impl TableRenderer {
         available_width: f32,
         on_export_clicked: &mut dyn FnMut(usize),
         on_play_clicked: &mut dyn FnMut(usize),
+        on_replace_clicked: &mut dyn FnMut(usize),
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
     ) {
@@ -325,7 +326,7 @@ impl TableRenderer {
 
                         ui.add_sized([col_width_type, row_height], egui::Label::new(type_text));
                         
-                        // Column 6: Actions - Add Play and Export buttons
+                        // Column 6: Actions - Add Play, Export, and Replace buttons
                         ui.horizontal(|ui| {
                             // Play button
                             if ui.add_sized(
@@ -345,6 +346,17 @@ impl TableRenderer {
                             ).clicked() {
                                 // Call the callback to handle the export
                                 on_export_clicked(row_index);
+                            }
+                            
+                            ui.add_space(5.0);
+                            
+                            // Replace button
+                            if ui.add_sized(
+                                [70.0, 20.0],
+                                Button::new(RichText::new(format!("{} Replace", egui_phosphor::regular::SWAP)).size(text_size).color(Color32::from_rgb(255, 180, 100)))
+                            ).clicked() {
+                                // Call the callback to handle the replace
+                                on_replace_clicked(row_index);
                             }
                         });
 

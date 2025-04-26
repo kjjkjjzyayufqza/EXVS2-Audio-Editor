@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
-    table_renderer::TableRenderer,
+    replace_utils::ReplaceUtils, table_renderer::TableRenderer,
 };
 
 impl MainArea {
@@ -21,12 +21,14 @@ impl MainArea {
         struct ActionData {
             export_index: Option<usize>,
             play_index: Option<usize>,
+            replace_index: Option<usize>,
             export_all: bool,
         }
 
         let mut action_data = ActionData {
             export_index: None,
             play_index: None,
+            replace_index: None,
             export_all: false,
         };
 
@@ -82,6 +84,9 @@ impl MainArea {
                             },
                             &mut |index| {
                                 action_data.play_index = Some(index);
+                            },
+                            &mut |index| {
+                                action_data.replace_index = Some(index);
                             },
                             &mut self.sort_column,
                             &mut self.sort_ascending,
@@ -198,6 +203,50 @@ impl MainArea {
                     } else {
                         toasts_to_add
                             .push(("Audio player is not initialized".to_string(), Color32::RED));
+                    }
+                } else {
+                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
+                }
+            }
+        }
+        
+        // Handle "Replace" action if clicked
+        if let Some(idx) = action_data.replace_index {
+            if idx < filtered_audio_files.len() {
+                let audio_info = &filtered_audio_files[idx];
+                let selected_file = self.selected_file.clone();
+
+                if let Some(file_path) = &selected_file {
+                    // Use ReplaceUtils to replace the audio file in memory
+                    match ReplaceUtils::replace_with_file_dialog(audio_info, file_path) {
+                        Ok(new_audio_info) => {
+                            // Update the audio file in memory if we have audio_files
+                            if let Some(ref mut audio_files) = self.audio_files {
+                                // Find the original audio file in the full list
+                                if let Some(original_idx) = audio_files.iter().position(|f| f.name == audio_info.name && f.id == audio_info.id) {
+                                    // Replace with the new audio info
+                                    audio_files[original_idx] = new_audio_info.clone();
+                                    
+                                    toasts_to_add.push((
+                                        format!("Successfully replaced audio in memory: {}", audio_info.name),
+                                        Color32::GREEN,
+                                    ));
+                                } else {
+                                    toasts_to_add.push((
+                                        format!("Could not find original audio file in memory: {}", audio_info.name),
+                                        Color32::RED,
+                                    ));
+                                }
+                            } else {
+                                toasts_to_add.push((
+                                    "Audio files not loaded in memory".to_string(),
+                                    Color32::RED,
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            toasts_to_add.push((format!("Replace failed: {}", e), Color32::RED));
+                        }
                     }
                 } else {
                     toasts_to_add.push(("No file selected".to_string(), Color32::RED));
