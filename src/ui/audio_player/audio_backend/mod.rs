@@ -14,5 +14,3 @@ pub use native::NativeAudioBackend as PlatformAudioBackend;
 pub use web::WebAudioBackend as PlatformAudioBackend;
 
 // Optionally expose the specific backends for advanced use cases
-pub use native::NativeAudioBackend;
-pub use web::WebAudioBackend;
