@@ -150,22 +150,26 @@ impl AudioState {
             if self.is_playing {
                 // If starting playback and we have audio data
                 if let Some(audio) = &self.current_audio {
-                    // For the first play, we need to send the audio data
-                    if self.current_position == 0.0 {
-                        let data_arc = Arc::new(audio.data.clone());
-                        if let Err(e) = backend.play_audio(data_arc) {
-                            log::error!("Failed to play audio: {}", e);
-                            self.is_playing = false;
-                            return;
-                        }
-                        
-                        // Get actual duration from backend
-                        self.total_duration = backend.get_duration();
-                    } else {
-                        // Resume playback
-                        if let Err(e) = backend.resume() {
-                            log::error!("Failed to resume audio: {}", e);
-                            self.is_playing = false;
+                    let data_arc = Arc::new(audio.data.clone());
+                    
+                    // If we're resuming from a position other than the beginning,
+                    // we need to set the position after starting playback
+                    let position = self.current_position;
+                    
+                    if let Err(e) = backend.play_audio(data_arc) {
+                        log::error!("Failed to play audio: {}", e);
+                        self.is_playing = false;
+                        return;
+                    }
+                    
+                    // Get actual duration from backend
+                    self.total_duration = backend.get_duration();
+                    
+                    // If we're resuming from a non-zero position, seek to that position
+                    if position > 0.0 {
+                        if let Err(e) = backend.set_position(position) {
+                            log::error!("Failed to seek to position {}: {}", position, e);
+                            // Continue playback even if seeking fails
                         }
                     }
                 }
@@ -232,11 +236,18 @@ impl AudioState {
     pub fn set_position(&mut self, position: f32) {
         self.current_position = position.clamp(0.0, self.total_duration);
         
-        if let Some(backend) = &mut self.audio_backend {
-            if let Err(e) = backend.set_position(self.current_position) {
-                log::error!("Failed to set audio position: {}", e);
+        // Only apply position change to the backend if we're playing
+        // This avoids unnecessary reloading when paused
+        if self.is_playing {
+            if let Some(backend) = &mut self.audio_backend {
+                if let Err(e) = backend.set_position(self.current_position) {
+                    log::error!("Failed to set audio position: {}", e);
+                }
             }
         }
+        
+        // If not playing, the position will be applied when play is resumed
+        // via toggle_play which will use the current_position value
     }
     
     /// Set the volume (0.0 - 1.0)

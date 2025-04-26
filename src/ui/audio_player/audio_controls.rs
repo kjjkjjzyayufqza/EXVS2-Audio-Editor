@@ -1,5 +1,5 @@
 use egui::{
-    widgets::Slider, Color32, Frame, Label, RichText, Rounding, Stroke, Ui, Vec2
+    widgets::Slider, Color32, Frame, RichText, Rounding, Stroke, Ui, Vec2
 };
 use super::audio_state::AudioState;
 use std::sync::{Arc, Mutex};
@@ -102,16 +102,21 @@ impl AudioControls {
 
                     ui.add_space(5.0);
 
-                    // Progress slider
+                    // Progress slider with increased width
                     let mut progress = state_copy.progress();
                     
-                    let resp = ui.add(
+                    ui.add_space(5.0);
+                    // Using basic slider settings to avoid compilation errors
+                    let slider_response = ui.add(
                         Slider::new(&mut progress, 0.0..=1.0)
                             .show_value(false)
-                            .text(if has_audio { "▓" } else { "░" })
+                            .text("")  // Remove the text that appears as progress dots
                     );
-
-                    if resp.changed() && has_audio {
+                    ui.add_space(5.0);
+                    
+                    // Only update position if slider has been released to avoid 
+                    // constant reloading while dragging
+                    if slider_response.drag_released() && has_audio {
                         let mut state = self.audio_state.lock().unwrap();
                         let new_position = progress * state.total_duration;
                         state.set_position(new_position);
@@ -125,37 +130,52 @@ impl AudioControls {
                         .size(14.0));
                         
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Play/pause button
-                        let (play_text, play_color) = if state_copy.is_playing {
+                        // Better play/pause button styling
+                        let (play_icon, play_color) = if state_copy.is_playing {
                             ("⏸", Color32::from_rgb(255, 200, 100))  // Pause
                         } else {
                             ("▶", Color32::from_rgb(100, 255, 150))  // Play
                         };
                         
-                        // Play/pause button with different colors based on state
+                        // Simplified button styling for compatibility
                         let play_button_color = if has_audio {
                             play_color
                         } else {
                             Color32::from_gray(150) // Grayed out
                         };
                         
-                        if ui.button(RichText::new(play_text).size(18.0).color(play_button_color)).clicked() && has_audio {
+                        // Using standard button creation to avoid styling issues
+                        let play_button = ui.button(RichText::new(play_icon)
+                            .size(20.0)
+                            .color(play_button_color));
+                        
+                        if play_button.clicked() && has_audio {
                             let mut state = self.audio_state.lock().unwrap();
                             state.toggle_play();
                         }
                         
-                        // Stop button with different colors based on state
+                        // Let egui handle hover highlighting automatically
+                        
+                        ui.add_space(8.0);
+                        
+                        // Simplified stop button
                         let stop_button_color = if has_audio && (state_copy.is_playing || state_copy.current_position > 0.0) {
                             Color32::from_rgb(255, 100, 100)
                         } else {
                             Color32::from_gray(150) // Grayed out
                         };
                         
-                        if ui.button(RichText::new("■").size(18.0).color(stop_button_color)).clicked() &&
-                           has_audio && (state_copy.is_playing || state_copy.current_position > 0.0) {
+                        // Using standard button creation
+                        let stop_button = ui.button(RichText::new("■")
+                            .size(16.0)
+                            .color(stop_button_color));
+                        
+                        if stop_button.clicked() && has_audio && (state_copy.is_playing || state_copy.current_position > 0.0) {
                             let mut state = self.audio_state.lock().unwrap();
                             state.stop();
                         }
+                        
+                        // Let egui handle hover highlighting automatically
                     });
                 });
                 

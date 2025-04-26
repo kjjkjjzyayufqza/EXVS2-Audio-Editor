@@ -37,7 +37,8 @@ impl AudioPlayer {
         
         // Display audio player in a bottom panel
         egui::TopBottomPanel::bottom("audio_player_panel")
-            .min_height(100.0)
+            .min_height(120.0)  // Increased height for better UX
+            .frame(egui::Frame::none().fill(ctx.style().visuals.panel_fill))
             .resizable(false)
             .show(ctx, |ui| {
                 self.render(ui);
@@ -46,25 +47,29 @@ impl AudioPlayer {
     
     /// Render the audio player UI
     pub fn render(&mut self, ui: &mut Ui) {
-        // Use a frame to make it look nicer
+        // Use a frame to make it look nicer with gradient background
         Frame::group(ui.style())
-            .rounding(Rounding::same(4.0))
+            .rounding(Rounding::same(8.0))
             .stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
+            .inner_margin(egui::Margin::same(12.0))
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.add_space(8.0);
                     ui.vertical(|ui| {
-                        ui.add_space(8.0);
+                        ui.add_space(4.0);
                         
-                        ui.heading("Audio Player");
-                        ui.add_space(5.0);
+                        // Improved heading with better styling
+                        ui.horizontal(|ui| {
+                            ui.add_space(4.0);
+                            ui.heading(egui::RichText::new("Audio Player")
+                                .size(20.0)
+                                .color(ui.visuals().strong_text_color()));
+                        });
+                        
+                        ui.add_space(8.0);
                         
                         // Render audio controls
                         self.audio_controls.render(ui);
-                        
-                        ui.add_space(8.0);
                     });
-                    ui.add_space(8.0);
                 });
             });
     }
