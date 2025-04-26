@@ -202,7 +202,7 @@ impl TableRenderer {
         let row_height = text_height * 2.0;
         let text_size = 16.0;
         // let row_height = ui.spacing().interact_size.y; // if you are adding buttons instead of labels.
-        ui.set_min_height(available_height - 340.0); // Adjusted for header and spacing
+        ui.set_min_height(available_height - 440.0); // Adjusted for header and spacing
 
         ScrollArea::vertical().show_rows(ui, row_height, audio_files.len(), |ui, row_range| {
             Grid::new("table_content")

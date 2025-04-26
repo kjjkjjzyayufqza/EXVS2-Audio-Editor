@@ -6,7 +6,7 @@ use crate::ui::{FileList, MainArea, TopPanel};
 pub struct TemplateApp {
     // Remove skip attribute to persist file list between sessions
     file_list: FileList,
-    #[serde(skip)]
+    // Remove skip attribute to persist main area settings (like output path) between sessions
     main_area: MainArea,
 }
 
@@ -30,7 +30,10 @@ impl TemplateApp {
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            let mut app: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            // Make sure audio player is initialized after deserialization
+            app.main_area.ensure_audio_player_initialized();
+            return app;
         }
 
         Default::default()

@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// Enum to represent the column to search in
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum SearchColumn {
     All,
     Name,

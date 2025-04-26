@@ -2,12 +2,13 @@ use egui::{
     Color32, Context, Frame, Rect, Rounding, Stroke, Ui, Vec2,
 };
 use nus3audio::Nus3audioFile;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use super::audio_file_info::AudioFileInfo;
 
 /// Enum representing sortable columns
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum SortColumn {
     Name,
     Id,
@@ -36,20 +37,26 @@ use super::table_renderer::TableRenderer;
 use crate::ui::audio_player::AudioPlayer;
 
 /// Main editing area component
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct MainArea {
+    #[serde(skip)]
     pub selected_file: Option<String>,
+    #[serde(skip)]
     pub file_count: Option<usize>,
+    #[serde(skip)]
     pub audio_files: Option<Vec<AudioFileInfo>>,
+    #[serde(skip)]
     pub error_message: Option<String>,
     // Table configuration
     pub striped: bool,
     pub resizable: bool,
     pub clickable: bool,
-    // Set of selected row indices
+    #[serde(skip)]
     pub selected_rows: HashSet<usize>,
     // Whether to display table grid lines
     pub show_grid_lines: bool,
     // Search functionality
+    #[serde(skip)]
     pub search_query: String,
     pub search_column: SearchColumn,
     pub show_advanced_search: bool,
@@ -57,12 +64,17 @@ pub struct MainArea {
     pub sort_column: SortColumn,
     pub sort_ascending: bool,
     // Audio player
+    #[serde(skip)]
     pub audio_player: Option<AudioPlayer>,
+    // Output path configuration
+    pub output_path: Option<String>,
 }
 
 impl MainArea {
     /// Create a new main area
     pub fn new() -> Self {
+        println!("Creating new MainArea instance");
+        
         Self {
             selected_file: None,
             file_count: None,
@@ -83,6 +95,20 @@ impl MainArea {
             sort_ascending: true,
             // Create new audio player
             audio_player: Some(AudioPlayer::new()),
+            // Initialize output path as None
+            output_path: None,
+        }
+    }
+    
+    /// Ensure that the audio player is initialized
+    /// This is called after deserialization to make sure audio player is recreated
+    pub fn ensure_audio_player_initialized(&mut self) {
+        println!("Ensuring audio player is initialized");
+        if self.audio_player.is_none() {
+            println!("Audio player was None, creating new instance");
+            self.audio_player = Some(AudioPlayer::new());
+        } else {
+            println!("Audio player was already initialized");
         }
     }
     
@@ -273,6 +299,10 @@ impl MainArea {
                     // Add search box before the table
                     self.render_search_box(ui);
                     ui.add_space(10.0);
+                    
+                    // Add output path selection
+                    self.render_output_path(ui);
+                    ui.add_space(10.0);
 
                     // Get filtered and sorted audio files
                     let filtered_audio_files = self.filtered_audio_files();
@@ -293,6 +323,7 @@ impl MainArea {
                     ui.add_space(10.0);
                     ui.colored_label(Color32::RED, error);
                 } else {
+                    println!("aaaa {}", selected);
                     let rect = Rect::from_min_size(
                         ui.cursor().min,
                         Vec2::new(ui.available_width(), 200.0),
@@ -369,6 +400,72 @@ impl MainArea {
             });
     }
     
+    /// Render output path selection
+    fn render_output_path(&mut self, ui: &mut Ui) {
+        Frame::group(ui.style())
+            .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
+            .rounding(Rounding::same(5))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Output Path");
+                });
+                ui.add_space(5.0);
+                
+                // Current output path display
+                ui.horizontal(|ui| {
+                    ui.label("Path:");
+                    let path_text = match &self.output_path {
+                        Some(path) => {
+                            // Shorten path if too long
+                            if path.len() > 40 {
+                                let mut shortened = String::new();
+                                if let Some(last_part) = std::path::Path::new(path).file_name() {
+                                    if let Some(last_str) = last_part.to_str() {
+                                        shortened = format!("{}", last_str);
+                                    }
+                                }
+                                if shortened.is_empty() {
+                                    format!("{}...", &path[0..37])
+                                } else {
+                                    shortened
+                                }
+                            } else {
+                                path.clone()
+                            }
+                        },
+                        None => "Not set".to_string(),
+                    };
+                    
+                    // Display path with full path as hover text
+                    let label = ui.label(path_text);
+                    if let Some(path) = &self.output_path {
+                        label.on_hover_text(path);
+                    }
+                    
+                    // Select folder button
+                    if ui.button("Select folder").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .set_title("Select Output Directory")
+                            .set_directory(self.output_path.clone().unwrap_or_else(|| ".".to_string()))
+                            .pick_folder() 
+                        {
+                            if let Some(path_str) = path.to_str() {
+                                self.output_path = Some(path_str.to_string());
+                                // Save the path to config immediately to ensure it's persisted
+                                // This would be ideal, but for simplicity, we'll rely on app shutdown saving
+                            }
+                        }
+                    }
+                    // Clear button if path is set
+                    if self.output_path.is_some() && ui.button("✖").clicked() {
+                        self.output_path = None;
+                    }
+                });
+                // Help text
+                ui.add_space(5.0);
+            });
+    }
+    
     /// Render the audio file table
     fn render_audio_table(&mut self, ui: &mut Ui, filtered_audio_files: Vec<AudioFileInfo>, files_count: usize, available_height: f32, available_width: f32) {
         // Add a nice border to the table
@@ -384,6 +481,12 @@ impl MainArea {
                         // Table title and information
                         ui.horizontal(|ui| {
                             ui.heading("Audio File List");
+                            
+                            // Add Export All button
+                            if ui.button("Export All").clicked() {
+                                self.handle_export_all(ui);
+                            }
+                            
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
@@ -452,17 +555,25 @@ impl MainArea {
             
             // Get the selected file path
             if let Some(file_path) = &self.selected_file {
-                // Use the ExportUtils to export the file
-                match ExportUtils::export_to_wav(audio_info, file_path) {
-                    Ok(path) => {
-                        ui.add_space(8.0);
-                        ui.colored_label(Color32::GREEN, 
-                            format!("Successfully exported to: {}", path));
-                    },
-                    Err(e) => {
-                        ui.add_space(8.0);
-                        ui.colored_label(Color32::RED, e);
+                // Check if output path is set
+                if let Some(output_dir) = &self.output_path {
+                    // Use the ExportUtils to export the file to custom directory
+                    match ExportUtils::export_to_wav_with_custom_dir(audio_info, file_path, output_dir) {
+                        Ok(path) => {
+                            ui.add_space(8.0);
+                            ui.colored_label(Color32::GREEN, 
+                                format!("Successfully exported to: {}", path));
+                        },
+                        Err(e) => {
+                            ui.add_space(8.0);
+                            ui.colored_label(Color32::RED, e);
+                        }
                     }
+                } else {
+                    // No output path set, show warning
+                    ui.add_space(8.0);
+                    ui.colored_label(Color32::GOLD, 
+                        "No output directory set. Please set an output directory in the Output Path section.");
                 }
             } else {
                 ui.add_space(8.0);
@@ -471,6 +582,36 @@ impl MainArea {
         } else {
             ui.add_space(8.0);
             ui.colored_label(Color32::RED, "Invalid audio file index");
+        }
+    }
+    
+    /// Handle exporting all audio files
+    fn handle_export_all(&self, ui: &mut Ui) {
+        // Get the selected file path
+        if let Some(file_path) = &self.selected_file {
+            // Check if output path is set
+            if let Some(output_dir) = &self.output_path {
+                // Use the ExportUtils to export all files to custom directory
+                match ExportUtils::export_all_to_wav(file_path, output_dir) {
+                    Ok(paths) => {
+                        ui.add_space(8.0);
+                        ui.colored_label(Color32::GREEN, 
+                            format!("Successfully exported {} files to: {}", paths.len(), output_dir));
+                    },
+                    Err(e) => {
+                        ui.add_space(8.0);
+                        ui.colored_label(Color32::RED, e);
+                    }
+                }
+            } else {
+                // No output path set, show warning
+                ui.add_space(8.0);
+                ui.colored_label(Color32::GOLD, 
+                    "No output directory set. Please set an output directory in the Output Path section.");
+            }
+        } else {
+            ui.add_space(8.0);
+            ui.colored_label(Color32::RED, "No file selected");
         }
     }
     
