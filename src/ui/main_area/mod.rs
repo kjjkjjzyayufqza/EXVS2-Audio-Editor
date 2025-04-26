@@ -20,3 +20,4 @@ mod main_component;
 pub use main_component::MainArea;
 pub use audio_file_info::AudioFileInfo;
 pub use replace_utils::ReplaceUtils;
+pub use export_utils::ExportUtils;

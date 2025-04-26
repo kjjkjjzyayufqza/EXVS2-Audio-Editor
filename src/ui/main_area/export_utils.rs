@@ -1,41 +1,48 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::io::{self, Read};
 use super::audio_file_info::AudioFileInfo;
 
 /// Utility functions for exporting audio files
 pub struct ExportUtils;
 
 impl ExportUtils {
-    /// Export audio data to a WAV file using vgmstream-cli
-    pub fn export_to_wav(
+    /// Convert audio to WAV format using vgmstream-cli and return the data in memory
+    pub fn convert_to_wav_in_memory(
         audio_file_info: &AudioFileInfo,
         original_file_path: &str,
-    ) -> Result<String, String> {
-        // Create output file path (same directory as original file with .wav extension)
-        let original_path = Path::new(original_file_path);
-        let parent_dir = match original_path.parent() {
-            Some(dir) => dir,
-            None => return Err("Failed to get parent directory".to_string()),
-        };
-        
-        let output_filename = format!("{}.wav", audio_file_info.name);
-        let output_path = parent_dir.join(output_filename);
-        let output_path_str = output_path.to_string_lossy().to_string();
-        
+    ) -> Result<Vec<u8>, String> {
         // Path to vgmstream-cli.exe in tools directory
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
         
+        // Create a temporary output file path
+        let temp_dir = std::env::temp_dir();
+        let temp_filename = format!("temp_convert_{}.wav", audio_file_info.id);
+        let temp_output_path = temp_dir.join(&temp_filename);
+        let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
+        
         // Run vgmstream-cli to convert audio to WAV
-        let result = Command::new(vgmstream_path)
-            .args(&["-o", &output_path_str, "-s", &audio_file_info.id, original_file_path])
+        let result = Command::new(&vgmstream_path)
+            .args(&["-o", &temp_output_path_str, "-s", &audio_file_info.id, original_file_path])
             .output();
             
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    println!("Successfully exported WAV file to: {:?}", output_path);
-                    Ok(output_path_str)
+                    // Read the temporary WAV file into memory
+                    match fs::read(&temp_output_path) {
+                        Ok(wav_data) => {
+                            // Clean up the temporary file
+                            let _ = fs::remove_file(&temp_output_path);
+                            Ok(wav_data)
+                        },
+                        Err(e) => {
+                            // Clean up the temporary file even if reading failed
+                            let _ = fs::remove_file(&temp_output_path);
+                            Err(format!("Failed to read converted WAV data: {}", e))
+                        }
+                    }
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
                     Err(format!("vgmstream-cli error: {}", error))
@@ -44,7 +51,7 @@ impl ExportUtils {
             Err(e) => Err(format!("Failed to run vgmstream-cli: {}", e)),
         }
     }
-    
+
     /// Export audio data to a WAV file with custom output directory using vgmstream-cli
     pub fn export_to_wav_with_custom_dir(
         audio_file_info: &AudioFileInfo,
