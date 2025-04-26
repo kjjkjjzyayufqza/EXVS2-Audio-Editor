@@ -25,6 +25,7 @@ impl TemplateApp {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
@@ -44,6 +45,8 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Enable dark mode
+        ctx.set_visuals(egui::Visuals::dark());
         // Display top menu panel
         TopPanel::show(ctx);
 
