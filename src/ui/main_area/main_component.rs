@@ -123,7 +123,21 @@ impl MainArea {
                 filtered_files.sort_by(|a, b| {
                     let ordering = match self.sort_column {
                         SortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                        SortColumn::Id => a.id.to_lowercase().cmp(&b.id.to_lowercase()),
+                        SortColumn::Id => {
+                            // Try to parse IDs as numbers for numeric sorting
+                            let parse_a = a.id.parse::<usize>();
+                            let parse_b = b.id.parse::<usize>();
+                            
+                            match (parse_a, parse_b) {
+                                // If both can be parsed as numbers, sort numerically
+                                (Ok(num_a), Ok(num_b)) => num_a.cmp(&num_b),
+                                // If one can be parsed but the other can't, prioritize the numeric one
+                                (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+                                (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+                                // If neither can be parsed as numbers, fall back to string comparison
+                                (Err(_), Err(_)) => a.id.to_lowercase().cmp(&b.id.to_lowercase()),
+                            }
+                        },
                         SortColumn::Size => a.size.cmp(&b.size),
                         SortColumn::Filename => a.filename.to_lowercase().cmp(&b.filename.to_lowercase()),
                         SortColumn::Type => a.file_type.to_lowercase().cmp(&b.file_type.to_lowercase()),
