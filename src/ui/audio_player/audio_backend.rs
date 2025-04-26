@@ -72,6 +72,8 @@ mod native {
         is_playing: bool,
         /// Whether backend initialization succeeded
         initialized: bool,
+        /// Current volume level (0.0 - 1.0)
+        volume: f32,
     }
     
     impl NativeAudioBackend {
@@ -90,6 +92,7 @@ mod native {
                 audio_loaded: false,
                 is_playing: false,
                 initialized: false,
+                volume: 1.0, // Default volume is 100%
             }
         }
         
@@ -207,6 +210,11 @@ mod native {
             self.audio_loaded = true;
             self.is_playing = true;
             
+            // Apply current volume
+            if let Some(sink) = &self.sink {
+                sink.lock().unwrap().set_volume(self.volume);
+            }
+            
             Ok(())
         }
         
@@ -230,6 +238,8 @@ mod native {
         
         fn resume(&mut self) -> Result<(), String> {
             if let Some(sink) = &self.sink {
+                // Apply current volume setting before resuming playback
+                sink.lock().unwrap().set_volume(self.volume);
                 sink.lock().unwrap().play();
                 
                 // Update time tracking for proper position calculation
@@ -311,6 +321,9 @@ mod native {
                 // Add the source to the sink
                 sink.append(skipped_source);
                 
+                // Apply current volume
+                sink.set_volume(self.volume);
+                
                 // Save the sink
                 self.sink = Some(Arc::new(Mutex::new(sink)));
                 
@@ -349,6 +362,9 @@ mod native {
                 // Add the source to the sink
                 sink.append(skipped_source);
                 
+                // Apply current volume
+                sink.set_volume(self.volume);
+                
                 // Save the sink
                 self.sink = Some(Arc::new(Mutex::new(sink)));
                 
@@ -364,11 +380,17 @@ mod native {
         }
         
         fn set_volume(&mut self, volume: f32) -> Result<(), String> {
+            // Save the volume value for future use
+            self.volume = volume;
+            
+            // Apply to the current sink if available
             if let Some(sink) = &self.sink {
                 sink.lock().unwrap().set_volume(volume);
                 Ok(())
             } else {
-                Err("No audio playing".to_string())
+                // Even if there's no active sink, we consider this successful
+                // as we've saved the volume for future playback
+                Ok(())
             }
         }
         
@@ -419,6 +441,7 @@ mod native {
                 .field("duration", &self.duration)
                 .field("audio_loaded", &self.audio_loaded)
                 .field("initialized", &self.initialized)
+                .field("volume", &self.volume)
                 .field("audio_data", &self.audio_data.as_ref().map(|_| "<audio data>"))
                 .field("_stream", &"<stream>")
                 .field("stream_handle", &"<stream handle>")
@@ -683,6 +706,9 @@ mod web {
             // Connect to destination
             source.connect_with_audio_node(&context.destination())
                 .map_err(|_| "Failed to connect audio source".to_string())?;
+            
+            // TODO: In a real implementation, this would apply the volume using a GainNode
+            // For now we just save the volume value in the WebAudioBackend struct
                 
             // Start playback from the current offset
             source.start_with_when_and_grain_offset(0.0, self.offset)
@@ -737,7 +763,8 @@ mod web {
         
         fn set_volume(&mut self, volume: f32) -> Result<(), String> {
             // Web Audio API doesn't have a simple volume property on source nodes
-            // In a real implementation, we would use a GainNode, but for now we just save the value
+            // In a real implementation, we would use a GainNode to control volume
+            // For now we just save the value for future use
             self.volume = volume;
             Ok(())
         }

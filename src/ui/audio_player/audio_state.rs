@@ -165,6 +165,11 @@ impl AudioState {
                     // Get actual duration from backend
                     self.total_duration = backend.get_duration();
                     
+                    // Apply current volume setting
+                    if let Err(e) = backend.set_volume(self.volume) {
+                        log::error!("Failed to apply volume: {}", e);
+                    }
+                    
                     // If we're resuming from a non-zero position, seek to that position
                     if position > 0.0 {
                         if let Err(e) = backend.set_position(position) {
@@ -219,6 +224,13 @@ impl AudioState {
         
         // Set new audio file
         self.current_audio = Some(audio);
+        
+        // Apply current volume setting to the audio backend
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_volume(self.volume) {
+                log::error!("Failed to apply volume to new audio: {}", e);
+            }
+        }
         
         // Play the new audio right away if needed
         if self.is_playing {
