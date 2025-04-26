@@ -4,6 +4,8 @@ use egui::{
 use std::collections::HashSet;
 use super::audio_file_info::AudioFileInfo;
 
+use super::main_component::SortColumn;
+
 /// Table renderer for displaying audio files
 pub struct TableRenderer;
 
@@ -20,6 +22,8 @@ impl TableRenderer {
         available_width: f32,
         on_export_clicked: &mut dyn FnMut(usize),
         on_play_clicked: &mut dyn FnMut(usize),
+        sort_column: &mut SortColumn,
+        sort_ascending: &mut bool,
     ) {
         // Set row height and text style
         let text_height = egui::TextStyle::Body
@@ -63,37 +67,129 @@ impl TableRenderer {
             .num_columns(6)
             .spacing([5.0, 0.0])
             .show(ui, |ui| {
-                // Header
-                ui.add_sized(
+                // Header with sort indicators and clickable functionality
+                
+                // Name column header
+                let name_sort_icon = if *sort_column == SortColumn::Name {
+                    if *sort_ascending {
+                        format!(" {}", egui_phosphor::regular::ARROW_UP)
+                    } else {
+                        format!(" {}", egui_phosphor::regular::ARROW_DOWN)
+                    }
+                } else {
+                    "".to_string()
+                };
+                let name_text = RichText::new(format!("Name{}", name_sort_icon)).size(heading_size).strong();
+                
+                if ui.add_sized(
                     [col_width_name, 35.0],
-                    egui::Label::new(RichText::new("Name").size(heading_size).strong()),
-                )
-                .on_hover_text("Audio file name");
+                    Button::new(name_text).fill(header_bg_color)
+                ).clicked() {
+                    if *sort_column == SortColumn::Name {
+                        *sort_ascending = !*sort_ascending;
+                    } else {
+                        *sort_column = SortColumn::Name;
+                        *sort_ascending = true;
+                    }
+                };
 
-                ui.add_sized(
+                // ID column header
+                let id_sort_icon = if *sort_column == SortColumn::Id {
+                    if *sort_ascending {
+                        format!(" {}", egui_phosphor::regular::ARROW_UP)
+                    } else {
+                        format!(" {}", egui_phosphor::regular::ARROW_DOWN)
+                    }
+                } else {
+                    "".to_string()
+                };
+                let id_text = RichText::new(format!("ID{}", id_sort_icon)).size(heading_size).strong();
+                
+                if ui.add_sized(
                     [col_width_id, 35.0],
-                    egui::Label::new(RichText::new("ID").size(heading_size).strong()),
-                )
-                .on_hover_text("Audio file ID");
+                    Button::new(id_text).fill(header_bg_color)
+                ).clicked() {
+                    if *sort_column == SortColumn::Id {
+                        *sort_ascending = !*sort_ascending;
+                    } else {
+                        *sort_column = SortColumn::Id;
+                        *sort_ascending = true;
+                    }
+                };
 
-                ui.add_sized(
+                // Size column header
+                let size_sort_icon = if *sort_column == SortColumn::Size {
+                    if *sort_ascending {
+                        format!(" {}", egui_phosphor::regular::ARROW_UP)
+                    } else {
+                        format!(" {}", egui_phosphor::regular::ARROW_DOWN)
+                    }
+                } else {
+                    "".to_string()
+                };
+                let size_text = RichText::new(format!("Size{}", size_sort_icon)).size(heading_size).strong();
+                
+                if ui.add_sized(
                     [col_width_size, 35.0],
-                    egui::Label::new(RichText::new("Size").size(heading_size).strong()),
-                )
-                .on_hover_text("File size in bytes");
+                    Button::new(size_text).fill(header_bg_color)
+                ).clicked() {
+                    if *sort_column == SortColumn::Size {
+                        *sort_ascending = !*sort_ascending;
+                    } else {
+                        *sort_column = SortColumn::Size;
+                        *sort_ascending = true;
+                    }
+                };
 
-                ui.add_sized(
+                // Filename column header
+                let filename_sort_icon = if *sort_column == SortColumn::Filename {
+                    if *sort_ascending {
+                        format!(" {}", egui_phosphor::regular::ARROW_UP)
+                    } else {
+                        format!(" {}", egui_phosphor::regular::ARROW_DOWN)
+                    }
+                } else {
+                    "".to_string()
+                };
+                let filename_text = RichText::new(format!("Filename{}", filename_sort_icon)).size(heading_size).strong();
+                
+                if ui.add_sized(
                     [col_width_filename, 35.0],
-                    egui::Label::new(RichText::new("Filename").size(heading_size).strong()),
-                )
-                .on_hover_text("Audio filename");
+                    Button::new(filename_text).fill(header_bg_color)
+                ).clicked() {
+                    if *sort_column == SortColumn::Filename {
+                        *sort_ascending = !*sort_ascending;
+                    } else {
+                        *sort_column = SortColumn::Filename;
+                        *sort_ascending = true;
+                    }
+                };
 
-                ui.add_sized(
+                // Type column header
+                let type_sort_icon = if *sort_column == SortColumn::Type {
+                    if *sort_ascending {
+                        format!(" {}", egui_phosphor::regular::ARROW_UP)
+                    } else {
+                        format!(" {}", egui_phosphor::regular::ARROW_DOWN)
+                    }
+                } else {
+                    "".to_string()
+                };
+                let type_text = RichText::new(format!("Type{}", type_sort_icon)).size(heading_size).strong();
+                
+                if ui.add_sized(
                     [col_width_type, 35.0],
-                    egui::Label::new(RichText::new("Type").size(heading_size).strong()),
-                )
-                .on_hover_text("Audio file type");
+                    Button::new(type_text).fill(header_bg_color)
+                ).clicked() {
+                    if *sort_column == SortColumn::Type {
+                        *sort_ascending = !*sort_ascending;
+                    } else {
+                        *sort_column = SortColumn::Type;
+                        *sort_ascending = true;
+                    }
+                };
 
+                // Action column header - not sortable
                 ui.add_sized(
                     [col_action, 35.0],
                     egui::Label::new(RichText::new("Action").size(heading_size).strong()),
@@ -234,7 +330,7 @@ impl TableRenderer {
                             // Play button
                             if ui.add_sized(
                                 [30.0, 20.0],
-                                Button::new(RichText::new("▶").size(text_size).color(Color32::from_rgb(100, 255, 150)))
+                                Button::new(RichText::new(format!("{}", egui_phosphor::regular::PLAY)).size(text_size).color(Color32::from_rgb(100, 255, 150)))
                             ).clicked() {
                                 // Call the callback to play audio
                                 on_play_clicked(row_index);
@@ -245,7 +341,7 @@ impl TableRenderer {
                             // Export button
                             if ui.add_sized(
                                 [70.0, 20.0],
-                                Button::new(RichText::new("Export").size(text_size))
+                                Button::new(RichText::new(format!("{} Export", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size))
                             ).clicked() {
                                 // Call the callback to handle the export
                                 on_export_clicked(row_index);

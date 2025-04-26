@@ -5,6 +5,31 @@ use nus3audio::Nus3audioFile;
 use std::collections::HashSet;
 
 use super::audio_file_info::AudioFileInfo;
+
+/// Enum representing sortable columns
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SortColumn {
+    Name,
+    Id,
+    Size,
+    Filename,
+    Type,
+    None,
+}
+
+impl SortColumn {
+    /// Get display name for the column
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Name => "Name",
+            Self::Id => "ID",
+            Self::Size => "Size",
+            Self::Filename => "Filename",
+            Self::Type => "Type",
+            Self::None => "",
+        }
+    }
+}
 use super::export_utils::ExportUtils;
 use super::search_column::SearchColumn;
 use super::table_renderer::TableRenderer;
@@ -28,6 +53,9 @@ pub struct MainArea {
     pub search_query: String,
     pub search_column: SearchColumn,
     pub show_advanced_search: bool,
+    // Sorting functionality
+    pub sort_column: SortColumn,
+    pub sort_ascending: bool,
     // Audio player
     pub audio_player: Option<AudioPlayer>,
 }
@@ -50,41 +78,67 @@ impl MainArea {
             search_query: String::new(),
             search_column: SearchColumn::All,
             show_advanced_search: false,
+            // Initialize with no sorting
+            sort_column: SortColumn::None,
+            sort_ascending: true,
             // Create new audio player
             audio_player: Some(AudioPlayer::new()),
         }
     }
     
-    /// Get filtered audio files based on search query and column
+    /// Get filtered audio files based on search query and column, then sort them
     fn filtered_audio_files(&self) -> Vec<AudioFileInfo> {
         if let Some(audio_files) = &self.audio_files {
-            if self.search_query.is_empty() {
-                // If no search query, return all audio files
-                return audio_files.clone();
+            // First, filter the files based on search criteria
+            let mut filtered_files = if self.search_query.is_empty() {
+                // If no search query, use all audio files
+                audio_files.clone()
+            } else {
+                // Filter audio files based on search query and selected column
+                let query = self.search_query.to_lowercase();
+                audio_files
+                    .iter()
+                    .filter(|file| {
+                        match self.search_column {
+                            SearchColumn::All => {
+                                file.name.to_lowercase().contains(&query) ||
+                                file.id.to_lowercase().contains(&query) ||
+                                self.size_matches(file.size, &query) ||
+                                file.filename.to_lowercase().contains(&query) ||
+                                file.file_type.to_lowercase().contains(&query)
+                            },
+                            SearchColumn::Name => file.name.to_lowercase().contains(&query),
+                            SearchColumn::Id => file.id.to_lowercase().contains(&query),
+                            SearchColumn::Size => self.size_matches(file.size, &query),
+                            SearchColumn::Filename => file.filename.to_lowercase().contains(&query),
+                            SearchColumn::Type => file.file_type.to_lowercase().contains(&query),
+                        }
+                    })
+                    .cloned()
+                    .collect()
+            };
+            
+            // Then sort the filtered files based on sort column and direction
+            if self.sort_column != SortColumn::None {
+                filtered_files.sort_by(|a, b| {
+                    let ordering = match self.sort_column {
+                        SortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                        SortColumn::Id => a.id.to_lowercase().cmp(&b.id.to_lowercase()),
+                        SortColumn::Size => a.size.cmp(&b.size),
+                        SortColumn::Filename => a.filename.to_lowercase().cmp(&b.filename.to_lowercase()),
+                        SortColumn::Type => a.file_type.to_lowercase().cmp(&b.file_type.to_lowercase()),
+                        SortColumn::None => std::cmp::Ordering::Equal,
+                    };
+                    
+                    if self.sort_ascending {
+                        ordering
+                    } else {
+                        ordering.reverse()
+                    }
+                });
             }
             
-            // Filter audio files based on search query and selected column
-            let query = self.search_query.to_lowercase();
-            audio_files
-                .iter()
-                .filter(|file| {
-                    match self.search_column {
-                        SearchColumn::All => {
-                            file.name.to_lowercase().contains(&query) ||
-                            file.id.to_lowercase().contains(&query) ||
-                            self.size_matches(file.size, &query) ||
-                            file.filename.to_lowercase().contains(&query) ||
-                            file.file_type.to_lowercase().contains(&query)
-                        },
-                        SearchColumn::Name => file.name.to_lowercase().contains(&query),
-                        SearchColumn::Id => file.id.to_lowercase().contains(&query),
-                        SearchColumn::Size => self.size_matches(file.size, &query),
-                        SearchColumn::Filename => file.filename.to_lowercase().contains(&query),
-                        SearchColumn::Type => file.file_type.to_lowercase().contains(&query),
-                    }
-                })
-                .cloned()
-                .collect()
+            filtered_files
         } else {
             Vec::new()
         }
@@ -206,7 +260,7 @@ impl MainArea {
                     self.render_search_box(ui);
                     ui.add_space(10.0);
 
-                    // Get filtered audio files
+                    // Get filtered and sorted audio files
                     let filtered_audio_files = self.filtered_audio_files();
                     let files_count = filtered_audio_files.len();
                     let striped = self.striped;
@@ -265,7 +319,7 @@ impl MainArea {
                 
                 // Basic search - always visible
                 ui.horizontal(|ui| {
-                    ui.label("Query:");
+                    ui.label("Search:");
                     if ui.text_edit_singleline(&mut self.search_query).changed() {
                         // Search query changed - will be applied automatically
                     }
@@ -355,6 +409,8 @@ impl MainArea {
                             &mut |index| {
                                 play_index = Some(index);
                             },
+                            &mut self.sort_column,
+                            &mut self.sort_ascending,
                         );
                         
                         // Process export if needed
