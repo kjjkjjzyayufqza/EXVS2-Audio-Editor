@@ -24,7 +24,8 @@ pub struct AudioState {
     #[serde(skip)]
     pub total_duration: f32,
     
-    /// Current volume (0.0 - 1.0)
+    /// Current volume (0.0 - 100.0)
+    #[serde(skip)]
     pub volume: f32,
     
     /// Is the audio muted
@@ -105,9 +106,9 @@ impl Default for AudioState {
             is_playing: false,
             current_position: 0.0,
             total_duration: 0.0,
-            volume: 0.75, // Default volume at 75%
+            volume: 0.25, // Default volume at 50%
             is_muted: false,
-            previous_volume: 0.75,
+            previous_volume: 0.25,
             audio_backend: None,
         };
         

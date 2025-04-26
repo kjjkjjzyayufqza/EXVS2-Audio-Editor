@@ -24,6 +24,7 @@ log = "0.4"
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
 nus3audio = "1.2.0"
+egui_material_icons = "0.3.0"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
