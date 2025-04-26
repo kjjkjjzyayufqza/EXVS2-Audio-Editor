@@ -29,11 +29,25 @@ nus3audio = "1.2.0"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
 rfd = "0.12"  # File dialog
+rodio = "0.17.1"  # Audio playback library for native platforms
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
-web-sys = "0.3.70"           # to access the DOM (to hide the loading text)
+wasm-bindgen = "0.2.87"
+js-sys = "0.3.64"
+web-sys = { version = "0.3.70", features = [
+    "AudioContext",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "Document",
+    "Element", 
+    "HtmlElement", 
+    "Window",
+    "console"
+] }            # to access the DOM and Web Audio API
 
 [profile.release]
 opt-level = 2 # fast and small wasm

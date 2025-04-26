@@ -56,8 +56,7 @@ impl AudioControls {
                             .size(14.0));
                     } else {
                         ui.label(RichText::new("No audio file loaded")
-                            .color(ui.visuals().weak_text_color())
-                            .italics());
+                            .color(ui.visuals().weak_text_color()));
                     }
                     
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -93,37 +93,28 @@ impl AudioPlayer {
             temp_url: None,
         };
         
+        log::info!("Loading audio: {} ({} bytes)", file_info.name, audio.data.len());
+        
         // Set the audio in the state
         let mut state = self.audio_state.lock().unwrap();
         state.set_audio(audio);
         
-        // Set default duration - in real implementation, this would be determined from audio metadata
-        // For now we'll just estimate based on file size (very rough approximation)
+        // Duration will be determined by the audio backend when playback starts
+        // We still set an estimated duration for the UI until playback begins
         let estimated_duration = estimate_duration_from_size(file_info.size);
         state.total_duration = estimated_duration;
         
         Ok(())
     }
     
-    /// Update the playback position based on elapsed time
+    /// Update the playback position and state from the audio backend
     fn update_playback_position(&mut self) {
         let now = Instant::now();
-        let elapsed = now.duration_since(self.last_update).as_secs_f32();
         self.last_update = now;
         
-        // Only update if playing
+        // Update state from the audio backend
         let mut state = self.audio_state.lock().unwrap();
-        if state.is_playing {
-            let new_position = state.current_position + elapsed;
-            
-            // Check if we've reached the end
-            if new_position >= state.total_duration {
-                state.current_position = state.total_duration;
-                state.is_playing = false;
-            } else {
-                state.current_position = new_position;
-            }
-        }
+        state.update_from_backend();
     }
     
     /// Get a reference to the audio state

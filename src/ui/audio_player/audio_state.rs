@@ -1,9 +1,12 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
+use super::audio_backend::{AudioBackend, PlatformAudioBackend};
+
 /// Audio player state
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct AudioState {
     /// Current audio file being played (if any)
     #[serde(skip)]
@@ -30,6 +33,43 @@ pub struct AudioState {
     /// Previous volume before mute
     #[serde(skip)]
     pub previous_volume: f32,
+    
+    /// Audio backend for playback
+    #[serde(skip)]
+    audio_backend: Option<Box<dyn AudioBackend>>,
+}
+
+// Manual Debug implementation since dyn AudioBackend doesn't implement Debug
+impl std::fmt::Debug for AudioState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioState")
+            .field("current_audio", &self.current_audio)
+            .field("is_playing", &self.is_playing)
+            .field("current_position", &self.current_position)
+            .field("total_duration", &self.total_duration)
+            .field("volume", &self.volume)
+            .field("is_muted", &self.is_muted)
+            .field("previous_volume", &self.previous_volume)
+            .field("audio_backend", &format!("<audio backend>"))
+            .finish()
+    }
+}
+
+// Implement Clone manually since we can't derive it with dyn AudioBackend
+impl Clone for AudioState {
+    fn clone(&self) -> Self {
+        // Create a new instance without the audio_backend
+        Self {
+            current_audio: self.current_audio.clone(),
+            is_playing: self.is_playing,
+            current_position: self.current_position,
+            total_duration: self.total_duration,
+            volume: self.volume,
+            is_muted: self.is_muted,
+            previous_volume: self.previous_volume,
+            audio_backend: None, // Don't clone the audio backend
+        }
+    }
 }
 
 /// Audio file information
@@ -60,7 +100,7 @@ pub struct AudioFile {
 
 impl Default for AudioState {
     fn default() -> Self {
-        Self {
+        let mut state = Self {
             current_audio: None,
             is_playing: false,
             current_position: 0.0,
@@ -68,7 +108,16 @@ impl Default for AudioState {
             volume: 0.75, // Default volume at 75%
             is_muted: false,
             previous_volume: 0.75,
+            audio_backend: None,
+        };
+        
+        // Try to initialize the audio backend
+        match state.init_audio_backend() {
+            Ok(_) => log::info!("Audio backend initialized successfully"),
+            Err(e) => log::error!("Failed to initialize audio backend: {}", e),
         }
+        
+        state
     }
 }
 
@@ -78,15 +127,64 @@ impl AudioState {
         Self::default()
     }
     
+    /// Initialize the audio backend
+    fn init_audio_backend(&mut self) -> Result<(), String> {
+        // Create a new platform-specific audio backend
+        let mut backend = Box::new(PlatformAudioBackend::new());
+        
+        // Initialize the backend
+        backend.init()?;
+        
+        // Store the backend
+        self.audio_backend = Some(backend);
+        
+        Ok(())
+    }
+    
     /// Play or pause the audio
     pub fn toggle_play(&mut self) {
+        // Toggle playing state
         self.is_playing = !self.is_playing;
+        
+        if let Some(backend) = &mut self.audio_backend {
+            if self.is_playing {
+                // If starting playback and we have audio data
+                if let Some(audio) = &self.current_audio {
+                    // For the first play, we need to send the audio data
+                    if self.current_position == 0.0 {
+                        let data_arc = Arc::new(audio.data.clone());
+                        if let Err(e) = backend.play_audio(data_arc) {
+                            log::error!("Failed to play audio: {}", e);
+                            self.is_playing = false;
+                            return;
+                        }
+                        
+                        // Get actual duration from backend
+                        self.total_duration = backend.get_duration();
+                    } else {
+                        // Resume playback
+                        if let Err(e) = backend.resume() {
+                            log::error!("Failed to resume audio: {}", e);
+                            self.is_playing = false;
+                        }
+                    }
+                }
+            } else if let Err(e) = backend.pause() {
+                log::error!("Failed to pause audio: {}", e);
+            }
+        }
     }
     
     /// Stop the audio playback
     pub fn stop(&mut self) {
         self.is_playing = false;
         self.current_position = 0.0;
+        
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.stop() {
+                log::error!("Failed to stop audio: {}", e);
+            }
+        }
     }
     
     /// Toggle mute state
@@ -101,12 +199,27 @@ impl AudioState {
             self.volume = 0.0;
             self.is_muted = true;
         }
+        
+        // Update backend volume
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_volume(self.volume) {
+                log::error!("Failed to set audio volume: {}", e);
+            }
+        }
     }
     
     /// Set a new audio file for playback
     pub fn set_audio(&mut self, audio: AudioFile) {
+        // Stop any current playback
         self.stop();
+        
+        // Set new audio file
         self.current_audio = Some(audio);
+        
+        // Play the new audio right away if needed
+        if self.is_playing {
+            self.toggle_play();
+        }
     }
     
     /// Clear the current audio
@@ -118,6 +231,12 @@ impl AudioState {
     /// Set the current position in seconds
     pub fn set_position(&mut self, position: f32) {
         self.current_position = position.clamp(0.0, self.total_duration);
+        
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_position(self.current_position) {
+                log::error!("Failed to set audio position: {}", e);
+            }
+        }
     }
     
     /// Set the volume (0.0 - 1.0)
@@ -125,6 +244,32 @@ impl AudioState {
         self.volume = volume.clamp(0.0, 1.0);
         if self.volume > 0.0 {
             self.is_muted = false;
+        }
+        
+        // Update backend volume
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_volume(self.volume) {
+                log::error!("Failed to set audio volume: {}", e);
+            }
+        }
+    }
+    
+    /// Update playback state from backend
+    pub fn update_from_backend(&mut self) {
+        if let Some(backend) = &mut self.audio_backend {
+            // Update position
+            if self.is_playing {
+                self.current_position = backend.get_position();
+            }
+            
+            // Check if we're actually playing
+            self.is_playing = backend.is_playing();
+            
+            // Check if we've reached the end
+            if self.current_position >= self.total_duration {
+                self.is_playing = false;
+                self.current_position = self.total_duration;
+            }
         }
     }
     
