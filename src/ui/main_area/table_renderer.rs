@@ -4,7 +4,7 @@ use egui::{
 use std::collections::HashSet;
 use super::audio_file_info::AudioFileInfo;
 
-use super::main_component::SortColumn;
+use super::sort_column::SortColumn;
 
 /// Table renderer for displaying audio files
 pub struct TableRenderer;
