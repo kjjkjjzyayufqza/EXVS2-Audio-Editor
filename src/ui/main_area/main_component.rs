@@ -1,16 +1,14 @@
 use egui::{
-    Align, Color32, Context, Frame, Rect, RichText, Rounding, Stroke, Ui, Vec2,
+    Color32, Context, Frame, Rect, Rounding, Stroke, Ui, Vec2,
 };
 use nus3audio::Nus3audioFile;
 use std::collections::HashSet;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 use super::audio_file_info::AudioFileInfo;
 use super::export_utils::ExportUtils;
 use super::search_column::SearchColumn;
 use super::table_renderer::TableRenderer;
-use crate::ui::audio_player::{AudioPlayer, AudioState};
+use crate::ui::audio_player::AudioPlayer;
 
 /// Main editing area component
 pub struct MainArea {

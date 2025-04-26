@@ -1,5 +1,5 @@
 use egui::{
-    Align, Button, Color32, Grid, Rect, RichText, Rounding, ScrollArea, Stroke, TextWrapMode, Ui, Vec2,
+    Button, Color32, Grid, Rect, RichText, ScrollArea, Stroke, TextWrapMode, Ui, Vec2,
 };
 use std::collections::HashSet;
 use super::audio_file_info::AudioFileInfo;

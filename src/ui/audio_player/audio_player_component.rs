@@ -1,6 +1,6 @@
 use egui::{Context, Frame, Rounding, Stroke, Ui};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use nus3audio::Nus3audioFile;
 
 use super::audio_controls::AudioControls;
