@@ -1,4 +1,4 @@
-use crate::ui::{TopPanel, FileList, MainArea};
+use crate::ui::{FileList, MainArea, TopPanel};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -22,8 +22,9 @@ impl Default for TemplateApp {
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Set theme to dark
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        cc.egui_ctx.set_fonts(fonts);
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
@@ -65,7 +66,7 @@ impl eframe::App for TemplateApp {
 
         // Display the main editing area
         self.main_area.show(ctx);
-        
+
         // Display audio player (if initialized)
         if let Some(audio_player) = &mut self.main_area.audio_player {
             audio_player.show(ctx);

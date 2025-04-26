@@ -1,5 +1,6 @@
 use super::audio_state::AudioState;
 use egui::{widgets::Slider, Color32, Frame, RichText, Rounding, Stroke, Ui, Vec2};
+use egui_phosphor::{regular};
 use std::sync::{Arc, Mutex};
 
 /// Audio player controls component
@@ -69,17 +70,6 @@ impl AudioControls {
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Volume control with icon
-                        let volume_icon = if state_copy.is_muted || state_copy.volume <= 0.0 {
-                            "🔇" // Muted
-                        } else if state_copy.volume < 0.33 {
-                            "🔈" // Low volume
-                        } else if state_copy.volume < 0.66 {
-                            "🔉" // Medium volume
-                        } else {
-                            "🔊" // High volume
-                        };
-
                         // Volume slider
                         let mut volume = state_copy.volume * 100.0; // Convert 0-1 to 0-100 for display
                         if ui
@@ -94,8 +84,19 @@ impl AudioControls {
                             state.set_volume(volume / 100.0); // Convert back to 0-1 for storage
                         }
 
-                        // Mute button
-                        if ui.button(RichText::new(volume_icon)).clicked() {
+                        // Volume button with phosphor icon
+                        let volume_icon = if state_copy.is_muted || state_copy.volume <= 0.0 {
+                            regular::SPEAKER_NONE 
+                        } else if state_copy.volume < 0.33 {
+                            regular::SPEAKER_LOW
+                        } else if state_copy.volume < 0.66 {
+                            regular::SPEAKER_HIGH
+                        } else {
+                            regular::SPEAKER_HIGH
+                        };
+
+                        // Using proper phosphor icon rendering
+                        if ui.add(egui::widgets::Button::image_and_text(volume_icon, "")).clicked() {
                             let mut state = self.audio_state.lock().unwrap();
                             state.toggle_mute();
                         }
@@ -155,11 +156,11 @@ impl AudioControls {
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Better play/pause button styling
+                        // Play/pause button with phosphor icons
                         let (play_icon, play_color) = if state_copy.is_playing {
-                            ("⏸", Color32::from_rgb(255, 200, 100)) // Pause
+                            (regular::PAUSE_CIRCLE, Color32::from_rgb(255, 200, 100)) // Pause
                         } else {
-                            ("▶", Color32::from_rgb(100, 255, 150)) // Play
+                            (regular::PLAY_CIRCLE, Color32::from_rgb(100, 255, 150)) // Play
                         };
 
                         // Simplified button styling for compatibility
@@ -169,20 +170,19 @@ impl AudioControls {
                             Color32::from_gray(150) // Grayed out
                         };
 
-                        // Using standard button creation to avoid styling issues
-                        let play_button =
-                            ui.button(RichText::new(play_icon).size(20.0).color(play_button_color));
-
-                        if play_button.clicked() && has_audio {
+                        // Using phosphor icon
+                        let mut button = egui::widgets::Button::image_and_text(play_icon, "");
+                        if has_audio {
+                            button = button.fill(play_button_color);
+                        }
+                        if ui.add(button).clicked() && has_audio {
                             let mut state = self.audio_state.lock().unwrap();
                             state.toggle_play();
                         }
 
-                        // Let egui handle hover highlighting automatically
-
                         ui.add_space(8.0);
 
-                        // Simplified stop button
+                        // Stop button with phosphor icon
                         let stop_button_color = if has_audio
                             && (state_copy.is_playing || state_copy.current_position > 0.0)
                         {
@@ -191,19 +191,17 @@ impl AudioControls {
                             Color32::from_gray(150) // Grayed out
                         };
 
-                        // Using standard button creation
-                        let stop_button =
-                            ui.button(RichText::new("■").size(16.0).color(stop_button_color));
-
-                        if stop_button.clicked()
-                            && has_audio
+                        // Using phosphor icon
+                        let mut stop_button = egui::widgets::Button::image_and_text(regular::STOP_CIRCLE, "");
+                        if has_audio && (state_copy.is_playing || state_copy.current_position > 0.0) {
+                            stop_button = stop_button.fill(stop_button_color);
+                        }
+                        if ui.add(stop_button).clicked() && has_audio 
                             && (state_copy.is_playing || state_copy.current_position > 0.0)
                         {
                             let mut state = self.audio_state.lock().unwrap();
                             state.stop();
                         }
-
-                        // Let egui handle hover highlighting automatically
                     });
                 });
 
