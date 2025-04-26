@@ -33,37 +33,30 @@ impl MainArea {
         // First, render the UI
         Frame::group(ui.style())
             .stroke(Stroke::new(1.0, ui.visuals().faint_bg_color))
-            .rounding(Rounding::same(4))
             .show(ui, |ui| {
                 // Margins
-                ui.add_space(80.0);
                 ui.horizontal(|ui| {
                     ui.add_space(8.0);
                     ui.vertical(|ui| {
                         // Table header
-                        ui.horizontal(|ui| {
-                            ui.heading("Audio File List");
+                        ui.heading("Audio File List");
 
-                            // Capture Export All button click, don't act on it yet
-                            if ui.button("Export All").clicked() {
-                                action_data.export_all = true;
+                        // Capture Export All button click, don't act on it yet
+                        if ui.button("Export All").clicked() {
+                            action_data.export_all = true;
+                        }
+
+                        // File count display
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if !self.search_query.is_empty() {
+                                ui.label(format!(
+                                    "Found: {} / {} files",
+                                    files_count,
+                                    self.file_count.unwrap_or(0)
+                                ));
+                            } else {
+                                ui.label(format!("Total: {} files", files_count));
                             }
-
-                            // File count display
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if !self.search_query.is_empty() {
-                                        ui.label(format!(
-                                            "Found: {} / {} files",
-                                            files_count,
-                                            self.file_count.unwrap_or(0)
-                                        ));
-                                    } else {
-                                        ui.label(format!("Total: {} files", files_count));
-                                    }
-                                },
-                            );
                         });
 
                         ui.add_space(5.0);
@@ -82,8 +75,8 @@ impl MainArea {
                             self.striped,
                             self.clickable,
                             self.show_grid_lines,
-                            available_height - 100.0,
-                            available_width - 16.0,
+                            available_height,
+                            available_width,
                             &mut |index| {
                                 action_data.export_index = Some(index);
                             },
