@@ -227,6 +227,27 @@ impl MainArea {
                                     // Replace with the new audio info
                                     audio_files[original_idx] = new_audio_info.clone();
                                     
+                                    // Get the replacement audio data from our static HashMap
+                                    if let Some(replacement_data) = ReplaceUtils::get_replacement_data(&audio_info.name, &audio_info.id) {
+                                        // Create an audio file struct for the audio player
+                                        let audio = crate::ui::audio_player::AudioFile {
+                                            file_path: file_path.to_string(),
+                                            data: replacement_data,
+                                            name: audio_info.name.clone(),
+                                            file_type: audio_info.file_type.clone(),
+                                            id: audio_info.id.clone(),
+                                            #[cfg(target_arch = "wasm32")]
+                                            temp_url: None,
+                                        };
+                                        
+                                        // Update the audio player if it exists
+                                        if let Some(audio_player) = &mut self.audio_player {
+                                            let state = audio_player.get_audio_state();
+                                            let mut state = state.lock().unwrap();
+                                            state.set_audio(audio);
+                                        }
+                                    }
+                                    
                                     toasts_to_add.push((
                                         format!("Successfully replaced audio in memory: {}", audio_info.name),
                                         Color32::GREEN,

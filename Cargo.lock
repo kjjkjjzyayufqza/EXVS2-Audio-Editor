@@ -1103,6 +1103,7 @@ dependencies = [
  "js-sys",
  "log",
  "nus3audio",
+ "once_cell",
  "rfd",
  "rodio",
  "serde",

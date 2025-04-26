@@ -26,6 +26,7 @@ log = "0.4.27"
 serde = { version = "1", features = ["derive"] }
 nus3audio = "1.2.0"
 egui-phosphor = "0.9.0"
+once_cell = "1.19.0"  # For lazy static initialization
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

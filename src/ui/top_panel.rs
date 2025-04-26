@@ -1,4 +1,5 @@
 use crate::TemplateApp;
+use crate::ui::main_area::ReplaceUtils;
 use egui::{Context, ViewportCommand};
 use nus3audio::Nus3audioFile;
 use std::fs::File;
@@ -93,9 +94,9 @@ impl TopPanel {
                             let mut selected_file_path = None;
 
                             // Get the selected file path from app if available
-                            if let Some(app) = &app {
+                            if let Some(current_app) = &app {
                                 // Get the selected file path using the main_area accessor
-                                let main_area = app.main_area();
+                                let main_area = current_app.main_area();
                                 if let Some(path) = &main_area.selected_file {
                                     selected_file_path = Some(path.to_string());
                                 }
@@ -125,6 +126,7 @@ impl TopPanel {
 
                                     // Execute save operation with selected file path
                                     if let Some(original_path) = selected_file_path {
+                                        // Pass the app instance to save_nus3audio_file
                                         TopPanel::save_nus3audio_file(&original_path, &path_str);
                                     }
                                 }
@@ -144,60 +146,25 @@ impl TopPanel {
 
     /// Save current audio files to a new nus3audio file
     fn save_nus3audio_file(original_path: &str, save_path: &str) {
-        // Open the original nus3audio file
-        match Nus3audioFile::open(original_path) {
-            Ok(nus3_file) => {
-                // Create a buffer to write the file
-                let mut buffer = Vec::new();
-
-                // Write nus3audio data to buffer
-                nus3_file.write(&mut buffer);
-
-                // Save buffer to file
-                match File::create(save_path) {
-                    Ok(mut file) => {
-                        match file.write_all(&buffer) {
-                            Ok(_) => {
-                                println!("File save success: {}", save_path);
-
-                                // Show success modal dialog
-                                show_modal(
-                                    "Save success", 
-                                    &format!("NUS3AUDIO has been success write to:\n{}", save_path),
-                                    false
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("File save fail: {}", e);
-
-                                // Show error dialog
-                                show_modal(
-                                    "Save Failed", 
-                                    &format!("Can't write file: {}", e),
-                                    true
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Cre: {}", e);
-
-                        // Show error dialog
-                        show_modal(
-                            "Save Failed", 
-                            &format!("Can't write file: {}", e),
-                            true
-                        );
-                    }
-                }
+        // Use ReplaceUtils to apply all in-memory replacements and save the file
+        match crate::ui::main_area::ReplaceUtils::apply_replacements_and_save(original_path, save_path) {
+            Ok(_) => {
+                println!("File save success: {}", save_path);
+                
+                // Show success modal dialog
+                show_modal(
+                    "Save success", 
+                    &format!("NUS3AUDIO has been success write to:\n{}", save_path),
+                    false
+                );
             }
             Err(e) => {
-                eprintln!("Failed to open original nus3audio file: {}", e);
-
+                eprintln!("File save fail: {}", e);
+                
                 // Show error dialog
                 show_modal(
-                    "Open Failed", 
-                    &format!("Unable to open original NUS3AUDIO file: {}", e),
+                    "Save Failed", 
+                    &format!("Failed to save file: {}", e),
                     true
                 );
             }
