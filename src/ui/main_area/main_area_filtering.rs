@@ -118,13 +118,16 @@ impl MainArea {
                         for audio_file in nus3_file.files.iter() {
                             // Attempt to detect file type based on header
                             let file_type = if audio_file.data.len() >= 4 {
+                                println!("File header: {:?}", &audio_file.data[..4]);
                                 match &audio_file.data[..4] {
                                     b"OPUS" => "OPUS Audio",
                                     b"IDSP" => "IDSP Audio",
-                                    _ => "Audio",
+                                    b"RIFF" => "WAV Audio",
+                                    b"BNSF" => "BNSF Audio",
+                                    _ => "Unknown",
                                 }
                             } else {
-                                "Audio"
+                                "Unknown"
                             };
 
                             audio_files.push(AudioFileInfo {
