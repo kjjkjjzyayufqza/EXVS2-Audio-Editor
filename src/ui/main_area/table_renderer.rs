@@ -328,8 +328,8 @@ impl TableRenderer {
                         // Column 6: Actions - Add Play, Export, and Replace buttons
                         // Constrain the horizontal layout to the available width for the action column
                         // Create action buttons directly in the grid cell
-                        // Use a container widget for the action buttons
-                        ui.add_sized([col_action, row_height], |ui: &mut Ui| {
+                        // Create a simpler approach for the action buttons using labels and buttons
+                        ui.horizontal(|ui| {
                             let available_button_width = col_action - 10.0;
                             
                             // Dynamically adjust button sizes based on available width
@@ -339,64 +339,59 @@ impl TableRenderer {
                             let action_width = if compact_mode { 60.0 } else { 70.0 };
                             let spacing = if compact_mode { 2.0 } else { 5.0 };
                             
-                            // Create a horizontal layout for the buttons
-                            let response = ui.horizontal(|ui| {
-                                // Play button - always show as it's smallest
-                                if ui.add_sized(
-                                    [play_width, 20.0],
-                                    Button::new(RichText::new(format!("{}", egui_phosphor::regular::PLAY))
-                                        .size(text_size)
-                                        .color(Color32::from_rgb(100, 255, 150)))
-                                ).clicked() {
-                                    // Call the callback to play audio
-                                    on_play_clicked(row_index);
-                                }
+                            // Play button - always show as it's smallest
+                            if ui.add_sized(
+                                [play_width, 20.0],
+                                Button::new(RichText::new(format!("{}", egui_phosphor::regular::PLAY))
+                                    .size(text_size)
+                                    .color(Color32::from_rgb(100, 255, 150)))
+                            ).clicked() {
+                                // Call the callback to play audio
+                                on_play_clicked(row_index);
+                            }
+                            
+                            ui.add_space(spacing);
+                            
+                            // For extremely narrow windows, we might need to skip showing some buttons
+                            if available_button_width >= (play_width + spacing + action_width) {
+                                // Export button
+                                let export_text = if compact_mode {
+                                    RichText::new(format!("{}", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
+                                } else {
+                                    RichText::new(format!("{} Export", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
+                                };
                                 
+                                if ui.add_sized(
+                                    [action_width, 20.0],
+                                    Button::new(export_text)
+                                ).clicked() {
+                                    // Call the callback to handle the export
+                                    on_export_clicked(row_index);
+                                }
+                            
                                 ui.add_space(spacing);
                                 
-                                // For extremely narrow windows, we might need to skip showing some buttons
-                                if available_button_width >= (play_width + spacing + action_width) {
-                                    // Export button
-                                    let export_text = if compact_mode {
-                                        RichText::new(format!("{}", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
+                                // Replace button - only show if there's enough space
+                                if available_button_width >= (play_width + spacing + action_width + spacing + action_width) {
+                                    let replace_text = if compact_mode {
+                                        RichText::new(format!("{}", egui_phosphor::regular::SWAP))
+                                            .size(text_size)
+                                            .color(Color32::from_rgb(255, 180, 100))
                                     } else {
-                                        RichText::new(format!("{} Export", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
+                                        RichText::new(format!("{} Replace", egui_phosphor::regular::SWAP))
+                                            .size(text_size)
+                                            .color(Color32::from_rgb(255, 180, 100))
                                     };
                                     
                                     if ui.add_sized(
                                         [action_width, 20.0],
-                                        Button::new(export_text)
+                                        Button::new(replace_text)
                                     ).clicked() {
-                                        // Call the callback to handle the export
-                                        on_export_clicked(row_index);
-                                    }
-                                
-                                    ui.add_space(spacing);
-                                    
-                                    // Replace button - only show if there's enough space
-                                    if available_button_width >= (play_width + spacing + action_width + spacing + action_width) {
-                                        let replace_text = if compact_mode {
-                                            RichText::new(format!("{}", egui_phosphor::regular::SWAP))
-                                                .size(text_size)
-                                                .color(Color32::from_rgb(255, 180, 100))
-                                        } else {
-                                            RichText::new(format!("{} Replace", egui_phosphor::regular::SWAP))
-                                                .size(text_size)
-                                                .color(Color32::from_rgb(255, 180, 100))
-                                        };
-                                        
-                                        if ui.add_sized(
-                                            [action_width, 20.0],
-                                            Button::new(replace_text)
-                                        ).clicked() {
-                                            // Call the callback to handle the replace
-                                            on_replace_clicked(row_index);
-                                        }
+                                        // Call the callback to handle the replace
+                                        on_replace_clicked(row_index);
                                     }
                                 }
-                            }).response;
-                            
-                            response
+                            }
                         });
 
                         ui.end_row();
