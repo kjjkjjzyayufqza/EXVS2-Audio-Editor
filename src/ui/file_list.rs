@@ -45,6 +45,27 @@ impl FileList {
         self.update_selection();
     }
     
+    /// Remove a file from the list
+    pub fn remove_file(&mut self, path: &str) {
+        // Find index of file to remove
+        let index = self.files.iter().position(|f| f.path == path);
+        
+        if let Some(idx) = index {
+            // Remove file from list
+            self.files.remove(idx);
+            
+            // Update selection if the removed file was selected
+            if let Some(selected) = &self.selected_file {
+                if selected == path {
+                    // Select another file if available
+                    self.selected_file = self.files.first().map(|f| f.path.clone());
+                }
+            }
+            
+            self.update_selection();
+        }
+    }
+    
     /// Update selection state
     fn update_selection(&mut self) {
         for file in &mut self.files {
@@ -113,21 +134,39 @@ impl FileList {
                             .collect();
                         
                         for (is_selected, path, name) in file_paths {
-                            let response = ui.selectable_label(is_selected, &name);
-                            
-                            if response.clicked() {
-                                selected_path = Some(path.clone());
-                                file_selected = true;
-                            }
+                            ui.horizontal(|ui| {
+                                let response = ui.selectable_label(is_selected, &name);
+                                
+                                if response.clicked() {
+                                    selected_path = Some(path.clone());
+                                    file_selected = true;
+                                }
+                                
+                                // Add remove button
+                                if ui.small_button("❌").clicked() {
+                                    // Remove this file
+                                    // We can't directly modify the files list here due to borrowing rules
+                                    // So we'll store the path and remove it after the loop
+                                    selected_path = Some(path.clone());
+                                    // Set this flag to false as we're removing, not selecting
+                                    file_selected = false;
+                                }
+                            });
                         }
                     });
             }
         }
         
-        // Update selection outside ScrollArea to avoid borrowing conflicts
+        // Update selection or remove file outside ScrollArea to avoid borrowing conflicts
         if let Some(path) = selected_path {
-            self.selected_file = Some(path);
-            self.update_selection();
+            if file_selected {
+                // Regular selection
+                self.selected_file = Some(path);
+                self.update_selection();
+            } else {
+                // Remove file
+                self.remove_file(&path);
+            }
         }
         
         ui.add_space(8.0);
