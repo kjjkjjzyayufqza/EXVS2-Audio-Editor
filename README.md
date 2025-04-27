@@ -1,87 +1,123 @@
 # EXVS2 Audio Editor
 
-[![dependency status](https://deps.rs/repo/github/emilk/eframe_template/status.svg)](https://deps.rs/repo/github/emilk/eframe_template)
-[![Build Status](https://github.com/emilk/eframe_template/workflows/CI/badge.svg)](https://github.com/emilk/eframe_template/actions?workflow=CI)
+A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extreme VS 2) game.
 
-This is a template repo for [eframe](https://github.com/emilk/egui/tree/master/crates/eframe), a framework for writing apps using [egui](https://github.com/emilk/egui/).
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 
-The goal is for this to be the simplest way to get started writing a GUI app in Rust.
+## Overview
 
-You can compile your app natively or for the web, and share it using Github Pages.
+EXVS2 Audio Editor is a cross-platform tool designed to help you work with NUS3AUDIO format audio files. It allows you to extract, play, replace, and export audio files contained within NUS3AUDIO containers, which are commonly used in Bandai Namco's Extreme VS 2 game.
 
-## Getting started
+## Features
 
-Start by clicking "Use this template" at https://github.com/emilk/eframe_template/ or follow [these instructions](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template).
+- **Audio File Management**: Open NUS3AUDIO files and view contained audio tracks
+- **Audio Playback**: Built-in audio player for previewing tracks
+- **Audio Extraction**: Export audio tracks to WAV format
+- **Audio Replacement**: Replace audio tracks with your own audio files
+- **Loop Point Processing**: Add loop points to audio files for seamless looping
+- **Search & Filter**: Easily find specific audio tracks within large containers
+- **Cross-Platform**: Works on Windows as a native application and on any platform as a web application
 
-Change the name of the crate: Choose a good name for your project, and change the name to it in:
-* `Cargo.toml`
-    * Change the `package.name` from `eframe_template` to `your_crate`.
-    * Change the `package.authors`
-* `main.rs`
-    * Change `eframe_template::TemplateApp` to `your_crate::TemplateApp`
-* `index.html`
-    * Change the `<title>eframe template</title>` to `<title>your_crate</title>`. optional.
-* `assets/sw.js`
-  * Change the `'./eframe_template.js'` to `./your_crate.js` (in `filesToCache` array)
-  * Change the `'./eframe_template_bg.wasm'` to `./your_crate_bg.wasm` (in `filesToCache` array)
+## System Requirements
 
-Alternatively, you can run `fill_template.sh` which will ask for the needed names and email and perform the above patches for you. This is particularly useful if you clone this repository outside GitHub and hence cannot make use of its
-templating function.
+- **Windows**: Windows 10 or newer recommended
+- **Web**: Any modern browser with WebAssembly support
 
-### Learning about egui
+## Installation
 
-`src/app.rs` contains a simple example app. This is just to give some inspiration - most of it can be removed if you like.
+1. Download the latest release from the [Releases](https://github.com/your-username/exvs2-audio-editor/releases) page
+2. Extract the ZIP file to a location of your choice
+3. Run the `exvs2_audio_editor.exe` file
 
-The official egui docs are at <https://docs.rs/egui>. If you prefer watching a video introduction, check out <https://www.youtube.com/watch?v=NtUkr_z7l84>. For inspiration, check out the [the egui web demo](https://emilk.github.io/egui/index.html) and follow the links in it to its source code.
+For the web version, visit the hosted application at: [EXVS2 Audio Editor Web](https://your-web-app-url.com)
 
-### Testing locally
+## Usage
 
-Make sure you are using the latest version of stable rust by running `rustup update`.
+### Opening NUS3AUDIO Files
 
-`cargo run --release`
+1. Click the "Add File" button in the file list panel
+2. Select a NUS3AUDIO file from your computer
+3. The file will be loaded and its contents displayed in the main area
 
-On Linux you need to first run:
+### Playing Audio Tracks
 
-`sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
+1. Select an audio track from the list
+2. Use the built-in audio player controls to play, pause, and adjust volume
 
-On Fedora Rawhide you need to run:
+### Exporting Audio Tracks
 
-`dnf install clang clang-devel clang-tools-extra libxkbcommon-devel pkg-config openssl-devel libxcb-devel gtk3-devel atk fontconfig-devel`
+1. Select one or multiple audio tracks
+2. Click the "Export" button
+3. Choose an output directory
+4. The selected tracks will be exported as WAV files
 
-### Web Locally
+### Replacing Audio Tracks
 
-You can compile your app to [WASM](https://en.wikipedia.org/wiki/WebAssembly) and publish it as a web page.
+1. Select an audio track you want to replace
+2. Click the "Replace" button
+3. Choose a replacement audio file from your computer
+4. The audio track will be replaced in memory (changes aren't saved until you explicitly save the file)
 
-We use [Trunk](https://trunkrs.dev/) to build for web target.
-1. Install the required target with `rustup target add wasm32-unknown-unknown`.
-2. Install Trunk with `cargo install --locked trunk`.
-3. Run `trunk serve` to build and serve on `http://127.0.0.1:8080`. Trunk will rebuild automatically if you edit the project.
-4. Open `http://127.0.0.1:8080/index.html#dev` in a browser. See the warning below.
+### Saving Changes
 
-> `assets/sw.js` script will try to cache our app, and loads the cached version when it cannot connect to server allowing your app to work offline (like PWA).
-> appending `#dev` to `index.html` will skip this caching, allowing us to load the latest builds during development.
+1. After making your desired changes, click the "Save" button
+2. Choose where to save the modified NUS3AUDIO file
+3. All changes will be written to the new file (the original file is not modified)
 
-### Web Deploy
-1. Just run `trunk build --release`.
-2. It will generate a `dist` directory as a "static html" website
-3. Upload the `dist` directory to any of the numerous free hosting websites including [GitHub Pages](https://docs.github.com/en/free-pro-team@latest/github/working-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
-4. we already provide a workflow that auto-deploys our app to GitHub pages if you enable it.
-> To enable Github Pages, you need to go to Repository -> Settings -> Pages -> Source -> set to `gh-pages` branch and `/` (root).
->
-> If `gh-pages` is not available in `Source`, just create and push a branch called `gh-pages` and it should be available.
->
-> If you renamed the `main` branch to something else (say you re-initialized the repository with `master` as the initial branch), be sure to edit the github workflows `.github/workflows/pages.yml` file to reflect the change
-> ```yml
-> on:
->   push:
->     branches:
->       - <branch name>
-> ```
+## Tools Used
 
-You can test the template app at <https://emilk.github.io/eframe_template/>.
+This application uses the following tools to process audio files:
 
-## Updating egui
+- **vgmstream-cli**: For decoding and encoding various game audio formats
+- **rodio**: For audio playback on native platforms
+- **Web Audio API**: For audio playback on web platforms
 
-As of 2023, egui is in active development with frequent releases with breaking changes. [eframe_template](https://github.com/emilk/eframe_template/) will be updated in lock-step to always use the latest version of egui.
+## Development
 
-When updating `egui` and `eframe` it is recommended you do so one version at the time, and read about the changes in [the egui changelog](https://github.com/emilk/egui/blob/master/CHANGELOG.md) and [eframe changelog](https://github.com/emilk/egui/blob/master/crates/eframe/CHANGELOG.md).
+### Building from Source
+
+Prerequisites:
+- Rust 1.81 or newer
+- Cargo package manager
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/exvs2-audio-editor.git
+cd exvs2-audio-editor
+
+# Build the application
+cargo build --release
+
+# Run the application
+cargo run --release
+```
+
+For web builds:
+```bash
+# Install trunk (if not installed)
+cargo install trunk
+
+# Build the web version
+trunk build --release
+
+# Serve the web version locally
+trunk serve --release
+```
+
+## License
+
+This project is licensed under both:
+- MIT License
+- Apache License 2.0
+
+See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
+
+## Acknowledgements
+
+- [egui](https://github.com/emilk/egui) - Immediate mode GUI library for Rust
+- [nus3audio](https://crates.io/crates/nus3audio) - Library for handling NUS3AUDIO format files
+- [vgmstream](https://github.com/vgmstream/vgmstream) - Audio stream player for video games
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
