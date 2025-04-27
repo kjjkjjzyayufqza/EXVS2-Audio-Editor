@@ -118,7 +118,9 @@ jobs:
 
     - name: Create/Update Release
       id: create_release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
+      permissions:
+        contents: write
       with:
         tag_name: v${{ env.VERSION }}
         name: Release v${{ env.VERSION }}
@@ -127,5 +129,4 @@ jobs:
         files: |
           exvs2-audio-editor-v${{ env.VERSION }}.zip
           release-package/${{ matrix.artifact_name }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
