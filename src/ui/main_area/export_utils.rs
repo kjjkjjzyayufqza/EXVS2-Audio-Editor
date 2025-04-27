@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::Command;
+use nus3audio::Nus3audioFile;
 
 /// Utility functions for exporting audio files
 pub struct ExportUtils;
@@ -109,61 +110,43 @@ impl ExportUtils {
     ) -> Result<Vec<String>, String> {
         // Path to vgmstream-cli.exe in tools directory
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
-
-        // First, get information about the file to know how many subsongs it has
-        let info_result = Command::new(&vgmstream_path)
-            .args(&["-m", original_file_path])
-            .output();
-
-        let info_output = match info_result {
-            Ok(output) => {
-                if output.status.success() {
-                    String::from_utf8_lossy(&output.stdout).to_string()
-                } else {
-                    let error = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("vgmstream-cli info error: {}", error));
-                }
-            }
-            Err(e) => return Err(format!("Failed to run vgmstream-cli for info: {}", e)),
+        
+        // First, load the nus3audio file to get audio file information
+        let nus3audio_file = match Nus3audioFile::open(original_file_path) {
+            Ok(file) => file,
+            Err(e) => return Err(format!("Failed to load nus3audio file: {}", e)),
         };
-        println!("vgmstream-cli output: {}", info_output);
-        // Parse subsong count from the output
-        let subsong_count = if info_output.contains("stream count: ") {
-            let subsongs_line = info_output
-                .lines()
-                .find(|line| line.contains("stream count: "))
-                .unwrap_or("stream count: 1");
-
-            let count_str = subsongs_line
-                .split("stream count: ")
-                .nth(1)
-                .unwrap_or("1")
-                .trim();
-
-            count_str.parse::<usize>().unwrap_or(1)
-        } else {
-            1 // Default to 1 if no subsong info found
-        };
-
+        
+        println!("Loaded nus3audio file with {} audio files", nus3audio_file.files.len());
+        
         let mut exported_paths = Vec::new();
         let output_dir_path = Path::new(output_dir);
-
-        // Export each subsong
-        for subsong_id in 1..=subsong_count {
-            let subsong_id_str = subsong_id.to_string();
-            let output_path = output_dir_path;
+        
+        // Export each audio file directly using vgmstream-cli
+        for audio_file in nus3audio_file.files.iter() {
+            // Get the name for this audio file
+            let audio_name = if audio_file.name.is_empty() {
+                format!("audio_{}", audio_file.id)
+            } else {
+                audio_file.name.clone()
+            };
+            
+            // Create output file path with the audio file name
+            let output_filename = format!("{}.wav", audio_name);
+            let output_path = output_dir_path.join(output_filename);
             let output_path_str = output_path.to_string_lossy().to_string();
-
+            
+            // Convert to WAV using vgmstream-cli with the subsong index
             let result = Command::new(&vgmstream_path)
                 .args(&[
                     "-o",
                     &output_path_str,
                     "-s",
-                    &subsong_id_str,
+                    &(audio_file.id + 1).to_string(), // vgmstream uses 1-based indexing
                     original_file_path,
                 ])
                 .output();
-
+            
             match result {
                 Ok(output) => {
                     if output.status.success() {
@@ -172,20 +155,20 @@ impl ExportUtils {
                     } else {
                         let error = String::from_utf8_lossy(&output.stderr);
                         return Err(format!(
-                            "vgmstream-cli error on subsong {}: {}",
-                            subsong_id, error
+                            "vgmstream-cli error on audio file {}: {}",
+                            audio_file.id, error
                         ));
                     }
                 }
                 Err(e) => {
                     return Err(format!(
-                        "Failed to run vgmstream-cli for subsong {}: {}",
-                        subsong_id, e
+                        "Failed to run vgmstream-cli for audio file {}: {}",
+                        audio_file.id, e
                     ));
                 }
             }
         }
-
+        
         Ok(exported_paths)
     }
 }
