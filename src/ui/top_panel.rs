@@ -14,6 +14,9 @@ struct ModalInfo {
     title: String,
     message: String,
     is_error: bool,
+    has_link: bool,
+    link_text: String,
+    link_url: String,
 }
 
 // Use a simple type to store our modal state
@@ -37,6 +40,24 @@ fn show_modal(title: &str, message: &str, is_error: bool) {
             modal.title = title.to_string();
             modal.message = message.to_string();
             modal.is_error = is_error;
+            modal.has_link = false;
+            modal.link_text = String::new();
+            modal.link_url = String::new();
+        }
+    }
+}
+
+fn show_modal_with_link(title: &str, message: &str, link_text: &str, link_url: &str, is_error: bool) {
+    init_modal();
+    unsafe {
+        if let Some(modal) = &mut MODAL_INFO {
+            modal.open = true;
+            modal.title = title.to_string();
+            modal.message = message.to_string();
+            modal.is_error = is_error;
+            modal.has_link = true;
+            modal.link_text = link_text.to_string();
+            modal.link_url = link_url.to_string();
         }
     }
 }
@@ -61,6 +82,12 @@ impl TopPanel {
                         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                         .show(ctx, |ui| {
                             ui.label(&modal.message);
+                            
+                            if modal.has_link {
+                                ui.hyperlink_to(&modal.link_text, &modal.link_url);
+                            }
+                            
+                            ui.add_space(8.0);
                             
                             if ui.button("OK").clicked() {
                                 should_close_modal = true;
@@ -137,7 +164,14 @@ impl TopPanel {
 
                 ui.menu_button("Help", |ui| {
                     if ui.button("About").clicked() {
-                        // Can display an about dialog here
+                        // Show about modal with project information
+                        show_modal_with_link(
+                            "About EXVS2 Audio Editor",
+                            "EXVS2 Audio Editor\n\nA tool for editing audio files in EXVS2 game.",
+                            "Source: https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor",
+                            "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor",
+                            false
+                        );
                     }
                 });
             });
