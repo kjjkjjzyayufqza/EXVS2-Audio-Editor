@@ -1,4 +1,5 @@
 use crate::ui::{FileList, MainArea, TopPanel};
+use crate::version_check;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -36,6 +37,9 @@ impl TemplateApp {
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
+
+        // Start version check in background
+        version_check::check_for_updates_async();
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.

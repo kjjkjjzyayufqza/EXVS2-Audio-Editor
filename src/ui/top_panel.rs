@@ -1,11 +1,12 @@
 use crate::TemplateApp;
 use crate::ui::main_area::ReplaceUtils;
+use crate::version_check;
 use egui::{Context, ViewportCommand};
 use nus3audio::Nus3audioFile;
 use std::fs::File;
 use std::io::Write;
 use std::cell::RefCell;
-use std::sync::Once;
+use std::sync::{Mutex, Once};
 
 // Modal dialog information
 #[derive(Clone, Default)]
@@ -69,6 +70,9 @@ impl TopPanel {
     /// Display the top menu panel
     pub fn show(ctx: &Context, app: Option<&mut crate::TemplateApp>) {
         init_modal();
+        
+        // Check for version updates
+        TopPanel::check_for_updates(ctx);
         
         // Show modal dialog if needed
         let mut should_close_modal = false;
@@ -178,6 +182,63 @@ impl TopPanel {
         });
     }
 
+    /// Check for updates and show notification if a new version is available
+    fn check_for_updates(_ctx: &Context) {
+        // Only show update notice once per session
+        static mut SHOWN_UPDATE_NOTICE: bool = false;
+        
+        // If we've already shown the notice, don't do anything else
+        unsafe {
+            if SHOWN_UPDATE_NOTICE {
+                return;
+            }
+        }
+        
+        // Get version check result
+        let version_result = version_check::get_version_check_result();
+        
+        // Try to lock the mutex
+        let check_result = match version_result.try_lock() {
+            Ok(guard) => {
+                // Check if we have a result
+                if let Some(result) = &*guard {
+                    // Check if there's a new version
+                    if result.has_new_version {
+                        let current = result.current_version.clone();
+                        let latest = result.latest_version.clone();
+                        let url = result.download_url.clone();
+                        
+                        // Return the data we need
+                        Some((current, latest, url))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            Err(_) => None, // Couldn't lock the mutex
+        };
+        
+        // Show the update notice if we have the data
+        if let Some((current_version, latest_version, download_url)) = check_result {
+            unsafe {
+                // Show update available notice
+                show_modal_with_link(
+                    "Update Available",
+                    &format!("A new version of EXVS2 Audio Editor is available!\n\nCurrent version: {}\nLatest version: {}\n\nClick the link below to download:",
+                        current_version, latest_version),
+                    "Download latest version",
+                    &download_url,
+                    false
+                );
+                
+                // Mark that we've shown the notice
+                SHOWN_UPDATE_NOTICE = true;
+            }
+        }
+    }
+    
     /// Save current audio files to a new nus3audio file
     fn save_nus3audio_file(original_path: &str, save_path: &str) {
         // Use ReplaceUtils to apply all in-memory replacements and save the file
