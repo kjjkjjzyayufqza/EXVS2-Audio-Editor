@@ -2,6 +2,8 @@ use nus3audio::{Nus3audioFile, AudioFile};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use rfd::FileDialog;
 use super::audio_file_info::AudioFileInfo;
 use std::collections::HashMap;
@@ -76,7 +78,15 @@ impl ReplaceUtils {
         // -L: Loop the file forever
         // -E: Force end-to-end looping
         // -o: Output file path
-        let result = Command::new(&vgmstream_path)
+        let mut command = Command::new(&vgmstream_path);
+        
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        
+        let result = command
             .args(&[
                 "-i",
                 "-L",

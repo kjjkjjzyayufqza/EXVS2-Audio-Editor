@@ -36,6 +36,7 @@ semver = "1.0"
 env_logger = "0.11"
 rfd = "0.12"  # File dialog
 rodio = "0.17.1"  # Audio playback library for native platforms
+winapi = { version = "0.3", features = ["winbase"] }  # For Windows-specific process creation flags
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

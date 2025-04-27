@@ -3,6 +3,8 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use nus3audio::Nus3audioFile;
 
 /// Utility functions for exporting audio files
@@ -24,7 +26,15 @@ impl ExportUtils {
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
         // Run vgmstream-cli to convert audio to WAV
-        let result = Command::new(&vgmstream_path)
+        let mut command = Command::new(&vgmstream_path);
+        
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        
+        let result = command
             .args(&[
                 "-o",
                 &temp_output_path_str,
@@ -78,7 +88,15 @@ impl ExportUtils {
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
         // Run vgmstream-cli to convert audio to WAV
-        let result = Command::new(vgmstream_path)
+        let mut command = Command::new(vgmstream_path);
+        
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        
+        let result = command
             .args(&[
                 "-o",
                 &output_path_str,
@@ -137,7 +155,15 @@ impl ExportUtils {
             let output_path_str = output_path.to_string_lossy().to_string();
             
             // Convert to WAV using vgmstream-cli with the subsong index
-            let result = Command::new(&vgmstream_path)
+            let mut command = Command::new(&vgmstream_path);
+            
+            #[cfg(windows)]
+            {
+                use winapi::um::winbase::CREATE_NO_WINDOW;
+                command.creation_flags(CREATE_NO_WINDOW);
+            }
+            
+            let result = command
                 .args(&[
                     "-o",
                     &output_path_str,
