@@ -3,7 +3,8 @@ use super::{
     main_area_core::MainArea,
     audio_file_info::AudioFileInfo,
     search_column::SearchColumn,
-    sort_column::SortColumn
+    sort_column::SortColumn,
+    replace_utils::ReplaceUtils
 };
 
 impl MainArea {
@@ -97,6 +98,9 @@ impl MainArea {
 
     /// Update the selected file and load NUS3AUDIO info if applicable
     pub fn update_selected_file(&mut self, file_path: Option<String>) {
+        // Clear any previously replaced audio data in memory
+        ReplaceUtils::clear_replacements();
+        
         self.selected_file = file_path;
         self.file_count = None;
         self.audio_files = None;

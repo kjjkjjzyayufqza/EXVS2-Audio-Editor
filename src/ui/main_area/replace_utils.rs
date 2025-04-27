@@ -18,68 +18,6 @@ static REPLACED_AUDIO_DATA: Lazy<Mutex<HashMap<String, Vec<u8>>>> = Lazy::new(||
 pub struct ReplaceUtils;
 
 impl ReplaceUtils {
-    /// Replace an audio file with data from a new file (modifies the actual file on disk)
-    pub fn replace_audio(
-        audio_file_info: &AudioFileInfo,
-        original_file_path: &str,
-        replacement_file_path: &str,
-    ) -> Result<(), String> {
-        // Load the original NUS3AUDIO file
-        let mut nus3_file = match Nus3audioFile::open(original_file_path) {
-            Ok(file) => file,
-            Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
-        };
-
-        // Find the target audio file by name
-        let target_index = nus3_file.files.iter().position(|f| f.name == audio_file_info.name);
-        let target_index = match target_index {
-            Some(index) => index,
-            None => return Err("Audio file not found in NUS3AUDIO file".to_string()),
-        };
-
-        // Load the replacement file data
-        let replacement_data = match fs::read(replacement_file_path) {
-            Ok(data) => data,
-            Err(e) => return Err(format!("Failed to read replacement file: {}", e)),
-        };
-
-        // Replace the audio data while preserving the ID and name
-        let id = nus3_file.files[target_index].id;
-        let name = nus3_file.files[target_index].name.clone();
-        
-        // Create a new AudioFile with the replacement data
-        let new_audio_file = AudioFile {
-            id,
-            name,
-            data: replacement_data,
-        };
-        
-        // Replace the old file with the new one
-        nus3_file.files[target_index] = new_audio_file;
-        
-        // Create a backup of the original file
-        let original_path = Path::new(original_file_path);
-        let backup_path = original_path.with_extension(format!(
-            "{}.bak",
-            original_path
-                .extension()
-                .unwrap_or_default()
-                .to_string_lossy()
-        ));
-
-        // Create memory buffer for writing the updated NUS3AUDIO file
-        let mut output_buffer = Vec::new();
-        
-        // Write the modified NUS3AUDIO data to memory buffer
-        nus3_file.write(&mut output_buffer);
-        
-        // Write the buffer to the original file
-        match fs::write(original_file_path, output_buffer) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to write updated file: {}", e)),
-        }
-    }
-    
     /// Replace audio data in memory only (does not modify the actual file on disk)
     pub fn replace_in_memory(
         audio_file_info: &AudioFileInfo,
@@ -140,8 +78,8 @@ impl ReplaceUtils {
         // -o: Output file path
         let result = Command::new(&vgmstream_path)
             .args(&[
+                "-i",
                 "-L",
-                "-E",
                 "-o",
                 &temp_output_path_str,
                 file_path.to_string_lossy().as_ref(),
@@ -213,6 +151,14 @@ impl ReplaceUtils {
         }
     }
     
+    /// Clear all replacement data from memory
+    pub fn clear_replacements() {
+        if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {
+            map.clear();
+            println!("Cleared all audio replacements from memory");
+        }
+    }
+
     /// Apply all in-memory replacements to a NUS3AUDIO file and save it
     pub fn apply_replacements_and_save(
         original_file_path: &str,
