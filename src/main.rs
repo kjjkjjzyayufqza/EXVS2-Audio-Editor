@@ -20,7 +20,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "EXVS2 Audio Editor",
         native_options,
-        Box::new(|cc| Ok(Box::new(eframe_template::TemplateApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(exvs2_audio_editor::TemplateApp::new(cc)))),
     )
 }
 
@@ -50,7 +50,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Box::new(eframe_template::TemplateApp::new(cc)).into()),
+                Box::new(|cc| Box::new(exvs2_audio_editor::TemplateApp::new(cc)).into()),
             )
             .await;
 

@@ -1,9 +1,9 @@
-var cacheName = 'egui-template-pwa';
+var cacheName = 'exvs2-audio-editor-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './eframe_template.js',
-  './eframe_template_bg.wasm',
+  './exvs2_audio_editor.js',
+  './exvs2_audio_editor_bg.wasm',
 ];
 
 /* Start the service worker and cache all of the app's content */

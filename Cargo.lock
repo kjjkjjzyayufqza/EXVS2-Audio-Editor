@@ -1123,30 +1123,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "eframe_template"
-version = "0.2.0"
-dependencies = [
- "eframe",
- "egui",
- "egui-phosphor",
- "env_logger",
- "js-sys",
- "log",
- "nus3audio",
- "once_cell",
- "reqwest",
- "rfd",
- "rodio",
- "semver",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "winapi",
-]
-
-[[package]]
 name = "egui"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1415,6 +1391,30 @@ checksum = "3c3e4e0dd3673c1139bf041f3008816d9cf2946bbfac2945c09e523b8d7b05b2"
 dependencies = [
  "event-listener 5.3.1",
  "pin-project-lite",
+]
+
+[[package]]
+name = "exvs2_audio_editor"
+version = "0.2.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "egui-phosphor",
+ "env_logger",
+ "js-sys",
+ "log",
+ "nus3audio",
+ "once_cell",
+ "reqwest",
+ "rfd",
+ "rodio",
+ "semver",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "winapi",
 ]
 
 [[package]]
