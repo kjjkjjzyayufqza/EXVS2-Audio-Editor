@@ -6,7 +6,9 @@ A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extre
 
 ## Overview
 
-EXVS2 Audio Editor is a cross-platform tool designed to help you work with NUS3AUDIO format audio files. It allows you to extract, play, replace, and export audio files contained within NUS3AUDIO containers, which are commonly used in Bandai Namco's Extreme VS 2 game.
+EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format audio files. It allows you to extract, play, replace, and export audio files contained within NUS3AUDIO containers, which are commonly used in Bandai Namco's Extreme VS 2 game.
+
+![preview](/git_images/preview.png)
 
 ## Features
 
@@ -16,20 +18,16 @@ EXVS2 Audio Editor is a cross-platform tool designed to help you work with NUS3A
 - **Audio Replacement**: Replace audio tracks with your own audio files
 - **Loop Point Processing**: Add loop points to audio files for seamless looping
 - **Search & Filter**: Easily find specific audio tracks within large containers
-- **Cross-Platform**: Works on Windows as a native application and on any platform as a web application
 
 ## System Requirements
 
 - **Windows**: Windows 10 or newer recommended
-- **Web**: Any modern browser with WebAssembly support
 
 ## Installation
 
 1. Download the latest release from the [Releases](https://github.com/your-username/exvs2-audio-editor/releases) page
 2. Extract the ZIP file to a location of your choice
 3. Run the `exvs2_audio_editor.exe` file
-
-For the web version, visit the hosted application at: [EXVS2 Audio Editor Web](https://your-web-app-url.com)
 
 ## Usage
 
@@ -69,8 +67,7 @@ For the web version, visit the hosted application at: [EXVS2 Audio Editor Web](h
 This application uses the following tools to process audio files:
 
 - **vgmstream-cli**: For decoding and encoding various game audio formats
-- **rodio**: For audio playback on native platforms
-- **Web Audio API**: For audio playback on web platforms
+- **rodio**: For audio playback
 
 ## Development
 
@@ -90,18 +87,6 @@ cargo build --release
 
 # Run the application
 cargo run --release
-```
-
-For web builds:
-```bash
-# Install trunk (if not installed)
-cargo install trunk
-
-# Build the web version
-trunk build --release
-
-# Serve the web version locally
-trunk serve --release
 ```
 
 ## License
