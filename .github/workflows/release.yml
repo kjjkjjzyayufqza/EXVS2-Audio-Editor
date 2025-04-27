@@ -1,0 +1,131 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - '!.github/workflows/release.yml'
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+        include:
+          - os: windows-latest
+            artifact_name: exvs2-audio-editor.exe
+            asset_name: exvs2-audio-editor-windows.exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version
+      id: get_version
+      shell: bash
+      run: |
+        VERSION=$(jq -r '.version' version.json)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Build project
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release
+        
+    - name: Copy tools directory (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        mkdir target\release\tools
+        xcopy tools target\release\tools /E /I /Y
+    
+    - name: Test executable
+      shell: bash
+      run: |
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          ls -la target/release/*.exe
+        else
+          ls -la target/release
+        fi
+    
+    - name: Prepare release assets
+      shell: bash
+      run: |
+        # Create release directory
+        mkdir -p release-package
+        
+        # Copy executable and rename
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          cp target/release/eframe_template.exe release-package/${{ matrix.artifact_name }}
+        else
+          cp target/release/eframe_template release-package/${{ matrix.artifact_name }}
+        fi
+        
+        # Copy tools directory
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          cp -r target/release/tools release-package/tools
+        else
+          cp -r target/release/tools release-package/tools
+        fi
+        
+        # Create zip archive
+        cd release-package
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          7z a -tzip ../exvs2-audio-editor-v${{ env.VERSION }}.zip *
+        else
+          zip -r ../exvs2-audio-editor-v${{ env.VERSION }}.zip *
+        fi
+        cd ..
+        
+    - name: Check if release exists
+      id: check_release
+      shell: bash
+      run: |
+        RELEASE_EXISTS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.VERSION }}" \
+          | jq -r '.id // "null"')
+        if [ "$RELEASE_EXISTS" != "null" ]; then
+          echo "Release v${{ env.VERSION }} already exists. Will update it."
+          echo "release_exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "Release v${{ env.VERSION }} does not exist yet."
+          echo "release_exists=false" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create/Update Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ env.VERSION }}
+        name: Release v${{ env.VERSION }}
+        draft: false
+        prerelease: false
+        files: |
+          exvs2-audio-editor-v${{ env.VERSION }}.zip
+          release-package/${{ matrix.artifact_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
