@@ -36,10 +36,10 @@ impl TableRenderer {
 
         // Define column width with minimum sizes
         let col_width_name = available_width / 5.0; // Adjusted for better fit
-        let col_width_id = available_width / 8.0; // Increased for long IDs
-        let col_width_size = available_width / 8.0;
+        let col_width_id = available_width / 9.0; // Increased for long IDs
+        let col_width_size = available_width / 9.0;
         let col_width_filename = available_width / 5.0;
-        let col_width_type = available_width / 8.0;
+        let col_width_type = available_width / 10.0;
         let col_action = available_width
             - col_width_name
             - col_width_id
