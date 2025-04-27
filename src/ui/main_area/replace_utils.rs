@@ -1,6 +1,7 @@
 use nus3audio::{Nus3audioFile, AudioFile};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use rfd::FileDialog;
 use super::audio_file_info::AudioFileInfo;
 use std::collections::HashMap;
@@ -112,7 +113,57 @@ impl ReplaceUtils {
         Ok(new_audio_info)
     }
     
+    /// Process audio file with vgmstream-cli to add loop points
+    pub fn process_with_vgmstream(
+        file_path: &Path
+    ) -> Result<PathBuf, String> {
+        // Path to vgmstream-cli.exe in tools directory
+        let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
+        if !vgmstream_path.exists() {
+            return Err(format!("vgmstream-cli not found at {:?}", vgmstream_path));
+        }
+        
+        // Create a temporary output file path
+        let temp_dir = std::env::temp_dir();
+        let original_filename = file_path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
+        let temp_filename = format!("looping_{}", original_filename);
+        let temp_output_path = temp_dir.join(&temp_filename);
+        let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
+        
+        println!("Processing with vgmstream: {:?} -> {:?}", file_path, temp_output_path);
+        
+        // Run vgmstream-cli to convert audio with loop points
+        // -L: Loop the file forever
+        // -E: Force end-to-end looping
+        // -o: Output file path
+        let result = Command::new(&vgmstream_path)
+            .args(&[
+                "-L",
+                "-E",
+                "-o",
+                &temp_output_path_str,
+                file_path.to_string_lossy().as_ref(),
+            ])
+            .output();
+            
+        match result {
+            Ok(output) => {
+                if output.status.success() {
+                    println!("Successfully processed file with vgmstream: {:?}", temp_output_path);
+                    Ok(temp_output_path)
+                } else {
+                    let error = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("vgmstream-cli error: {}", error))
+                }
+            }
+            Err(e) => Err(format!("Failed to run vgmstream-cli: {}", e)),
+        }
+    }
+
     /// Show file dialog to select replacement audio file and replace the target audio in memory
+    /// with added loop points
     pub fn replace_with_file_dialog(
         audio_file_info: &AudioFileInfo
     ) -> Result<AudioFileInfo, String> {
@@ -127,8 +178,29 @@ impl ReplaceUtils {
             None => return Err("No file selected".to_string()),
         };
         
-        // Replace the audio file with the selected file in memory only
-        Self::replace_in_memory(audio_file_info, file_path.to_str().unwrap())
+        // Clone file_path for comparison later
+        let original_path = file_path.clone();
+        
+        // Process the selected file with vgmstream to add loop points
+        let processed_path = match Self::process_with_vgmstream(&file_path) {
+            Ok(path) => path,
+            Err(e) => {
+                println!("Warning: Failed to process file with vgmstream: {}", e);
+                println!("Falling back to original file");
+                // Fall back to the original file if processing fails
+                original_path.clone()
+            }
+        };
+        
+        // Replace the audio file with the processed file in memory only
+        let result = Self::replace_in_memory(audio_file_info, processed_path.to_str().unwrap());
+        
+        // Clean up temporary file if it's different from the original
+        if processed_path != original_path && processed_path.exists() {
+            let _ = fs::remove_file(&processed_path);
+        }
+        
+        result
     }
     
     /// Get the replacement audio data for a specific audio file

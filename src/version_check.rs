@@ -18,7 +18,7 @@ use {
 };
 
 // Current version of the application (from Cargo.toml)
-pub const CURRENT_VERSION: &str = "0.1.0";
+pub const CURRENT_VERSION: &str = "0.2.0";
 
 // URL to check for latest version
 // This URL should point to a raw file on GitHub that contains version info
