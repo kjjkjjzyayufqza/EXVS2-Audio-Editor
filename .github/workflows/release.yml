@@ -81,9 +81,9 @@ jobs:
         
         # Copy executable and rename
         if [ "${{ runner.os }}" == "Windows" ]; then
-          cp target/release/eframe_template.exe release-package/${{ matrix.artifact_name }}
+          cp target/release/exvs2_audio_editor.exe release-package/${{ matrix.artifact_name }}
         else
-          cp target/release/eframe_template release-package/${{ matrix.artifact_name }}
+          cp target/release/exvs2_audio_editor release-package/${{ matrix.artifact_name }}
         fi
         
         # Copy tools directory
