@@ -8,6 +8,9 @@ use super::main_area_core::MainArea;
 impl MainArea {
     /// Display the main editing area
     pub fn show(&mut self, ctx: &Context) {
+        // Show the loop settings modal if open
+        self.loop_settings_modal.show(ctx);
+        
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render(ui);
         });

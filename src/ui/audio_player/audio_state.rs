@@ -33,6 +33,18 @@ pub struct AudioState {
     #[serde(skip)]
     pub previous_volume: f32,
     
+    /// Custom loop start point in seconds (None = start from beginning)
+    #[serde(skip)]
+    pub loop_start: Option<f32>,
+    
+    /// Custom loop end point in seconds (None = loop to end)
+    #[serde(skip)]
+    pub loop_end: Option<f32>,
+    
+    /// Whether to use custom loop points
+    #[serde(skip)]
+    pub use_custom_loop: bool,
+    
     /// Audio backend for playback
     #[serde(skip)]
     audio_backend: Option<Box<dyn AudioBackend>>,
@@ -66,6 +78,9 @@ impl Clone for AudioState {
             volume: self.volume,
             is_muted: self.is_muted,
             previous_volume: self.previous_volume,
+            loop_start: self.loop_start,
+            loop_end: self.loop_end,
+            use_custom_loop: self.use_custom_loop,
             audio_backend: None, // Don't clone the audio backend
         }
     }
@@ -107,6 +122,9 @@ impl Default for AudioState {
             volume: 0.25, // Default volume at 50%
             is_muted: false,
             previous_volume: 0.25,
+            loop_start: None,
+            loop_end: None,
+            use_custom_loop: false,
             audio_backend: None,
         };
         
@@ -282,17 +300,51 @@ impl AudioState {
             // Update position
             if self.is_playing {
                 self.current_position = backend.get_position();
+                
+                // Store the needed values before doing any operations that borrow self
+                let use_custom_loop = self.use_custom_loop;
+                let loop_end = self.loop_end;
+                let loop_start = self.loop_start;
+                let total_duration = self.total_duration;
+                let current_pos = self.current_position;
+                
+                // Handle custom loop points if enabled
+                if use_custom_loop {
+                    // If we've reached or passed the loop end point, jump back to loop start
+                    if let Some(end_point) = loop_end {
+                        if current_pos >= end_point {
+                            // Jump back to loop start or beginning
+                            let start_point = loop_start.unwrap_or(0.0);
+                            
+                            // Calculate the new position
+                            let new_pos = start_point.clamp(0.0, total_duration);
+                            self.current_position = new_pos;
+                            
+                            // Update backend position directly
+                            if let Err(e) = backend.set_position(new_pos) {
+                                log::error!("Failed to set audio position for loop: {}", e);
+                            }
+                        }
+                    }
+                } else {
+                    // Default behavior - check if we've reached the end
+                    if self.current_position >= self.total_duration {
+                        self.is_playing = false;
+                        self.current_position = self.total_duration;
+                    }
+                }
             }
             
             // Check if we're actually playing
             self.is_playing = backend.is_playing();
-            
-            // Check if we've reached the end
-            if self.current_position >= self.total_duration {
-                self.is_playing = false;
-                self.current_position = self.total_duration;
-            }
         }
+    }
+    
+    /// Set loop points
+    pub fn set_loop_points(&mut self, start: Option<f32>, end: Option<f32>, use_custom: bool) {
+        self.loop_start = start;
+        self.loop_end = end;
+        self.use_custom_loop = use_custom;
     }
     
     /// Get formatted current position (MM:SS)

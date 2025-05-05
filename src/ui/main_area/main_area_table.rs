@@ -1,5 +1,7 @@
 use egui::{Color32, Frame, Rounding, Stroke, Ui};
 use std::time::Duration;
+use std::path::Path;
+use rfd::FileDialog;
 
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
@@ -218,11 +220,76 @@ impl MainArea {
 
                 if let Some(file_path) = &selected_file {
                     // Use ReplaceUtils to replace the audio file in memory
-                    match ReplaceUtils::replace_with_file_dialog(audio_info) {
+                    match ReplaceUtils::replace_with_file_dialog(audio_info, &mut self.loop_settings_modal) {
                         Ok(new_audio_info) => {
                             // Update the audio file in memory if we have audio_files
                             if let Some(ref mut audio_files) = self.audio_files {
                                 // Find the original audio file in the full list
+                                if let Some(original_idx) = audio_files.iter().position(|f| f.name == audio_info.name && f.id == audio_info.id) {
+                                    // Replace with the new audio info
+                                    audio_files[original_idx] = new_audio_info.clone();
+                                    
+                                    toasts_to_add.push((
+                                        format!("Please configure loop settings for: {}", audio_info.name),
+                                        Color32::GOLD,
+                                    ));
+                                } else {
+                                    toasts_to_add.push((
+                                        format!("Could not find original audio file in memory: {}", audio_info.name),
+                                        Color32::RED,
+                                    ));
+                                }
+                            } else {
+                                toasts_to_add.push((
+                                    "Audio files not loaded in memory".to_string(),
+                                    Color32::RED,
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            toasts_to_add.push((format!("Replace failed: {}", e), Color32::RED));
+                        }
+                    }
+                } else {
+                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
+                }
+            }
+        }
+        
+        // Check if loop settings modal was confirmed
+        if self.loop_settings_modal.confirmed {
+            // Reset the confirmed flag
+            self.loop_settings_modal.confirmed = false;
+            
+            if let Some(audio_info) = &self.loop_settings_modal.audio_info {
+                if let Some(file_path) = &self.selected_file {
+                    // Get loop settings from the modal
+                    let loop_start = if self.loop_settings_modal.settings.use_custom_loop {
+                        self.loop_settings_modal.settings.loop_start
+                    } else {
+                        None
+                    };
+                    
+                    let loop_end = if self.loop_settings_modal.settings.use_custom_loop {
+                        self.loop_settings_modal.settings.loop_end
+                    } else {
+                        None
+                    };
+                    
+                    let use_custom_loop = self.loop_settings_modal.settings.use_custom_loop;
+                    
+                    // Use the stored file path instead of asking the user to reselect the file
+                    // Process the replacement with the confirmed loop settings
+                    match ReplaceUtils::process_replacement_with_loop_settings(
+                        audio_info,
+                        None,  // Pass None to use the stored file path
+                        loop_start,
+                        loop_end,
+                        use_custom_loop
+                    ) {
+                        Ok(new_audio_info) => {
+                            // Update the audio file in memory
+                            if let Some(ref mut audio_files) = self.audio_files {
                                 if let Some(original_idx) = audio_files.iter().position(|f| f.name == audio_info.name && f.id == audio_info.id) {
                                     // Replace with the new audio info
                                     audio_files[original_idx] = new_audio_info.clone();
@@ -245,32 +312,34 @@ impl MainArea {
                                             let state = audio_player.get_audio_state();
                                             let mut state = state.lock().unwrap();
                                             state.set_audio(audio);
+                                            
+                                            // Apply loop settings to audio player
+                                            state.set_loop_points(loop_start, loop_end, use_custom_loop);
                                         }
                                     }
                                     
+                                    let loop_message = if use_custom_loop {
+                                        let start_str = loop_start.map_or("start".to_string(), |s| format!("{:.2}s", s));
+                                        let end_str = loop_end.map_or("end".to_string(), |e| format!("{:.2}s", e));
+                                        format!(" (Loop: {} to {})", start_str, end_str)
+                                    } else {
+                                        " (Full track loop)".to_string()
+                                    };
+                                    
                                     toasts_to_add.push((
-                                        format!("Successfully replaced audio in memory: {}", audio_info.name),
+                                        format!("Successfully replaced audio in memory: {}{}", audio_info.name, loop_message),
                                         Color32::GREEN,
                                     ));
-                                } else {
-                                    toasts_to_add.push((
-                                        format!("Could not find original audio file in memory: {}", audio_info.name),
-                                        Color32::RED,
-                                    ));
                                 }
-                            } else {
-                                toasts_to_add.push((
-                                    "Audio files not loaded in memory".to_string(),
-                                    Color32::RED,
-                                ));
                             }
-                        }
+                        },
                         Err(e) => {
-                            toasts_to_add.push((format!("Replace failed: {}", e), Color32::RED));
+                            toasts_to_add.push((
+                                format!("Failed to process replacement: {}", e),
+                                Color32::RED,
+                            ));
                         }
                     }
-                } else {
-                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
                 }
             }
         }

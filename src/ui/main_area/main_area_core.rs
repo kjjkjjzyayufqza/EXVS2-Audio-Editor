@@ -6,7 +6,8 @@ use super::{
     sort_column::SortColumn, 
     search_column::SearchColumn, 
     audio_file_info::AudioFileInfo,
-    toast_message::ToastMessage
+    toast_message::ToastMessage,
+    loop_settings_modal::LoopSettingsModal
 };
 
 /// Main editing area component
@@ -44,6 +45,10 @@ pub struct MainArea {
     // Toast notifications
     #[serde(skip)]
     pub(crate) toast_messages: Vec<ToastMessage>,
+    
+    // Loop settings modal window
+    #[serde(skip)]
+    pub loop_settings_modal: LoopSettingsModal,
 }
 
 impl MainArea {
@@ -75,6 +80,9 @@ impl MainArea {
             output_path: None,
             // Initialize toast messages
             toast_messages: Vec::new(),
+            
+            // Initialize loop settings modal
+            loop_settings_modal: LoopSettingsModal::new(),
         }
     }
     
