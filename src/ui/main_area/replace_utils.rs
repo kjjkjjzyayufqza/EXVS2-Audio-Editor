@@ -176,8 +176,8 @@ impl ReplaceUtils {
         }
     }
 
-    /// Show file dialog to select replacement audio file and replace the target audio in memory
-    /// with added loop points
+    /// Show file dialog to select replacement audio file and open the loop settings modal
+    /// Does not replace anything in memory yet - this happens after loop settings are confirmed
     pub fn replace_with_file_dialog(
         audio_file_info: &AudioFileInfo, 
         loop_settings_modal: &mut LoopSettingsModal
@@ -208,13 +208,13 @@ impl ReplaceUtils {
         // Create key for hashmaps
         let map_key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
         
-        // Store file path
+        // Store file path only - no audio data is replaced yet
         let replacement_path = selected_path.clone();
         if let Ok(mut map) = REPLACEMENT_FILE_PATHS.lock() {
             map.insert(map_key.clone(), replacement_path);
         }
         
-        // Store loop settings
+        // Initialize with empty loop settings
         let empty_loop_settings = (None, None, false);
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
             settings.insert(map_key, empty_loop_settings);
@@ -223,12 +223,13 @@ impl ReplaceUtils {
         // Open modal with current audio info
         loop_settings_modal.open_with_audio(audio_file_info.clone());
         
-        // Create new AudioFileInfo with path info
+        // Create new AudioFileInfo with just the filename from the selected file
+        // No actual replacement has happened yet
         let new_audio_info = AudioFileInfo {
             name: audio_file_info.name.clone(),
             id: audio_file_info.id.clone(),
-            size: audio_file_info.size,  // Size will be updated later
-            filename,
+            size: audio_file_info.size,  // Keep original size for now
+            filename,  // Show the new filename
             file_type: audio_file_info.file_type.clone(),
         };
         

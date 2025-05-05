@@ -219,32 +219,16 @@ impl MainArea {
                 let selected_file = self.selected_file.clone();
 
                 if let Some(file_path) = &selected_file {
-                    // Use ReplaceUtils to replace the audio file in memory
+                    // Use ReplaceUtils to open file dialog and show loop settings modal
+                    // This doesn't replace the audio in memory yet - just stores the file path
                     match ReplaceUtils::replace_with_file_dialog(audio_info, &mut self.loop_settings_modal) {
-                        Ok(new_audio_info) => {
-                            // Update the audio file in memory if we have audio_files
-                            if let Some(ref mut audio_files) = self.audio_files {
-                                // Find the original audio file in the full list
-                                if let Some(original_idx) = audio_files.iter().position(|f| f.name == audio_info.name && f.id == audio_info.id) {
-                                    // Replace with the new audio info
-                                    audio_files[original_idx] = new_audio_info.clone();
-                                    
-                                    toasts_to_add.push((
-                                        format!("Please configure loop settings for: {}", audio_info.name),
-                                        Color32::GOLD,
-                                    ));
-                                } else {
-                                    toasts_to_add.push((
-                                        format!("Could not find original audio file in memory: {}", audio_info.name),
-                                        Color32::RED,
-                                    ));
-                                }
-                            } else {
-                                toasts_to_add.push((
-                                    "Audio files not loaded in memory".to_string(),
-                                    Color32::RED,
-                                ));
-                            }
+                        Ok(_) => {
+                            // Don't update the display information yet
+                            // Wait until the loop settings are confirmed before making any changes
+                            toasts_to_add.push((
+                                format!("Please configure loop settings for: {}", audio_info.name),
+                                Color32::GOLD,
+                            ));
                         }
                         Err(e) => {
                             toasts_to_add.push((format!("Replace failed: {}", e), Color32::RED));

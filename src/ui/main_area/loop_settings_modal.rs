@@ -1,5 +1,8 @@
-use egui::{Context, Window, Vec2, ScrollArea, Ui};
 use super::audio_file_info::AudioFileInfo;
+use super::replace_utils::ReplaceUtils;
+use egui::{Context, ScrollArea, Ui, Window};
+use rodio::{Decoder, Source};
+use std::io::Cursor;
 
 /// Structure to hold loop settings
 #[derive(Clone, Debug)]
@@ -54,17 +57,80 @@ impl LoopSettingsModal {
         }
     }
 
+    /// Get the actual duration of an audio file by decoding it
+    fn get_actual_audio_duration(&self, audio_info: &AudioFileInfo) -> Option<f32> {
+        // Get the replacement file path using the public function
+        let file_path = ReplaceUtils::get_replacement_file_path(&audio_info.name, &audio_info.id);
+
+        if let Some(path) = file_path {
+            log::info!("Found replacement file for {}: {:?}", audio_info.name, path);
+
+            // Try to read the file
+            match std::fs::read(&path) {
+                Ok(file_data) => {
+                    log::info!("Read {} bytes from audio file", file_data.len());
+
+                    // Try to decode the audio to get its actual duration
+                    match Decoder::new(Cursor::new(file_data)) {
+                        Ok(decoder) => match decoder.total_duration() {
+                            Some(duration) => {
+                                let duration_secs = duration.as_secs_f32();
+                                log::info!("Decoded audio duration: {:.2}s", duration_secs);
+                                return Some(duration_secs);
+                            }
+                            None => {
+                                log::warn!("Could not determine audio duration from decoder");
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to decode audio file: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to read audio file {:?}: {}", path, e);
+                }
+            }
+        } else {
+            log::info!("No replacement file found for {}", audio_info.name);
+        }
+
+        None
+    }
+
     /// Open the modal with audio info
     pub fn open_with_audio(&mut self, audio_info: AudioFileInfo) {
         self.audio_info = Some(audio_info.clone());
-        // Estimate duration from file size for initial values
-        let estimated_duration = Self::estimate_duration_from_size(audio_info.size);
+
+        // First try to get the actual duration from the audio file
+        let duration = match self.get_actual_audio_duration(&audio_info) {
+            Some(actual_duration) => {
+                log::info!(
+                    "Using actual duration for {}: {:.2}s",
+                    audio_info.name,
+                    actual_duration
+                );
+                actual_duration
+            }
+            None => {
+                // Fall back to estimation if we couldn't get the actual duration
+                let estimated = Self::estimate_duration_from_size(audio_info.size);
+                log::info!(
+                    "Using estimated duration for {}: {:.2}s",
+                    audio_info.name,
+                    estimated
+                );
+                estimated
+            }
+        };
+
         self.settings = LoopSettings {
             loop_start: None,
             loop_end: None,
             use_custom_loop: false,
-            estimated_duration,
+            estimated_duration: duration,
         };
+
         self.open = true;
         self.confirmed = false;
     }
@@ -131,34 +197,39 @@ impl LoopSettingsModal {
                         ui.label(&audio_info.file_type);
                         ui.end_row();
 
-                        ui.label("Estimated Duration:");
+                        ui.label("Duration:");
                         ui.label(format!("{:.2}s", self.settings.estimated_duration));
                         ui.end_row();
                     });
 
                 ui.add_space(20.0);
-                
+
                 // Loop settings section
                 ui.vertical_centered(|ui| {
                     ui.heading("Loop Settings");
                     ui.add_space(10.0);
                 });
-                
+
                 ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
-                
+
                 if self.settings.use_custom_loop {
                     ui.add_space(10.0);
-                    
+
                     // Loop start input
                     ui.horizontal(|ui| {
                         ui.label("Loop Start (seconds):");
                         let mut start_value = self.settings.loop_start.unwrap_or(0.0);
-                        if ui.add(egui::DragValue::new(&mut start_value)
-                            .speed(0.1)
-                            .clamp_range(0.0..=self.settings.estimated_duration)
-                            .suffix("s")).changed() {
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut start_value)
+                                    .speed(0.1)
+                                    .range(0.0..=self.settings.estimated_duration)
+                                    .suffix("s"),
+                            )
+                            .changed()
+                        {
                             self.settings.loop_start = Some(start_value);
-                            
+
                             // Ensure loop_start <= loop_end if loop_end is set
                             if let Some(end) = self.settings.loop_end {
                                 if start_value > end {
@@ -167,31 +238,42 @@ impl LoopSettingsModal {
                             }
                         }
                     });
-                    
+
                     // Loop end input
                     ui.horizontal(|ui| {
                         ui.label("Loop End (seconds):");
-                        let mut end_value = self.settings.loop_end.unwrap_or(self.settings.estimated_duration);
-                        if ui.add(egui::DragValue::new(&mut end_value)
-                            .speed(0.1)
-                            .clamp_range(self.settings.loop_start.unwrap_or(0.0)..=self.settings.estimated_duration)
-                            .suffix("s")).changed() {
+                        let mut end_value = self
+                            .settings
+                            .loop_end
+                            .unwrap_or(self.settings.estimated_duration);
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut end_value)
+                                    .speed(0.1)
+                                    .range(
+                                        self.settings.loop_start.unwrap_or(0.0)
+                                            ..=self.settings.estimated_duration,
+                                    )
+                                    .suffix("s"),
+                            )
+                            .changed()
+                        {
                             self.settings.loop_end = Some(end_value);
                         }
                     });
-                    
+
                     // Show loop duration
                     let loop_duration = match (self.settings.loop_start, self.settings.loop_end) {
                         (Some(start), Some(end)) => end - start,
                         _ => self.settings.estimated_duration,
                     };
-                    
+
                     ui.add_space(10.0);
                     ui.label(format!("Loop Duration: {:.2} seconds", loop_duration));
                 } else {
                     ui.label("Audio will loop from beginning to end");
                 }
-                
+
                 ui.add_space(20.0);
             });
 
@@ -204,7 +286,7 @@ impl LoopSettingsModal {
                     if ui.button("Cancel").clicked() {
                         self.open = false;
                     }
-                    
+
                     if ui.button("Confirm").clicked() {
                         self.confirmed = true;
                         self.open = false;
@@ -220,7 +302,7 @@ impl LoopSettingsModal {
         // This would vary greatly by format and compression
         let bytes_per_second = 16000.0;
         let estimated_seconds = size_bytes as f32 / bytes_per_second;
-        
+
         // Clamp to reasonable values (at least 1 second, at most 10 minutes)
         estimated_seconds.max(1.0).min(600.0)
     }
