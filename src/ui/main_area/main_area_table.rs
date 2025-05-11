@@ -1,7 +1,4 @@
-use egui::{Color32, Frame, Rounding, Stroke, Ui};
-use std::time::Duration;
-use std::path::Path;
-use rfd::FileDialog;
+use egui::{Color32, Frame, Stroke, Ui};
 
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,

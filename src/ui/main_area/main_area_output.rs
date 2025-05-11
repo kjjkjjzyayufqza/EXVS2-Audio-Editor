@@ -24,7 +24,7 @@ impl MainArea {
                                 let mut shortened = String::new();
                                 if let Some(last_part) = std::path::Path::new(path).file_name() {
                                     if let Some(last_str) = last_part.to_str() {
-                                        shortened = format!("{}", last_str);
+                                        shortened = last_str.to_string();
                                     }
                                 }
                                 if shortened.is_empty() {

@@ -51,6 +51,12 @@ pub struct MainArea {
     pub loop_settings_modal: LoopSettingsModal,
 }
 
+impl Default for MainArea {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MainArea {
     /// Create a new main area
     pub fn new() -> Self {

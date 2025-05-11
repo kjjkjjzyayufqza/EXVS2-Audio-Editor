@@ -1,6 +1,5 @@
 use super::audio_file_info::AudioFileInfo;
 use std::fs;
-use std::io::{self, Read};
 use std::path::Path;
 use std::process::Command;
 #[cfg(windows)]
@@ -35,7 +34,7 @@ impl ExportUtils {
         }
         
         let result = command
-            .args(&[
+            .args([
                 "-o",
                 &temp_output_path_str,
                 "-s",
@@ -97,7 +96,7 @@ impl ExportUtils {
         }
         
         let result = command
-            .args(&[
+            .args([
                 "-o",
                 &output_path_str,
                 "-s",
@@ -164,7 +163,7 @@ impl ExportUtils {
             }
             
             let result = command
-                .args(&[
+                .args([
                     "-o",
                     &output_path_str,
                     "-s",

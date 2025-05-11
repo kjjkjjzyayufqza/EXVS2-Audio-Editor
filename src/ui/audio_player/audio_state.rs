@@ -61,7 +61,7 @@ impl std::fmt::Debug for AudioState {
             .field("volume", &self.volume)
             .field("is_muted", &self.is_muted)
             .field("previous_volume", &self.previous_volume)
-            .field("audio_backend", &format!("<audio backend>"))
+            .field("audio_backend", &"<audio backend>".to_string())
             .finish()
     }
 }

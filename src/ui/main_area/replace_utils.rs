@@ -49,7 +49,7 @@ impl ReplaceUtils {
         
         // Store the replacement data in our static HashMap
         {
-            let mut map_result = REPLACED_AUDIO_DATA.lock();
+            let map_result = REPLACED_AUDIO_DATA.lock();
             if let Ok(mut map) = map_result {
                 map.insert(key.clone(), replacement_data.clone());
             }
@@ -58,7 +58,7 @@ impl ReplaceUtils {
         // Store the replacement file path
         {
             let path_buf = Path::new(replacement_file_path).to_path_buf();
-            let mut map_result = REPLACEMENT_FILE_PATHS.lock();
+            let map_result = REPLACEMENT_FILE_PATHS.lock();
             if let Ok(mut map) = map_result {
                 map.insert(key, path_buf);
             }
@@ -76,7 +76,7 @@ impl ReplaceUtils {
             name: audio_file_info.name.clone(),
             id: audio_file_info.id.clone(),
             size: replacement_data.len(),
-            filename: filename,
+            filename,
             file_type: audio_file_info.file_type.clone(),
         };
         
@@ -226,7 +226,7 @@ impl ReplaceUtils {
             name: audio_file_info.name.clone(), // 保持原始name
             id: audio_file_info.id.clone(),     // 保持原始id
             size: audio_file_info.size,         // 保持原始大小
-            filename: filename,                 // 显示新文件名
+            filename,                 // 显示新文件名
             file_type: audio_file_info.file_type.clone(),
         };
         

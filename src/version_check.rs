@@ -5,10 +5,7 @@ use std::time::Duration;
 
 // Different imports for native and web
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    reqwest::blocking::Client,
-    std::thread,
-};
+use reqwest::blocking::Client;
 
 #[cfg(target_arch = "wasm32")]
 use {

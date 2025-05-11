@@ -17,6 +17,12 @@ pub struct AudioPlayer {
     last_update: Instant,
 }
 
+impl Default for AudioPlayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AudioPlayer {
     /// Create a new audio player
     pub fn new() -> Self {

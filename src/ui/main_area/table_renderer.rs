@@ -342,7 +342,7 @@ impl TableRenderer {
                             // Play button - always show as it's smallest
                             if ui.add_sized(
                                 [play_width, 20.0],
-                                Button::new(RichText::new(format!("{}", egui_phosphor::regular::PLAY))
+                                Button::new(RichText::new(egui_phosphor::regular::PLAY.to_string())
                                     .size(text_size)
                                     .color(Color32::from_rgb(100, 255, 150)))
                             ).clicked() {
@@ -356,7 +356,7 @@ impl TableRenderer {
                             if available_button_width >= (play_width + spacing + action_width) {
                                 // Export button
                                 let export_text = if compact_mode {
-                                    RichText::new(format!("{}", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
+                                    RichText::new(egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string()).size(text_size)
                                 } else {
                                     RichText::new(format!("{} Export", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
                                 };
@@ -374,7 +374,7 @@ impl TableRenderer {
                                 // Replace button - only show if there's enough space
                                 if available_button_width >= (play_width + spacing + action_width + spacing + action_width) {
                                     let replace_text = if compact_mode {
-                                        RichText::new(format!("{}", egui_phosphor::regular::SWAP))
+                                        RichText::new(egui_phosphor::regular::SWAP.to_string())
                                             .size(text_size)
                                             .color(Color32::from_rgb(255, 180, 100))
                                     } else {

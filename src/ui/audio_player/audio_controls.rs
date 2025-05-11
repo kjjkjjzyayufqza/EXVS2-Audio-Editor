@@ -99,7 +99,7 @@ impl AudioControls {
                         // Using the updated icon format
                         if ui
                             .add(egui::Button::new(
-                                egui::RichText::new(format!("{}",volume_icon)).size(16.0),
+                                egui::RichText::new(volume_icon.to_string()).size(16.0),
                             ))
                             .clicked()
                         {
@@ -185,7 +185,7 @@ impl AudioControls {
                         };
 
                         // Using the updated icon format
-                        let rich_text = egui::RichText::new(format!("{}", play_icon))
+                        let rich_text = egui::RichText::new(play_icon.to_string())
                             .size(24.0)
                             .color(play_button_color);
 
@@ -207,7 +207,7 @@ impl AudioControls {
 
                         // Using the updated icon format
                         let rich_text =
-                            egui::RichText::new(format!("{}", regular::STOP_CIRCLE))
+                            egui::RichText::new(regular::STOP_CIRCLE.to_string())
                                 .size(24.0)
                                 .color(stop_button_color);
 

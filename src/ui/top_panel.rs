@@ -1,12 +1,6 @@
-use crate::TemplateApp;
-use crate::ui::main_area::ReplaceUtils;
 use crate::version_check;
-use egui::{Context, ViewportCommand};
-use nus3audio::Nus3audioFile;
-use std::fs::File;
-use std::io::Write;
-use std::cell::RefCell;
-use std::sync::{Mutex, Once};
+use egui::Context;
+use std::sync::Once;
 
 // Modal dialog information
 #[derive(Clone, Default)]

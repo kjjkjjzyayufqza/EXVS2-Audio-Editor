@@ -120,7 +120,7 @@ impl AudioBackend for NativeAudioBackend {
         
         // Stop any currently playing audio
         if let Some(sink) = &self.sink {
-            let _ = sink.lock().unwrap().stop();
+            sink.lock().unwrap().stop();
         }
         
         // Reset position tracking
@@ -253,7 +253,7 @@ impl AudioBackend for NativeAudioBackend {
             
             // Stop current playback
             if let Some(sink) = &self.sink {
-                let _ = sink.lock().unwrap().stop();
+                sink.lock().unwrap().stop();
             }
             
             // Create a new sink
@@ -294,7 +294,7 @@ impl AudioBackend for NativeAudioBackend {
             
             // Stop current playback
             if let Some(sink) = &self.sink {
-                let _ = sink.lock().unwrap().stop();
+                sink.lock().unwrap().stop();
             }
             
             // Create a new sink

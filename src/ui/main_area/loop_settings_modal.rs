@@ -1,5 +1,4 @@
 use super::audio_file_info::AudioFileInfo;
-use super::replace_utils::ReplaceUtils;
 use egui::{Context, ScrollArea, Ui, Window};
 use rodio::{Decoder, Source};
 use std::io::Cursor;
@@ -64,7 +63,7 @@ impl LoopSettingsModal {
         let path = file_path;
 
         // Read the file
-        let file_data = match std::fs::read(&path) {
+        let file_data = match std::fs::read(path) {
             Ok(data) => {
                 println!("Read {} bytes from audio file", data.len());
                 data
@@ -86,7 +85,7 @@ impl LoopSettingsModal {
                     println!("Could not determine audio duration from rodio decoder, trying mp3_duration");
                     
                     // Try mp3_duration if rodio couldn't determine the duration
-                    match mp3_duration::from_path(&path) {
+                    match mp3_duration::from_path(path) {
                         Ok(duration) => {
                             let duration_secs = duration.as_secs_f32();
                             println!("MP3 duration: {:.2}s", duration_secs);
@@ -104,7 +103,7 @@ impl LoopSettingsModal {
                 println!("Failed to decode with rodio: {}, trying mp3_duration", e);
                 
                 // Try mp3_duration if rodio failed
-                match mp3_duration::from_path(&path) {
+                match mp3_duration::from_path(path) {
                     Ok(duration) => {
                         let duration_secs = duration.as_secs_f32();
                         println!("MP3 duration: {:.2}s", duration_secs);
