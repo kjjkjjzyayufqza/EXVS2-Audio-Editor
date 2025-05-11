@@ -220,22 +220,20 @@ impl ReplaceUtils {
             settings.insert(map_key, empty_loop_settings);
         }
         
-        // Open modal with current audio info
-        loop_settings_modal.open_with_audio(audio_file_info.clone());
-        
         // Create new AudioFileInfo with just the filename from the selected file
         // No actual replacement has happened yet
         let new_audio_info = AudioFileInfo {
-            name: audio_file_info.name.clone(),
+            name: filename.clone(),
             id: audio_file_info.id.clone(),
             size: audio_file_info.size,  // Keep original size for now
             filename,  // Show the new filename
             file_type: audio_file_info.file_type.clone(),
         };
+        // Open modal with new selected audio info
+        loop_settings_modal.open_with_audio(new_audio_info.clone(), selected_path.to_str().unwrap_or(""));
         
         Ok(new_audio_info)
     }
-    
     /// Process the replacement after loop settings are confirmed
     pub fn process_replacement_with_loop_settings(
         audio_file_info: &AudioFileInfo,
@@ -301,27 +299,7 @@ impl ReplaceUtils {
             None
         }
     }
-    
-    /// Get loop settings for a specific audio file
-    pub fn get_loop_settings(audio_name: &str, audio_id: &str) -> (Option<f32>, Option<f32>, bool) {
-        let key = format!("{}:{}", audio_name, audio_id);
-        if let Ok(map) = LOOP_SETTINGS.lock() {
-            map.get(&key).cloned().unwrap_or((None, None, false))
-        } else {
-            (None, None, false)
-        }
-    }
-    
-    /// Get the replacement file path for a specific audio file
-    pub fn get_replacement_file_path(audio_name: &str, audio_id: &str) -> Option<PathBuf> {
-        let key = format!("{}:{}", audio_name, audio_id);
-        if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
-            map.get(&key).cloned()
-        } else {
-            None
-        }
-    }
-    
+
     /// Clear all replacement data from memory
     pub fn clear_replacements() {
         if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {

@@ -21,6 +21,7 @@ eframe = { version = "0.31", default-features = false, features = [
     "x11",           # To support older Linux distributions (restores one of the default features)
 ] }
 log = "0.4.27"
+env_logger = "0.11.8"
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
@@ -30,6 +31,7 @@ egui-phosphor = "0.9.0"
 once_cell = "1.19.0"  # For lazy static initialization
 reqwest = { version = "0.11", features = ["json", "blocking"] }
 semver = "1.0"
+mp3-duration = "0.1.10"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

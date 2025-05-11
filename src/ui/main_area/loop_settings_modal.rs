@@ -3,6 +3,7 @@ use super::replace_utils::ReplaceUtils;
 use egui::{Context, ScrollArea, Ui, Window};
 use rodio::{Decoder, Source};
 use std::io::Cursor;
+use mp3_duration;
 
 /// Structure to hold loop settings
 #[derive(Clone, Debug)]
@@ -58,67 +59,85 @@ impl LoopSettingsModal {
     }
 
     /// Get the actual duration of an audio file by decoding it
-    fn get_actual_audio_duration(&self, audio_info: &AudioFileInfo) -> Option<f32> {
-        // Get the replacement file path using the public function
-        let file_path = ReplaceUtils::get_replacement_file_path(&audio_info.name, &audio_info.id);
+    fn get_actual_audio_duration(&self, file_path: &str) -> Option<f32> {
+        // Return early if no replacement file exists
+        let path = file_path;
 
-        if let Some(path) = file_path {
-            log::info!("Found replacement file for {}: {:?}", audio_info.name, path);
+        // Read the file
+        let file_data = match std::fs::read(&path) {
+            Ok(data) => {
+                println!("Read {} bytes from audio file", data.len());
+                data
+            }
+            Err(e) => {
+                println!("Failed to read audio file {:?}: {}", path, e);
+                return None;
+            }
+        };
 
-            // Try to read the file
-            match std::fs::read(&path) {
-                Ok(file_data) => {
-                    log::info!("Read {} bytes from audio file", file_data.len());
-
-                    // Try to decode the audio to get its actual duration
-                    match Decoder::new(Cursor::new(file_data)) {
-                        Ok(decoder) => match decoder.total_duration() {
-                            Some(duration) => {
-                                let duration_secs = duration.as_secs_f32();
-                                log::info!("Decoded audio duration: {:.2}s", duration_secs);
-                                return Some(duration_secs);
-                            }
-                            None => {
-                                log::warn!("Could not determine audio duration from decoder");
-                            }
-                        },
+        // Try to decode the audio with rodio to get its duration
+        match Decoder::new(Cursor::new(file_data)) {
+            Ok(decoder) => {
+                if let Some(duration) = decoder.total_duration() {
+                    let duration_secs = duration.as_secs_f32();
+                    println!("Decoded audio duration: {:.2}s", duration_secs);
+                    Some(duration_secs)
+                } else {
+                    println!("Could not determine audio duration from rodio decoder, trying mp3_duration");
+                    
+                    // Try mp3_duration if rodio couldn't determine the duration
+                    match mp3_duration::from_path(&path) {
+                        Ok(duration) => {
+                            let duration_secs = duration.as_secs_f32();
+                            println!("MP3 duration: {:.2}s", duration_secs);
+                            Some(duration_secs)
+                        }
                         Err(e) => {
-                            log::warn!("Failed to decode audio file: {}", e);
+                            println!("Failed to get mp3 duration: {}", e);
+                            // Return 0 as fallback
+                            Some(0.0)
                         }
                     }
                 }
-                Err(e) => {
-                    log::warn!("Failed to read audio file {:?}: {}", path, e);
+            }
+            Err(e) => {
+                println!("Failed to decode with rodio: {}, trying mp3_duration", e);
+                
+                // Try mp3_duration if rodio failed
+                match mp3_duration::from_path(&path) {
+                    Ok(duration) => {
+                        let duration_secs = duration.as_secs_f32();
+                        println!("MP3 duration: {:.2}s", duration_secs);
+                        Some(duration_secs)
+                    }
+                    Err(e) => {
+                        println!("Failed to get mp3 duration: {}", e);
+                        // Return 0 as fallback
+                        Some(0.0)
+                    }
                 }
             }
-        } else {
-            log::info!("No replacement file found for {}", audio_info.name);
         }
-
-        None
     }
 
     /// Open the modal with audio info
-    pub fn open_with_audio(&mut self, audio_info: AudioFileInfo) {
+    pub fn open_with_audio(&mut self, audio_info: AudioFileInfo, file_path: &str) {
         self.audio_info = Some(audio_info.clone());
-
         // First try to get the actual duration from the audio file
-        let duration = match self.get_actual_audio_duration(&audio_info) {
+        let duration = match self.get_actual_audio_duration(file_path) {
             Some(actual_duration) => {
-                log::info!(
+                println!(
                     "Using actual duration for {}: {:.2}s",
-                    audio_info.name,
-                    actual_duration
+                    audio_info.name, actual_duration
                 );
                 actual_duration
             }
             None => {
                 // Fall back to estimation if we couldn't get the actual duration
                 let estimated = Self::estimate_duration_from_size(audio_info.size);
-                log::info!(
+                println!(
                     "Using estimated duration for {}: {:.2}s",
-                    audio_info.name,
-                    estimated
+                    audio_info.name, estimated
                 );
                 estimated
             }
@@ -174,7 +193,7 @@ impl LoopSettingsModal {
                 ui.add_space(10.0);
             });
 
-            // Audio information section
+            // Audio information section - simplified to only show name
             ScrollArea::vertical().show(ui, |ui| {
                 egui::Grid::new("audio_info_grid")
                     .num_columns(2)
@@ -183,22 +202,6 @@ impl LoopSettingsModal {
                     .show(ui, |ui| {
                         ui.label("Name:");
                         ui.label(&audio_info.name);
-                        ui.end_row();
-
-                        ui.label("ID:");
-                        ui.label(&audio_info.id);
-                        ui.end_row();
-
-                        ui.label("Size:");
-                        ui.label(format!("{} bytes", audio_info.size));
-                        ui.end_row();
-
-                        ui.label("File Type:");
-                        ui.label(&audio_info.file_type);
-                        ui.end_row();
-
-                        ui.label("Duration:");
-                        ui.label(format!("{:.2}s", self.settings.estimated_duration));
                         ui.end_row();
                     });
 

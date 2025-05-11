@@ -1,5 +1,5 @@
 /// Structure to hold audio file information
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AudioFileInfo {
     pub name: String,
     pub id: String,
