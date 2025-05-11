@@ -318,6 +318,15 @@ impl ReplaceUtils {
         }
     }
 
+    /// Get a reference to the loop settings map
+    pub fn get_loop_settings() -> Result<std::sync::MutexGuard<'static, HashMap<String, (Option<f32>, Option<f32>, bool)>>, String> {
+        if let Ok(settings) = LOOP_SETTINGS.lock() {
+            Ok(settings)
+        } else {
+            Err("Failed to access loop settings".to_string())
+        }
+    }
+
     /// Clear all replacement data from memory
     pub fn clear_replacements() {
         if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {

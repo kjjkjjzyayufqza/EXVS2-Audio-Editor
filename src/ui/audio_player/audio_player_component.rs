@@ -131,6 +131,22 @@ impl AudioPlayer {
         let mut state = self.audio_state.lock().unwrap();
         state.set_audio(audio);
         
+        // 重置循环设置为默认值
+        state.set_loop_points(None, None, false);
+        
+        // 获取音频特定的循环设置（如果存在）
+        let key = format!("{}:{}", file_info.name, file_info.id);
+        if let Ok(settings_map) = crate::ui::main_area::ReplaceUtils::get_loop_settings() {
+            if let Some(&(start, end, use_custom)) = settings_map.get(&key) {
+                // 仅为此音频应用循环设置
+                log::info!("Applied custom loop settings for {}: start={:?}, end={:?}, use_custom={}", 
+                          file_info.name, start, end, use_custom);
+                state.set_loop_points(start, end, use_custom);
+            } else {
+                log::info!("No custom loop settings found for: {}", file_info.name);
+            }
+        }
+        
         // Duration will be determined by the audio backend when playback starts
         // We still set an estimated duration for the UI until playback begins
         let estimated_duration = estimate_duration_from_size(file_info.size);

@@ -303,8 +303,8 @@ impl MainArea {
                                             let mut state = state.lock().unwrap();
                                             state.set_audio(audio);
                                             
-                                            // Apply loop settings to audio player
-                                            state.set_loop_points(loop_start, loop_end, use_custom_loop);
+                                            // AudioPlayer.load_audio 会自动应用特定音频文件的循环设置
+                                            // 因此我们不需要在这里设置循环点
                                         }
                                     }
                                     
