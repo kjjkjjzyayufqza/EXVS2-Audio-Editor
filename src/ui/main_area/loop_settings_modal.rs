@@ -122,6 +122,9 @@ impl LoopSettingsModal {
 
     /// Open the modal with audio info
     pub fn open_with_audio(&mut self, audio_info: AudioFileInfo, file_path: &str) {
+        println!("Opening loop settings modal for audio: {} (ID: {})", audio_info.name, audio_info.id);
+        println!("Selected replacement file: {}", file_path);
+        
         self.audio_info = Some(audio_info.clone());
         // First try to get the actual duration from the audio file
         let duration = match self.get_actual_audio_duration(file_path) {

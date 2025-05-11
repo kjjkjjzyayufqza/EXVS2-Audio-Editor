@@ -205,7 +205,7 @@ impl ReplaceUtils {
             }
         }
         
-        // Create key for hashmaps
+        // Create key for hashmaps - Use the original audio name and ID
         let map_key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
         
         // Store file path only - no audio data is replaced yet
@@ -220,16 +220,17 @@ impl ReplaceUtils {
             settings.insert(map_key, empty_loop_settings);
         }
         
-        // Create new AudioFileInfo with just the filename from the selected file
-        // No actual replacement has happened yet
+        // 创建一个新的AudioFileInfo，但保持原始的name和id
+        // 只更新filename字段为新选择的文件
         let new_audio_info = AudioFileInfo {
-            name: filename.clone(),
-            id: audio_file_info.id.clone(),
-            size: audio_file_info.size,  // Keep original size for now
-            filename,  // Show the new filename
+            name: audio_file_info.name.clone(), // 保持原始name
+            id: audio_file_info.id.clone(),     // 保持原始id
+            size: audio_file_info.size,         // 保持原始大小
+            filename: filename,                 // 显示新文件名
             file_type: audio_file_info.file_type.clone(),
         };
-        // Open modal with new selected audio info
+        
+        // 打开modal并传递新选择的音频信息
         loop_settings_modal.open_with_audio(new_audio_info.clone(), selected_path.to_str().unwrap_or(""));
         
         Ok(new_audio_info)
@@ -242,21 +243,39 @@ impl ReplaceUtils {
         loop_end: Option<f32>,
         use_custom_loop: bool
     ) -> Result<AudioFileInfo, String> {
+        // 打印调试信息
+        println!("Attempting to process replacement for: {} (ID: {})", audio_file_info.name, audio_file_info.id);
+        
+        // Create key for hashmaps - Use the original audio name and ID
+        let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
+        println!("Using hashmap key: {}", key);
+        
         // Get the file path from the provided path or from the stored paths
         let actual_file_path = if let Some(path) = file_path {
+            println!("Using provided file path: {:?}", path);
             path.to_path_buf()
         } else {
-            let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
+            // 打印存储的所有文件路径键，用于诊断
+            if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
+                println!("Available replacement files in storage:");
+                for (k, v) in map.iter() {
+                    println!("  Key: {}, Path: {:?}", k, v);
+                }
+            }
+            
             if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
                 if let Some(path) = map.get(&key) {
+                    println!("Found stored file path: {:?}", path);
                     path.clone()
                 } else {
-                    return Err("No replacement file path found".to_string());
+                    return Err(format!("No replacement file path found for key: {}", key));
                 }
             } else {
                 return Err("Failed to access replacement file paths".to_string());
             }
         };
+        
+        println!("Using actual file path: {:?}", actual_file_path);
         
         // Process the selected file with vgmstream to add loop points
         let processed_path = match Self::process_with_vgmstream(&actual_file_path, loop_start, loop_end, use_custom_loop) {
@@ -273,7 +292,6 @@ impl ReplaceUtils {
         let result = Self::replace_in_memory(audio_file_info, processed_path.to_str().unwrap());
         
         // Store loop settings
-        let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
             settings.insert(key, (loop_start, loop_end, use_custom_loop));
         }

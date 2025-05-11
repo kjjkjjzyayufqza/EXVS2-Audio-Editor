@@ -219,6 +219,9 @@ impl MainArea {
                 let selected_file = self.selected_file.clone();
 
                 if let Some(file_path) = &selected_file {
+                    // 打印替换操作的详细信息
+                    println!("Starting replacement for audio: {} (ID: {})", audio_info.name, audio_info.id);
+                    
                     // Use ReplaceUtils to open file dialog and show loop settings modal
                     // This doesn't replace the audio in memory yet - just stores the file path
                     match ReplaceUtils::replace_with_file_dialog(audio_info, &mut self.loop_settings_modal) {
@@ -261,6 +264,9 @@ impl MainArea {
                     };
                     
                     let use_custom_loop = self.loop_settings_modal.settings.use_custom_loop;
+                    
+                    // 在这里打印调试信息，帮助我们理解处理过程
+                    println!("Processing replacement for audio: {} (ID: {})", audio_info.name, audio_info.id);
                     
                     // Use the stored file path instead of asking the user to reselect the file
                     // Process the replacement with the confirmed loop settings
@@ -322,6 +328,9 @@ impl MainArea {
                                 format!("Failed to process replacement: {}", e),
                                 Color32::RED,
                             ));
+                            
+                            // 错误时添加更多调试信息
+                            println!("Replacement error details: {}", e);
                         }
                     }
                 }
