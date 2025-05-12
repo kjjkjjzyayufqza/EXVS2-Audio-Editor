@@ -1,6 +1,7 @@
 use crate::version_check;
 use egui::Context;
-use std::sync::Once;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 
 // Modal dialog information
 #[derive(Clone, Default)]
@@ -14,46 +15,33 @@ struct ModalInfo {
     link_url: String,
 }
 
-// Use a simple type to store our modal state
-static mut MODAL_INFO: Option<ModalInfo> = None;
-static INIT: Once = Once::new();
+// Using Lazy and Mutex for thread-safe access to modal info
+static MODAL_INFO: Lazy<Mutex<ModalInfo>> = Lazy::new(|| {
+    Mutex::new(ModalInfo::default())
+});
 
 // Helper functions to manage the modal state
-fn init_modal() {
-    INIT.call_once(|| {
-        unsafe {
-            MODAL_INFO = Some(ModalInfo::default());
-        }
-    });
-}
-
 fn show_modal(title: &str, message: &str, is_error: bool) {
-    init_modal();
-    unsafe {
-        if let Some(modal) = &mut MODAL_INFO {
-            modal.open = true;
-            modal.title = title.to_string();
-            modal.message = message.to_string();
-            modal.is_error = is_error;
-            modal.has_link = false;
-            modal.link_text = String::new();
-            modal.link_url = String::new();
-        }
+    if let Ok(mut modal) = MODAL_INFO.lock() {
+        modal.open = true;
+        modal.title = title.to_string();
+        modal.message = message.to_string();
+        modal.is_error = is_error;
+        modal.has_link = false;
+        modal.link_text = String::new();
+        modal.link_url = String::new();
     }
 }
 
 fn show_modal_with_link(title: &str, message: &str, link_text: &str, link_url: &str, is_error: bool) {
-    init_modal();
-    unsafe {
-        if let Some(modal) = &mut MODAL_INFO {
-            modal.open = true;
-            modal.title = title.to_string();
-            modal.message = message.to_string();
-            modal.is_error = is_error;
-            modal.has_link = true;
-            modal.link_text = link_text.to_string();
-            modal.link_url = link_url.to_string();
-        }
+    if let Ok(mut modal) = MODAL_INFO.lock() {
+        modal.open = true;
+        modal.title = title.to_string();
+        modal.message = message.to_string();
+        modal.is_error = is_error;
+        modal.has_link = true;
+        modal.link_text = link_text.to_string();
+        modal.link_url = link_url.to_string();
     }
 }
 
@@ -63,44 +51,45 @@ pub struct TopPanel;
 impl TopPanel {
     /// Display the top menu panel
     pub fn show(ctx: &Context, app: Option<&mut crate::TemplateApp>) {
-        init_modal();
-        
         // Check for version updates
         TopPanel::check_for_updates(ctx);
         
         // Show modal dialog if needed
         let mut should_close_modal = false;
-        
-        unsafe {
-            if let Some(modal) = &MODAL_INFO {
-                if modal.open {
-                    egui::Window::new(&modal.title)
-                        .collapsible(false)
-                        .resizable(false)
-                        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                        .show(ctx, |ui| {
-                            ui.label(&modal.message);
-                            
-                            if modal.has_link {
-                                ui.hyperlink_to(&modal.link_text, &modal.link_url);
-                            }
-                            
-                            ui.add_space(8.0);
-                            
-                            if ui.button("OK").clicked() {
-                                should_close_modal = true;
-                            }
-                        });
-                }
+        let modal_data = if let Ok(modal) = MODAL_INFO.lock() {
+            if modal.open {
+                Some(modal.clone())
+            } else {
+                None
             }
+        } else {
+            None
+        };
+        
+        if let Some(modal) = modal_data {
+            egui::Window::new(&modal.title)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(&modal.message);
+                    
+                    if modal.has_link {
+                        ui.hyperlink_to(&modal.link_text, &modal.link_url);
+                    }
+                    
+                    ui.add_space(8.0);
+                    
+                    if ui.button("OK").clicked() {
+                        should_close_modal = true;
+                    }
+                });
         }
         
         // Update modal state after the window is displayed
         if should_close_modal {
-            unsafe {
-                if let Some(modal) = &mut MODAL_INFO {
-                    modal.open = false;
-                }
+            if let Ok(mut modal) = MODAL_INFO.lock() {
+                modal.open = false;
             }
         }
         
@@ -179,11 +168,11 @@ impl TopPanel {
     /// Check for updates and show notification if a new version is available
     fn check_for_updates(_ctx: &Context) {
         // Only show update notice once per session
-        static mut SHOWN_UPDATE_NOTICE: bool = false;
+        static SHOWN_UPDATE_NOTICE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
         
         // If we've already shown the notice, don't do anything else
-        unsafe {
-            if SHOWN_UPDATE_NOTICE {
+        if let Ok(shown) = SHOWN_UPDATE_NOTICE.lock() {
+            if *shown {
                 return;
             }
         }
@@ -216,19 +205,19 @@ impl TopPanel {
         
         // Show the update notice if we have the data
         if let Some((current_version, latest_version, download_url)) = check_result {
-            unsafe {
-                // Show update available notice
-                show_modal_with_link(
-                    "Update Available",
-                    &format!("A new version of EXVS2 Audio Editor is available!\n\nCurrent version: {}\nLatest version: {}\n\nClick the link below to download:",
-                        current_version, latest_version),
-                    "Download latest version",
-                    &download_url,
-                    false
-                );
-                
-                // Mark that we've shown the notice
-                SHOWN_UPDATE_NOTICE = true;
+            // Show update available notice
+            show_modal_with_link(
+                "Update Available",
+                &format!("A new version of EXVS2 Audio Editor is available!\n\nCurrent version: {}\nLatest version: {}\n\nClick the link below to download:",
+                    current_version, latest_version),
+                "Download latest version",
+                &download_url,
+                false
+            );
+            
+            // Mark that we've shown the notice
+            if let Ok(mut shown) = SHOWN_UPDATE_NOTICE.lock() {
+                *shown = true;
             }
         }
     }

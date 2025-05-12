@@ -1,4 +1,4 @@
-use egui::{Context, Frame, Rounding, Stroke, Ui};
+use egui::{Context, Frame, CornerRadius, Stroke, Ui};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use nus3audio::Nus3audioFile;
@@ -44,7 +44,7 @@ impl AudioPlayer {
         // Display audio player in a bottom panel
         egui::TopBottomPanel::bottom("audio_player_panel")
             .min_height(120.0)  // Increased height for better UX
-            .frame(egui::Frame::none().fill(ctx.style().visuals.panel_fill))
+            .frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill))
             .resizable(false)
             .show(ctx, |ui| {
                 self.render(ui);
@@ -55,7 +55,7 @@ impl AudioPlayer {
     pub fn render(&mut self, ui: &mut Ui) {
         // Use a frame to make it look nicer with gradient background
         Frame::group(ui.style())
-            .rounding(Rounding::same(8))
+            .corner_radius(CornerRadius::same(8))
             .stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
             .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {

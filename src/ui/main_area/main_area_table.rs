@@ -172,7 +172,6 @@ impl MainArea {
         }
 
         // Handle "Play" action if clicked
-        let mut play_started = false;
         if let Some(idx) = action_data.play_index {
             if idx < filtered_audio_files.len() {
                 let audio_info = &filtered_audio_files[idx];
@@ -188,7 +187,6 @@ impl MainArea {
                                 let mut state = state.lock().unwrap();
                                 if !state.is_playing {
                                     state.toggle_play();
-                                    play_started = true;
                                 }
 
                                 toasts_to_add
@@ -215,7 +213,7 @@ impl MainArea {
                 let audio_info = &filtered_audio_files[idx];
                 let selected_file = self.selected_file.clone();
 
-                if let Some(file_path) = &selected_file {
+                if let Some(_file_path) = &selected_file {
                     // 打印替换操作的详细信息
                     println!("Starting replacement for audio: {} (ID: {})", audio_info.name, audio_info.id);
                     

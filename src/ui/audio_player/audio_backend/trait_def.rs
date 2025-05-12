@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 /// Audio playback backend trait
 /// Defines the interface for platform-specific audio playback implementations
+#[allow(dead_code)]
 pub trait AudioBackend: std::fmt::Debug {
     /// Initialize the audio backend
     fn init(&mut self) -> Result<(), String>;

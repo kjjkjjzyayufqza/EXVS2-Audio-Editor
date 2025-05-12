@@ -1,7 +1,6 @@
 use egui::{
     Align2, Color32, Context, Rect, Vec2, Ui
 };
-use std::time::Instant;
 
 use super::main_area_core::MainArea;
 
@@ -19,7 +18,6 @@ impl MainArea {
     /// Render the main area content
     pub fn render(&mut self, ui: &mut Ui) {
         // First, clean up expired toast messages
-        let now = Instant::now();
         self.toast_messages.retain(|toast| !toast.has_expired());
         let available_height = ui.available_height();
         let available_width = ui.available_width();
@@ -51,7 +49,7 @@ impl MainArea {
                 ui.heading("NUS3AUDIO Info Display");
 
                 // Display file info if available
-                if let Some(audio_files) = &self.audio_files {
+                if let Some(_audio_files) = &self.audio_files {
                     ui.add_space(10.0);
 
                     // Display file count

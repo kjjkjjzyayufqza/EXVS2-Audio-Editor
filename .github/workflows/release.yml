@@ -129,5 +129,4 @@ jobs:
         prerelease: false
         files: |
           exvs2-audio-editor-v${{ env.VERSION }}.zip
-          release-package/${{ matrix.artifact_name }}
         token: ${{ secrets.RELEASE_TOKEN }}

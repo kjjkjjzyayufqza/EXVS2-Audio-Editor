@@ -1,4 +1,4 @@
-use egui::{Color32, Frame, Rounding, Stroke, Ui};
+use egui::{Color32, CornerRadius, Frame, Stroke, Ui};
 
 use super::main_area_core::MainArea;
 
@@ -7,7 +7,7 @@ impl MainArea {
     pub fn render_output_path(&mut self, ui: &mut Ui) {
         Frame::group(ui.style())
             .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-            .rounding(Rounding::same(5))
+            .corner_radius(CornerRadius::same(5))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Output Path");

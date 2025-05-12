@@ -1,4 +1,4 @@
-use egui::{Frame, Rounding, Stroke, Ui};
+use egui::{Frame, CornerRadius, Stroke, Ui};
 
 use super::main_area_core::MainArea;
 use super::search_column::SearchColumn;
@@ -8,7 +8,7 @@ impl MainArea {
     pub fn render_search_box(&mut self, ui: &mut Ui) {
         Frame::group(ui.style())
             .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-            .rounding(Rounding::same(5))
+            .corner_radius(CornerRadius::same(5))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Search");
@@ -38,7 +38,7 @@ impl MainArea {
                     // Column selection
                     ui.horizontal(|ui| {
                         ui.label("Search in:");
-                        egui::ComboBox::from_id_source("search_column")
+                        egui::ComboBox::from_id_salt("search_column")
                             .selected_text(self.search_column.display_name())
                             .show_ui(ui, |ui| {
                                 for column in SearchColumn::all_columns() {

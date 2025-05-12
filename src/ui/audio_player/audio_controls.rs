@@ -1,5 +1,5 @@
 use super::audio_state::AudioState;
-use egui::{widgets::Slider, Color32, Frame, RichText, Rounding, Stroke, Ui, Vec2};
+use egui::{widgets::Slider, Color32, Frame, RichText, CornerRadius, Stroke, Ui, Vec2};
 use egui_phosphor::regular;
 use std::sync::{Arc, Mutex};
 
@@ -34,7 +34,7 @@ impl AudioControls {
 
         // Frame around the controls
         Frame::group(ui.style())
-            .rounding(Rounding::same(6))
+            .corner_radius(CornerRadius::same(6))
             .stroke(Stroke::new(
                 1.0,
                 ui.visuals().widgets.noninteractive.bg_stroke.color,
@@ -85,7 +85,7 @@ impl AudioControls {
                         }
 
                         // Volume button with phosphor icon
-                        let (volume_icon, icon_name) =
+                        let (volume_icon, _icon_name) =
                             if state_copy.is_muted || state_copy.volume <= 0.0 {
                                 (regular::SPEAKER_NONE, "SPEAKER_NONE")
                             } else if state_copy.volume < 0.33 {
@@ -143,8 +143,8 @@ impl AudioControls {
 
                             // Only update position if slider has been released to avoid
                             // constant reloading while dragging
-                            if slider_response.drag_released() && has_audio {
-                                let mut state = self.audio_state.lock().unwrap();
+                            if slider_response.drag_stopped() && has_audio {
+                                let mut state: std::sync::MutexGuard<'_, AudioState> = self.audio_state.lock().unwrap();
                                 let new_position = progress * state.total_duration;
                                 state.set_position(new_position);
                             }
@@ -163,7 +163,7 @@ impl AudioControls {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Play/pause button with phosphor icons
-                        let (play_icon, icon_name, play_color) = if state_copy.is_playing {
+                        let (play_icon, _icon_name, play_color) = if state_copy.is_playing {
                             (
                                 regular::PAUSE_CIRCLE,
                                 "PAUSE_CIRCLE",
