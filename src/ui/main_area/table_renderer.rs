@@ -1,5 +1,5 @@
 use egui::{
-    Button, Color32, Grid, Rect, RichText, ScrollArea, Stroke, TextWrapMode, Ui, Vec2,
+    Button, Color32, Grid, Layout, Rect, RichText, ScrollArea, Stroke, TextWrapMode, Ui, Vec2, Direction,
 };
 use std::collections::HashSet;
 use super::audio_file_info::AudioFileInfo;
@@ -325,73 +325,59 @@ impl TableRenderer {
                         };
 
                         ui.add_sized([col_width_type, row_height], egui::Label::new(type_text));
-                        // Column 6: Actions - Add Play, Export, and Replace buttons
-                        // Constrain the horizontal layout to the available width for the action column
-                        // Create action buttons directly in the grid cell
-                        // Create a simpler approach for the action buttons using labels and buttons
-                        ui.horizontal(|ui| {
-                            let available_button_width = col_action - 10.0;
-                            
-                            // Dynamically adjust button sizes based on available width
-                            let compact_mode = available_button_width < 180.0;
-                            
-                            let play_width = if compact_mode { 28.0 } else { 30.0 };
-                            let action_width = if compact_mode { 60.0 } else { 70.0 };
-                            let spacing = if compact_mode { 2.0 } else { 5.0 };
-                            
-                            // Play button - always show as it's smallest
-                            if ui.add_sized(
-                                [play_width, 20.0],
-                                Button::new(RichText::new(egui_phosphor::regular::PLAY.to_string())
-                                    .size(text_size)
-                                    .color(Color32::from_rgb(100, 255, 150)))
-                            ).clicked() {
-                                // Call the callback to play audio
-                                on_play_clicked(row_index);
-                            }
-                            
-                            ui.add_space(spacing);
-                            
-                            // For extremely narrow windows, we might need to skip showing some buttons
-                            if available_button_width >= (play_width + spacing + action_width) {
-                                // Export button
-                                let export_text = if compact_mode {
-                                    RichText::new(egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string()).size(text_size)
-                                } else {
-                                    RichText::new(format!("{} Export", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
-                                };
-                                
-                                if ui.add_sized(
-                                    [action_width, 20.0],
-                                    Button::new(export_text)
-                                ).clicked() {
-                                    // Call the callback to handle the export
-                                    on_export_clicked(row_index);
-                                }
-                            
-                                ui.add_space(spacing);
-                                
-                                // Replace button - only show if there's enough space
-                                if available_button_width >= (play_width + spacing + action_width + spacing + action_width) {
-                                    let replace_text = if compact_mode {
-                                        RichText::new(egui_phosphor::regular::SWAP.to_string())
+                        // Column 6: Actions - Add Play, Export, and Replace buttons centered in the cell
+                        let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_action, row_height));
+                        
+                        // Allocate a UI at the cell_rect and then apply layout within it
+                        ui.allocate_ui_at_rect(cell_rect, |centered_ui_in_rect| {
+                            centered_ui_in_rect.with_layout(Layout::centered_and_justified(Direction::LeftToRight), |button_group_parent_ui|{
+                                // Use horizontal layout within the centered cell for the buttons
+                                button_group_parent_ui.horizontal(|button_ui| {
+                                    let available_button_width = cell_rect.width(); // Use full cell width for internal logic
+                                    let compact_mode = available_button_width < 180.0; 
+                                    let spacing = if compact_mode { 2.0 } else { 5.0 };
+
+                                    // --- Play Button ---
+                                    let play_button = button_ui.add(
+                                        Button::new(RichText::new(egui_phosphor::regular::PLAY.to_string())
                                             .size(text_size)
-                                            .color(Color32::from_rgb(255, 180, 100))
-                                    } else {
-                                        RichText::new(format!("{} Replace", egui_phosphor::regular::SWAP))
-                                            .size(text_size)
-                                            .color(Color32::from_rgb(255, 180, 100))
-                                    };
-                                    
-                                    if ui.add_sized(
-                                        [action_width, 20.0],
-                                        Button::new(replace_text)
-                                    ).clicked() {
-                                        // Call the callback to handle the replace
-                                        on_replace_clicked(row_index);
+                                            .color(Color32::from_rgb(100, 255, 150)))
+                                    );
+                                    if play_button.clicked() { on_play_clicked(row_index); }
+        
+                                    let mut remaining_width = available_button_width - play_button.rect.width();
+        
+                                    let estimated_export_width = if compact_mode { 30.0 } else { 80.0 }; 
+                                    if remaining_width >= spacing + estimated_export_width {
+                                        button_ui.add_space(spacing);
+                                        let export_text = if compact_mode {
+                                            RichText::new(egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string()).size(text_size)
+                                        } else {
+                                            RichText::new(format!("{} Export", egui_phosphor::regular::DOWNLOAD_SIMPLE)).size(text_size)
+                                        };
+                                        let export_button = button_ui.add(Button::new(export_text));
+                                        if export_button.clicked() { on_export_clicked(row_index); }
+        
+                                        remaining_width -= spacing + export_button.rect.width();
+        
+                                        let estimated_replace_width = if compact_mode { 30.0 } else { 85.0 }; 
+                                        if remaining_width >= spacing + estimated_replace_width {
+                                            button_ui.add_space(spacing);
+                                            let replace_text = if compact_mode {
+                                                RichText::new(egui_phosphor::regular::SWAP.to_string())
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(255, 180, 100))
+                                            } else {
+                                                RichText::new(format!("{} Replace", egui_phosphor::regular::SWAP))
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(255, 180, 100))
+                                            };
+                                            let replace_button = button_ui.add(Button::new(replace_text));
+                                            if replace_button.clicked() { on_replace_clicked(row_index); }
+                                        }
                                     }
-                                }
-                            }
+                                });
+                            });
                         });
 
                         ui.end_row();
