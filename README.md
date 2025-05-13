@@ -2,7 +2,7 @@
 
 A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extreme VS 2) game.
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 
 ## Overview
 
@@ -102,6 +102,10 @@ See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
 - [egui](https://github.com/emilk/egui) - Immediate mode GUI library for Rust
 - [nus3audio](https://crates.io/crates/nus3audio) - Library for handling NUS3AUDIO format files
 - [vgmstream](https://github.com/vgmstream/vgmstream) - Audio stream player for video games
+
+## AI Assistance
+
+Parts of the code in this project were generated with the assistance of AI.
 
 ## Contributing
 
