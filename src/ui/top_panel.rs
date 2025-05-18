@@ -154,7 +154,8 @@ impl TopPanel {
                         // Show about modal with project information
                         show_modal_with_link(
                             "About EXVS2 Audio Editor",
-                            "EXVS2 Audio Editor\n\nA tool for editing audio files in EXVS2 game.",
+                            &format!("EXVS2 Audio Editor\n\nVersion: {}\n\nA tool for editing audio files in EXVS2 game.", 
+                                env!("CARGO_PKG_VERSION")),
                             "Source: https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor",
                             "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor",
                             false
