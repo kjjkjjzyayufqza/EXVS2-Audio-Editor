@@ -10,6 +10,9 @@ impl MainArea {
         // Show the loop settings modal if open
         self.loop_settings_modal.show(ctx);
         
+        // Show the add audio modal if open
+        self.add_audio_modal.show(ctx);
+        
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render(ui);
         });

@@ -7,7 +7,8 @@ use super::{
     search_column::SearchColumn, 
     audio_file_info::AudioFileInfo,
     toast_message::ToastMessage,
-    loop_settings_modal::LoopSettingsModal
+    loop_settings_modal::LoopSettingsModal,
+    add_audio_modal::AddAudioModal
 };
 
 /// Main editing area component
@@ -49,6 +50,10 @@ pub struct MainArea {
     // Loop settings modal window
     #[serde(skip)]
     pub loop_settings_modal: LoopSettingsModal,
+    
+    // Add audio modal window
+    #[serde(skip)]
+    pub add_audio_modal: AddAudioModal,
 }
 
 impl Default for MainArea {
@@ -89,6 +94,9 @@ impl MainArea {
             
             // Initialize loop settings modal
             loop_settings_modal: LoopSettingsModal::new(),
+            
+            // Initialize add audio modal
+            add_audio_modal: AddAudioModal::new(),
         }
     }
     

@@ -5,6 +5,8 @@ mod table_renderer;
 mod export_utils;
 mod replace_utils;
 mod loop_settings_modal;
+mod add_audio_modal;
+mod add_audio_utils;
 
 // New modular components
 mod sort_column;
@@ -22,3 +24,4 @@ pub use main_component::MainArea;
 pub use audio_file_info::AudioFileInfo;
 pub use replace_utils::ReplaceUtils;
 pub use export_utils::ExportUtils;
+pub use add_audio_utils::AddAudioUtils;

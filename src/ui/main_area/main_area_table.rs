@@ -2,7 +2,7 @@ use egui::{Color32, Frame, Stroke, Ui};
 
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
-    replace_utils::ReplaceUtils, table_renderer::TableRenderer,
+    replace_utils::ReplaceUtils, table_renderer::TableRenderer, add_audio_utils::AddAudioUtils,
 };
 
 impl MainArea {
@@ -22,6 +22,7 @@ impl MainArea {
             play_index: Option<usize>,
             replace_index: Option<usize>,
             export_all: bool,
+            add_audio: bool,
         }
 
         let mut action_data = ActionData {
@@ -29,6 +30,7 @@ impl MainArea {
             play_index: None,
             replace_index: None,
             export_all: false,
+            add_audio: false,
         };
 
         // First, render the UI
@@ -42,10 +44,17 @@ impl MainArea {
                         // Table header
                         ui.heading("Audio File List");
 
-                        // Capture Export All button click, don't act on it yet
-                        if ui.button("Export All").clicked() {
-                            action_data.export_all = true;
-                        }
+                        ui.horizontal(|ui| {
+                            // Capture Export All button click, don't act on it yet
+                            if ui.button("Export All").clicked() {
+                                action_data.export_all = true;
+                            }
+
+                            if ui.button("Add Audio").clicked() {
+                                println!("Add Audio button clicked");
+                                action_data.add_audio = true;
+                            }
+                        });
 
                         // File count display
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -102,6 +111,28 @@ impl MainArea {
         let mut toasts_to_add = Vec::new();
 
         // Process all actions and collect toast messages
+
+        // Handle "Add Audio" action if clicked
+        if action_data.add_audio {
+            let selected_file = self.selected_file.clone();
+            
+            if let Some(file_path) = &selected_file {
+                // Use AddAudioUtils to open file dialog and show add audio modal
+                match AddAudioUtils::add_with_file_dialog(&mut self.add_audio_modal, self.audio_files.clone()) {
+                    Ok(_) => {
+                        toasts_to_add.push((
+                            "Please configure settings for the new audio file".to_string(),
+                            Color32::GOLD,
+                        ));
+                    }
+                    Err(e) => {
+                        toasts_to_add.push((format!("Add audio failed: {}", e), Color32::RED));
+                    }
+                }
+            } else {
+                toasts_to_add.push(("No file selected".to_string(), Color32::RED));
+            }
+        }
 
         // Handle "Export All" action if clicked
         if action_data.export_all {
@@ -206,7 +237,7 @@ impl MainArea {
                 }
             }
         }
-        
+
         // Handle "Replace" action if clicked
         if let Some(idx) = action_data.replace_index {
             if idx < filtered_audio_files.len() {
@@ -215,11 +246,17 @@ impl MainArea {
 
                 if let Some(_file_path) = &selected_file {
                     // 打印替换操作的详细信息
-                    println!("Starting replacement for audio: {} (ID: {})", audio_info.name, audio_info.id);
-                    
+                    println!(
+                        "Starting replacement for audio: {} (ID: {})",
+                        audio_info.name, audio_info.id
+                    );
+
                     // Use ReplaceUtils to open file dialog and show loop settings modal
                     // This doesn't replace the audio in memory yet - just stores the file path
-                    match ReplaceUtils::replace_with_file_dialog(audio_info, &mut self.loop_settings_modal) {
+                    match ReplaceUtils::replace_with_file_dialog(
+                        audio_info,
+                        &mut self.loop_settings_modal,
+                    ) {
                         Ok(_) => {
                             // Don't update the display information yet
                             // Wait until the loop settings are confirmed before making any changes
@@ -237,12 +274,43 @@ impl MainArea {
                 }
             }
         }
-        
+
+        // Check if add audio modal was confirmed
+        if self.add_audio_modal.confirmed {
+            // Reset the confirmed flag
+            self.add_audio_modal.confirmed = false;
+
+            // Get the selected file
+            if let Some(file_path) = &self.selected_file {
+                // Process the new audio file
+                match AddAudioUtils::process_new_audio(&self.add_audio_modal, file_path) {
+                    Ok(new_audio_info) => {
+                        // Update the audio file list in memory
+                        if let Some(ref mut audio_files) = self.audio_files {
+                            // Add the new audio file to the list
+                            audio_files.push(new_audio_info.clone());
+                            
+                            // Update file count
+                            self.file_count = Some(audio_files.len());
+                            
+                            toasts_to_add.push((
+                                format!("Successfully added new audio: {}", new_audio_info.name),
+                                Color32::GREEN,
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        toasts_to_add.push((format!("Failed to add audio: {}", e), Color32::RED));
+                    }
+                }
+            }
+        }
+
         // Check if loop settings modal was confirmed
         if self.loop_settings_modal.confirmed {
             // Reset the confirmed flag
             self.loop_settings_modal.confirmed = false;
-            
+
             if let Some(audio_info) = &self.loop_settings_modal.audio_info {
                 if let Some(file_path) = &self.selected_file {
                     // Get loop settings from the modal
@@ -251,36 +319,46 @@ impl MainArea {
                     } else {
                         None
                     };
-                    
+
                     let loop_end = if self.loop_settings_modal.settings.use_custom_loop {
                         self.loop_settings_modal.settings.loop_end
                     } else {
                         None
                     };
-                    
+
                     let use_custom_loop = self.loop_settings_modal.settings.use_custom_loop;
-                    
+
                     // 在这里打印调试信息，帮助我们理解处理过程
-                    println!("Processing replacement for audio: {} (ID: {})", audio_info.name, audio_info.id);
-                    
+                    println!(
+                        "Processing replacement for audio: {} (ID: {})",
+                        audio_info.name, audio_info.id
+                    );
+
                     // Use the stored file path instead of asking the user to reselect the file
                     // Process the replacement with the confirmed loop settings
                     match ReplaceUtils::process_replacement_with_loop_settings(
                         audio_info,
-                        None,  // Pass None to use the stored file path
+                        None, // Pass None to use the stored file path
                         loop_start,
                         loop_end,
-                        use_custom_loop
+                        use_custom_loop,
                     ) {
                         Ok(new_audio_info) => {
                             // Update the audio file in memory
                             if let Some(ref mut audio_files) = self.audio_files {
-                                if let Some(original_idx) = audio_files.iter().position(|f| f.name == audio_info.name && f.id == audio_info.id) {
+                                if let Some(original_idx) = audio_files.iter().position(|f| {
+                                    f.name == audio_info.name && f.id == audio_info.id
+                                }) {
                                     // Replace with the new audio info
                                     audio_files[original_idx] = new_audio_info.clone();
-                                    
+
                                     // Get the replacement audio data from our static HashMap
-                                    if let Some(replacement_data) = ReplaceUtils::get_replacement_data(&audio_info.name, &audio_info.id) {
+                                    if let Some(replacement_data) =
+                                        ReplaceUtils::get_replacement_data(
+                                            &audio_info.name,
+                                            &audio_info.id,
+                                        )
+                                    {
                                         // Create an audio file struct for the audio player
                                         let audio = crate::ui::audio_player::AudioFile {
                                             file_path: file_path.to_string(),
@@ -291,39 +369,44 @@ impl MainArea {
                                             #[cfg(target_arch = "wasm32")]
                                             temp_url: None,
                                         };
-                                        
+
                                         // Update the audio player if it exists
                                         if let Some(audio_player) = &mut self.audio_player {
                                             let state = audio_player.get_audio_state();
                                             let mut state = state.lock().unwrap();
                                             state.set_audio(audio);
-                                            
+
                                             // AudioPlayer.load_audio 会自动应用特定音频文件的循环设置
                                             // 因此我们不需要在这里设置循环点
                                         }
                                     }
-                                    
+
                                     let loop_message = if use_custom_loop {
-                                        let start_str = loop_start.map_or("start".to_string(), |s| format!("{:.2}s", s));
-                                        let end_str = loop_end.map_or("end".to_string(), |e| format!("{:.2}s", e));
+                                        let start_str = loop_start
+                                            .map_or("start".to_string(), |s| format!("{:.2}s", s));
+                                        let end_str = loop_end
+                                            .map_or("end".to_string(), |e| format!("{:.2}s", e));
                                         format!(" (Loop: {} to {})", start_str, end_str)
                                     } else {
                                         " (Full track loop)".to_string()
                                     };
-                                    
+
                                     toasts_to_add.push((
-                                        format!("Successfully replaced audio in memory: {}{}", audio_info.name, loop_message),
+                                        format!(
+                                            "Successfully replaced audio in memory: {}{}",
+                                            audio_info.name, loop_message
+                                        ),
                                         Color32::GREEN,
                                     ));
                                 }
                             }
-                        },
+                        }
                         Err(e) => {
                             toasts_to_add.push((
                                 format!("Failed to process replacement: {}", e),
                                 Color32::RED,
                             ));
-                            
+
                             // 错误时添加更多调试信息
                             println!("Replacement error details: {}", e);
                         }
