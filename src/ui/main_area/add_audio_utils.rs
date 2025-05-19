@@ -60,13 +60,6 @@ impl AddAudioUtils {
             Err(_) => return Err("ID must be a valid number".to_string()),
         };
         
-        // Create a new AudioFile with the audio data
-        let new_audio_file = AudioFile {
-            id: id_val,
-            name: name.clone(),
-            data: file_data.clone(),
-        };
-        
         // Get the filename from the original file path
         let filename = match &add_audio_modal.settings.file_path {
             Some(path) => {
@@ -99,6 +92,44 @@ impl AddAudioUtils {
             size: file_data.len(),
             filename,
             file_type: file_type.to_string(),
+        };
+        
+        // Return the new AudioFileInfo
+        Ok(new_audio_info)
+    }
+    
+    /// Process the new audio file and save it to the nus3audio file
+    /// 
+    /// Deprecated: Use process_new_audio instead and then use Nus3audioFileUtils to register
+    /// the addition to be applied later with save_changes_to_file.
+    #[deprecated(
+        since = "1.1.0",
+        note = "Use process_new_audio instead and then use Nus3audioFileUtils to register the addition"
+    )]
+    pub fn process_new_audio_and_save(
+        add_audio_modal: &AddAudioModal,
+        original_file_path: &str,
+    ) -> Result<AudioFileInfo, String> {
+        // First create the new audio info
+        let new_audio_info = Self::process_new_audio(add_audio_modal, original_file_path)?;
+        
+        // Check if file data exists
+        let file_data = match &add_audio_modal.file_data {
+            Some(data) => data,
+            None => return Err("No audio file data available".to_string()),
+        };
+        
+        // Convert ID to valid format expected by Nus3audioFile
+        let id_val = match new_audio_info.id.parse::<u32>() {
+            Ok(val) => val,
+            Err(_) => return Err("ID must be a valid number".to_string()),
+        };
+        
+        // Create a new AudioFile with the audio data
+        let new_audio_file = AudioFile {
+            id: id_val,
+            name: new_audio_info.name.clone(),
+            data: file_data.clone(),
         };
         
         // Load the existing NUS3AUDIO file

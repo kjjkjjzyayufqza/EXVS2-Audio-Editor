@@ -8,7 +8,8 @@ use super::{
     audio_file_info::AudioFileInfo,
     toast_message::ToastMessage,
     loop_settings_modal::LoopSettingsModal,
-    add_audio_modal::AddAudioModal
+    add_audio_modal::AddAudioModal,
+    confirm_modal::ConfirmModal
 };
 
 /// Main editing area component
@@ -54,6 +55,14 @@ pub struct MainArea {
     // Add audio modal window
     #[serde(skip)]
     pub add_audio_modal: AddAudioModal,
+    
+    // Confirm dialog modal window
+    #[serde(skip)]
+    pub confirm_modal: ConfirmModal,
+    
+    // Pending remove action data
+    #[serde(skip)]
+    pub pending_remove_audio: Option<AudioFileInfo>,
 }
 
 impl Default for MainArea {
@@ -97,6 +106,12 @@ impl MainArea {
             
             // Initialize add audio modal
             add_audio_modal: AddAudioModal::new(),
+            
+            // Initialize confirm modal
+            confirm_modal: ConfirmModal::new(),
+            
+            // Initialize pending remove audio
+            pending_remove_audio: None,
         }
     }
     

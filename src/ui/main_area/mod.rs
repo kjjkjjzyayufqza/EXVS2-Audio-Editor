@@ -7,6 +7,9 @@ mod replace_utils;
 mod loop_settings_modal;
 mod add_audio_modal;
 mod add_audio_utils;
+mod remove_utils;
+mod confirm_modal;
+mod nus3audio_file_utils;
 
 // New modular components
 mod sort_column;
@@ -24,4 +27,4 @@ pub use main_component::MainArea;
 pub use audio_file_info::AudioFileInfo;
 pub use replace_utils::ReplaceUtils;
 pub use export_utils::ExportUtils;
-pub use add_audio_utils::AddAudioUtils;
+pub use nus3audio_file_utils::Nus3audioFileUtils;

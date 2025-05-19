@@ -2,6 +2,7 @@ use crate::version_check;
 use egui::Context;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
+use crate::ui::main_area::Nus3audioFileUtils;
 
 // Modal dialog information
 #[derive(Clone, Default)]
@@ -50,7 +51,7 @@ pub struct TopPanel;
 
 impl TopPanel {
     /// Display the top menu panel
-    pub fn show(ctx: &Context, app: Option<&mut crate::TemplateApp>) {
+    pub fn show(ctx: &Context, mut app: Option<&mut crate::TemplateApp>) {
         // Check for version updates
         TopPanel::check_for_updates(ctx);
         
@@ -99,6 +100,82 @@ impl TopPanel {
                 let is_web = cfg!(target_arch = "wasm32");
                 if !is_web {
                     ui.menu_button("File", |ui| {
+                        if ui.button("Save Changes").clicked() {
+                            // Save pending changes to the current nus3audio file
+                            ui.ctx().request_repaint();
+
+                            // Initialize file path
+                            let mut selected_file_path = None;
+
+                            // Extract path first without moving app
+                            {
+                                if let Some(app_ref) = app.as_ref() {
+                                    let main_area = app_ref.main_area();
+                                    if let Some(path) = &main_area.selected_file {
+                                        selected_file_path = Some(path.to_string());
+                                    }
+                                }
+                            }
+
+                            if selected_file_path.is_none() {
+                                println!("No file selected to save changes");
+                                // Show error dialog
+                                show_modal(
+                                    "Save Failed",
+                                    "No file selected to save changes to",
+                                    true,
+                                );
+                                return;
+                            }
+
+                            // Check if there are any pending changes
+                            if !Nus3audioFileUtils::has_pending_changes() {
+                                println!("No pending changes to save");
+                                // Show info dialog
+                                show_modal(
+                                    "No Changes",
+                                    "There are no pending changes to save",
+                                    false,
+                                );
+                                return;
+                            }
+
+                            // Save changes to the current file
+                            if let Some(file_path) = selected_file_path {
+                                match Nus3audioFileUtils::save_changes_to_file(&file_path) {
+                                    Ok(_) => {
+                                        println!("Changes saved successfully to: {}", file_path);
+                                        
+                                        // Show success dialog
+                                        show_modal(
+                                            "Save Successful",
+                                            &format!("Successfully saved {} changes to:\n{}", 
+                                                Nus3audioFileUtils::get_pending_changes_count(),
+                                                file_path),
+                                            false,
+                                        );
+                                        
+                                        // Update UI if needed
+                                        if let Some(app_mut) = app.as_mut() {
+                                            // Refresh the file view by reloading it
+                                            let main_area = app_mut.main_area_mut();
+                                            main_area.update_selected_file(Some(file_path.clone()));
+                                        }
+                                    },
+                                    Err(e) => {
+                                        println!("Failed to save changes: {}", e);
+                                        
+                                        // Show error dialog
+                                        show_modal(
+                                            "Save Failed",
+                                            &format!("Failed to save changes: {}", e),
+                                            true,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        
                         if ui.button("Save .nus3audio").clicked() {
                             // Save current nus3audio file
                             // Use defer to avoid borrowing issues with egui
@@ -108,9 +185,9 @@ impl TopPanel {
                             let mut selected_file_path = None;
 
                             // Get the selected file path from app if available
-                            if let Some(current_app) = &app {
+                            if let Some(app_ref) = app.as_ref() {
                                 // Get the selected file path using the main_area accessor
-                                let main_area = current_app.main_area();
+                                let main_area = app_ref.main_area();
                                 if let Some(path) = &main_area.selected_file {
                                     selected_file_path = Some(path.to_string());
                                 }

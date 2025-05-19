@@ -3,6 +3,7 @@ use egui::{Color32, Frame, Stroke, Ui};
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
     replace_utils::ReplaceUtils, table_renderer::TableRenderer, add_audio_utils::AddAudioUtils,
+    remove_utils::RemoveUtils, nus3audio_file_utils::Nus3audioFileUtils,
 };
 
 impl MainArea {
@@ -21,6 +22,7 @@ impl MainArea {
             export_index: Option<usize>,
             play_index: Option<usize>,
             replace_index: Option<usize>,
+            remove_index: Option<usize>,
             export_all: bool,
             add_audio: bool,
         }
@@ -29,6 +31,7 @@ impl MainArea {
             export_index: None,
             play_index: None,
             replace_index: None,
+            remove_index: None,
             export_all: false,
             add_audio: false,
         };
@@ -95,6 +98,9 @@ impl MainArea {
                             },
                             &mut |index| {
                                 action_data.replace_index = Some(index);
+                            },
+                            &mut |index| {
+                                action_data.remove_index = Some(index);
                             },
                             &mut self.sort_column,
                             &mut self.sort_ascending,
@@ -245,7 +251,7 @@ impl MainArea {
                 let selected_file = self.selected_file.clone();
 
                 if let Some(_file_path) = &selected_file {
-                    // 打印替换操作的详细信息
+                    // Print detailed information about the replacement operation
                     println!(
                         "Starting replacement for audio: {} (ID: {})",
                         audio_info.name, audio_info.id
@@ -275,6 +281,96 @@ impl MainArea {
             }
         }
 
+        // Handle "Remove" action if clicked
+        if let Some(idx) = action_data.remove_index {
+            if idx < filtered_audio_files.len() {
+                let audio_info = filtered_audio_files[idx].clone();
+                let selected_file = self.selected_file.clone();
+
+                if let Some(_file_path) = &selected_file {
+                    // Show the confirm dialog, don't delete directly
+                    println!(
+                        "Confirming removal of audio: {} (ID: {})",
+                        audio_info.name, audio_info.id
+                    );
+                    
+                    // Save the audio info to be removed
+                    self.pending_remove_audio = Some(audio_info.clone());
+                    
+                    // Open the confirm dialog
+                    self.confirm_modal.open(
+                        "Confirm",
+                        &format!("Are you sure you want to delete the audio \"{}\"? This action cannot be undone.", audio_info.name)
+                    );
+                    
+                    toasts_to_add.push((
+                        format!("请确认是否删除音频: {}", audio_info.name),
+                        Color32::GOLD,
+                    ));
+                } else {
+                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
+                }
+            }
+        }
+        
+        // Process the confirm dialog's confirmation action
+        if self.confirm_modal.confirmed {
+            // Reset the confirmed state
+            self.confirm_modal.reset_state();
+            
+            // If there is an audio to be removed, perform the removal
+            if let Some(audio_info) = &self.pending_remove_audio {
+                if let Some(file_path) = &self.selected_file {
+                    println!(
+                        "Confirmed removal of audio: {} (ID: {})",
+                        audio_info.name, audio_info.id
+                    );
+                    
+                    // Register the removal in memory only
+                    match Nus3audioFileUtils::register_remove(audio_info) {
+                        Ok(_) => {
+                            // Remove the audio from memory
+                            if let Some(ref mut audio_files) = self.audio_files {
+                                if let Some(original_idx) = audio_files.iter().position(|f| 
+                                    f.name == audio_info.name && f.id == audio_info.id
+                                ) {
+                                    // Remove from the collection
+                                    audio_files.remove(original_idx);
+                                    
+                                    // Update the file count
+                                    self.file_count = Some(audio_files.len());
+                                    
+                                    toasts_to_add.push((
+                                        format!("Successfully marked for deletion: {}", audio_info.name),
+                                        Color32::GREEN,
+                                    ));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            toasts_to_add.push((format!("Failed to mark for deletion: {}", e), Color32::RED));
+                        }
+                    }
+                    
+                    // Clear the audio info to be removed
+                    self.pending_remove_audio = None;
+                }
+            }
+        } else if self.confirm_modal.cancelled {
+            // Process the case of cancelling the deletion
+            self.confirm_modal.reset_state();
+            
+            if let Some(audio_info) = &self.pending_remove_audio {
+                toasts_to_add.push((
+                    format!("Cancelled deletion of audio: {}", audio_info.name),
+                    Color32::BLUE,
+                ));
+                
+                // Clear the audio info to be removed
+                self.pending_remove_audio = None;
+            }
+        }
+
         // Check if add audio modal was confirmed
         if self.add_audio_modal.confirmed {
             // Reset the confirmed flag
@@ -282,21 +378,33 @@ impl MainArea {
 
             // Get the selected file
             if let Some(file_path) = &self.selected_file {
-                // Process the new audio file
+                // Process the new audio file (memory only - doesn't modify the file)
                 match AddAudioUtils::process_new_audio(&self.add_audio_modal, file_path) {
                     Ok(new_audio_info) => {
-                        // Update the audio file list in memory
-                        if let Some(ref mut audio_files) = self.audio_files {
-                            // Add the new audio file to the list
-                            audio_files.push(new_audio_info.clone());
-                            
-                            // Update file count
-                            self.file_count = Some(audio_files.len());
-                            
-                            toasts_to_add.push((
-                                format!("Successfully added new audio: {}", new_audio_info.name),
-                                Color32::GREEN,
-                            ));
+                        // Register the file addition in memory
+                        if let Some(data) = &self.add_audio_modal.file_data {
+                            match Nus3audioFileUtils::register_add(&new_audio_info, data.clone()) {
+                                Ok(_) => {
+                                    // Update the audio file list in memory
+                                    if let Some(ref mut audio_files) = self.audio_files {
+                                        // Add the new audio file to the list
+                                        audio_files.push(new_audio_info.clone());
+                                        
+                                        // Update file count
+                                        self.file_count = Some(audio_files.len());
+                                        
+                                        toasts_to_add.push((
+                                            format!("Successfully added new audio: {}", new_audio_info.name),
+                                            Color32::GREEN,
+                                        ));
+                                    }
+                                },
+                                Err(e) => {
+                                    toasts_to_add.push((format!("Failed to add audio: {}", e), Color32::RED));
+                                }
+                            }
+                        } else {
+                            toasts_to_add.push(("No audio data available".to_string(), Color32::RED));
                         }
                     }
                     Err(e) => {
@@ -328,7 +436,7 @@ impl MainArea {
 
                     let use_custom_loop = self.loop_settings_modal.settings.use_custom_loop;
 
-                    // 在这里打印调试信息，帮助我们理解处理过程
+                    // Print debug information to help us understand the processing
                     println!(
                         "Processing replacement for audio: {} (ID: {})",
                         audio_info.name, audio_info.id
@@ -376,8 +484,8 @@ impl MainArea {
                                             let mut state = state.lock().unwrap();
                                             state.set_audio(audio);
 
-                                            // AudioPlayer.load_audio 会自动应用特定音频文件的循环设置
-                                            // 因此我们不需要在这里设置循环点
+                                            // AudioPlayer.load_audio will automatically apply the loop settings for the specific audio file
+                                            // Therefore we don't need to set the loop points here
                                         }
                                     }
 
@@ -407,7 +515,7 @@ impl MainArea {
                                 Color32::RED,
                             ));
 
-                            // 错误时添加更多调试信息
+                            // Add more debug information when there is an error
                             println!("Replacement error details: {}", e);
                         }
                     }
@@ -421,3 +529,4 @@ impl MainArea {
         }
     }
 }
+

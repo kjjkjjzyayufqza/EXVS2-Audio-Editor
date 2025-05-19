@@ -13,6 +13,9 @@ impl MainArea {
         // Show the add audio modal if open
         self.add_audio_modal.show(ctx);
         
+        // Show the confirm modal if open
+        self.confirm_modal.show(ctx);
+        
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render(ui);
         });

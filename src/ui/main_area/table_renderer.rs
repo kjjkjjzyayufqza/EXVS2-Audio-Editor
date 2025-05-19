@@ -23,6 +23,7 @@ impl TableRenderer {
         on_export_clicked: &mut dyn FnMut(usize),
         on_play_clicked: &mut dyn FnMut(usize),
         on_replace_clicked: &mut dyn FnMut(usize),
+        on_remove_clicked: &mut dyn FnMut(usize),
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
     ) {
@@ -374,6 +375,23 @@ impl TableRenderer {
                                         };
                                         let replace_button = button_ui.add(Button::new(replace_text));
                                         if replace_button.clicked() { on_replace_clicked(row_index); }
+                                        
+                                        // Add Remove button if we have space
+                                        let estimated_remove_width = if compact_mode { 30.0 } else { 80.0 }; 
+                                        if remaining_width >= spacing + estimated_remove_width {
+                                            button_ui.add_space(spacing);
+                                            let remove_text = if compact_mode {
+                                                RichText::new(egui_phosphor::regular::TRASH.to_string())
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(255, 100, 100))
+                                            } else {
+                                                RichText::new(format!("{} Remove", egui_phosphor::regular::TRASH))
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(255, 100, 100))
+                                            };
+                                            let remove_button = button_ui.add(Button::new(remove_text));
+                                            if remove_button.clicked() { on_remove_clicked(row_index); }
+                                        }
                                     }
                                 }
                             });
