@@ -5,7 +5,7 @@ use nus3audio::Nus3audioFile;
 
 use super::audio_controls::AudioControls;
 use super::audio_state::{AudioFile, AudioState};
-use crate::ui::main_area::{AudioFileInfo, ReplaceUtils};
+use crate::ui::main_area::{AudioFileInfo, ReplaceUtils, Nus3audioFileUtils};
 
 /// Main audio player component
 pub struct AudioPlayer {
@@ -85,6 +85,9 @@ impl AudioPlayer {
         // Check if there's a replacement audio data in memory first
         let replacement_audio_data = ReplaceUtils::get_replacement_data(&file_info.name, &file_info.id);
         
+        // 检查是否有添加但尚未保存的音频数据
+        let pending_added_data = Nus3audioFileUtils::get_pending_added_data(&file_info.name, &file_info.id);
+        
         // Determine which audio data to use (replacement or original)
         let audio_data = if let Some(replacement_data) = replacement_audio_data {
             // We have replacement data, use it directly
@@ -92,9 +95,13 @@ impl AudioPlayer {
             
             // The replacement data has already been processed to add loop points during replacement
             replacement_data
+        } else if let Some(added_data) = pending_added_data {
+            // 使用待添加的音频数据
+            log::info!("Using pending added audio data for: {}", file_info.name);
+            added_data
         } else {
             // No replacement data, use the original file
-            log::info!("No replacement data found, using original file for: {}", file_info.name);
+            log::info!("No replacement/added data found, using original file for: {}", file_info.name);
             
             // Try to open the NUS3AUDIO file
             let nus3_file = match Nus3audioFile::open(file_path) {

@@ -217,4 +217,26 @@ impl Nus3audioFileUtils {
             Err("Failed to register audio file addition".to_string())
         }
     }
+    
+    /// Get pending added audio data for a specific audio file
+    pub fn get_pending_added_data(audio_name: &str, audio_id: &str) -> Option<Vec<u8>> {
+        // 先尝试使用普通键格式
+        let key = format!("{}:{}", audio_name, audio_id);
+        // 再尝试使用添加时使用的前缀格式
+        let add_key = format!("ADD:{}:{}", audio_name, audio_id);
+        
+        if let Ok(changes) = FILE_CHANGES.lock() {
+            // 检查普通键
+            if let Some(FileChangeType::Add(_, _, data)) = changes.get(&key) {
+                return Some(data.clone());
+            }
+            
+            // 检查带ADD前缀的键
+            if let Some(FileChangeType::Add(_, _, data)) = changes.get(&add_key) {
+                return Some(data.clone());
+            }
+        }
+        
+        None
+    }
 } 
