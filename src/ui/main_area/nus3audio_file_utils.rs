@@ -186,4 +186,35 @@ impl Nus3audioFileUtils {
             0
         }
     }
+    
+    /// Register an audio file to be added to the NUS3AUDIO file
+    pub fn register_add_audio(
+        audio_info: &AudioFileInfo,
+        audio_data: Vec<u8>,
+    ) -> Result<(), String> {
+        // Validate the ID
+        let id = match audio_info.id.parse::<u32>() {
+            Ok(val) => val,
+            Err(_) => return Err("ID must be a valid number".to_string()),
+        };
+        
+        // Create a key for the file change
+        let key = format!("ADD:{}:{}", audio_info.name, audio_info.id);
+        
+        // Register the add operation
+        if let Ok(mut changes) = FILE_CHANGES.lock() {
+            changes.insert(
+                key,
+                FileChangeType::Add(
+                    audio_info.id.clone(),
+                    audio_info.name.clone(),
+                    audio_data,
+                ),
+            );
+            println!("Registered audio file to be added: {} (ID: {})", audio_info.name, audio_info.id);
+            Ok(())
+        } else {
+            Err("Failed to register audio file addition".to_string())
+        }
+    }
 } 

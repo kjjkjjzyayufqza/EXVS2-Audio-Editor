@@ -378,37 +378,68 @@ impl MainArea {
 
             // Get the selected file
             if let Some(file_path) = &self.selected_file {
-                // Process the new audio file (memory only - doesn't modify the file)
+                // 1. 获取原始文件路径
+                let original_file_path = match &self.add_audio_modal.settings.file_path {
+                    Some(path) => path,
+                    None => {
+                        toasts_to_add.push(("No audio file path available".to_string(), Color32::RED));
+                        return;
+                    }
+                };
+                
+                // 2. 处理新音频文件
                 match AddAudioUtils::process_new_audio(&self.add_audio_modal, file_path) {
                     Ok(new_audio_info) => {
-                        // Register the file addition in memory
-                        if let Some(data) = &self.add_audio_modal.file_data {
-                            match Nus3audioFileUtils::register_add(&new_audio_info, data.clone()) {
-                                Ok(_) => {
-                                    // Update the audio file list in memory
-                                    if let Some(ref mut audio_files) = self.audio_files {
-                                        // Add the new audio file to the list
-                                        audio_files.push(new_audio_info.clone());
-                                        
-                                        // Update file count
-                                        self.file_count = Some(audio_files.len());
-                                        
-                                        toasts_to_add.push((
-                                            format!("Successfully added new audio: {}", new_audio_info.name),
-                                            Color32::GREEN,
-                                        ));
+                        // 3. 尝试将音频转换为WAV格式
+                        match AddAudioUtils::convert_to_wav(original_file_path) {
+                            Ok(wav_data) => {
+                                // 4. 使用转换后的WAV数据注册添加操作
+                                match Nus3audioFileUtils::register_add_audio(&new_audio_info, wav_data) {
+                                    Ok(_) => {
+                                        // 5. 更新内存中的音频文件列表
+                                        if let Some(ref mut audio_files) = self.audio_files {
+                                            audio_files.push(new_audio_info.clone());
+                                            self.file_count = Some(audio_files.len());
+                                            toasts_to_add.push((
+                                                format!("Successfully added new audio (converted to WAV): {}", new_audio_info.name),
+                                                Color32::GREEN,
+                                            ));
+                                        }
+                                    },
+                                    Err(e) => {
+                                        toasts_to_add.push((format!("Failed to register WAV audio: {}", e), Color32::RED));
                                     }
-                                },
-                                Err(e) => {
-                                    toasts_to_add.push((format!("Failed to add audio: {}", e), Color32::RED));
+                                }
+                            },
+                            Err(e) => {
+                                // 6. 如果WAV转换失败，回退到使用原始音频数据
+                                println!("Warning: Failed to convert to WAV: {}", e);
+                                println!("Falling back to original file data");
+                                
+                                if let Some(data) = &self.add_audio_modal.file_data {
+                                    match Nus3audioFileUtils::register_add(&new_audio_info, data.clone()) {
+                                        Ok(_) => {
+                                            if let Some(ref mut audio_files) = self.audio_files {
+                                                audio_files.push(new_audio_info.clone());
+                                                self.file_count = Some(audio_files.len());
+                                                toasts_to_add.push((
+                                                    format!("Successfully added new audio (original format): {}", new_audio_info.name),
+                                                    Color32::GREEN,
+                                                ));
+                                            }
+                                        },
+                                        Err(e) => {
+                                            toasts_to_add.push((format!("Failed to add audio: {}", e), Color32::RED));
+                                        }
+                                    }
+                                } else {
+                                    toasts_to_add.push(("No audio data available".to_string(), Color32::RED));
                                 }
                             }
-                        } else {
-                            toasts_to_add.push(("No audio data available".to_string(), Color32::RED));
                         }
-                    }
+                    },
                     Err(e) => {
-                        toasts_to_add.push((format!("Failed to add audio: {}", e), Color32::RED));
+                        toasts_to_add.push((format!("Failed to process new audio: {}", e), Color32::RED));
                     }
                 }
             }
