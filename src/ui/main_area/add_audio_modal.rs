@@ -211,7 +211,6 @@ impl AddAudioModal {
             .min_height(300.0)
             .resizable(true)
             .collapsible(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 self.render_content(ui);
             });

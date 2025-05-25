@@ -63,6 +63,10 @@ pub struct MainArea {
     // Pending remove action data
     #[serde(skip)]
     pub pending_remove_audio: Option<AudioFileInfo>,
+    
+    // Pending export all action flag
+    #[serde(skip)]
+    pub pending_export_all: bool,
 }
 
 impl Default for MainArea {
@@ -112,6 +116,9 @@ impl MainArea {
             
             // Initialize pending remove audio
             pending_remove_audio: None,
+            
+            // Initialize pending export all
+            pending_export_all: false,
         }
     }
     

@@ -23,7 +23,7 @@ impl MainArea {
             play_index: Option<usize>,
             replace_index: Option<usize>,
             remove_index: Option<usize>,
-            export_all: bool,
+            export_all_confirm: bool,
             add_audio: bool,
         }
 
@@ -32,7 +32,7 @@ impl MainArea {
             play_index: None,
             replace_index: None,
             remove_index: None,
-            export_all: false,
+            export_all_confirm: false,
             add_audio: false,
         };
 
@@ -48,9 +48,9 @@ impl MainArea {
                         ui.heading("Audio File List");
 
                         ui.horizontal(|ui| {
-                            // Capture Export All button click, don't act on it yet
+                            // Capture Export All button click, show confirm dialog
                             if ui.button("Export All").clicked() {
-                                action_data.export_all = true;
+                                action_data.export_all_confirm = true;
                             }
 
                             if ui.button("Add Audio").clicked() {
@@ -135,43 +135,24 @@ impl MainArea {
                         toasts_to_add.push((format!("Add audio failed: {}", e), Color32::RED));
                     }
                 }
-            } else {
-                toasts_to_add.push(("No file selected".to_string(), Color32::RED));
             }
         }
 
-        // Handle "Export All" action if clicked
-        if action_data.export_all {
-            let selected_file = self.selected_file.clone();
-            let output_path = self.output_path.clone();
-
-            if let Some(file_path) = &selected_file {
-                if let Some(output_dir) = &output_path {
-                    // Use ExportUtils to export all files
-                    match ExportUtils::export_all_to_wav(file_path, output_dir) {
-                        Ok(paths) => {
-                            toasts_to_add.push((
-                                format!(
-                                    "Successfully exported {} files to: {}",
-                                    paths.len(),
-                                    output_dir
-                                ),
-                                Color32::GREEN,
-                            ));
-                        }
-                        Err(e) => {
-                            toasts_to_add.push((format!("Export failed: {}", e), Color32::RED));
-                        }
-                    }
-                } else {
-                    toasts_to_add.push((
-                        "No output directory set. Please set an output directory.".to_string(),
-                        Color32::GOLD,
-                    ));
-                }
+        // Handle "Export All" confirm dialog if clicked
+        if action_data.export_all_confirm {
+            let file_count = if let Some(ref audio_files) = self.audio_files {
+                audio_files.len()
             } else {
-                toasts_to_add.push(("No file selected".to_string(), Color32::RED));
-            }
+                0
+            };
+            
+            // Set the pending export all flag
+            self.pending_export_all = true;
+            
+            self.confirm_modal.open(
+                "Confirm Export All",
+                &format!("Are you sure you want to export all {} audio files? This may take some time.", file_count)
+            );
         }
 
         // Handle "Export" action for a specific file if clicked
@@ -202,8 +183,6 @@ impl MainArea {
                             Color32::GOLD,
                         ));
                     }
-                } else {
-                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
                 }
             }
         }
@@ -238,8 +217,6 @@ impl MainArea {
                         toasts_to_add
                             .push(("Audio player is not initialized".to_string(), Color32::RED));
                     }
-                } else {
-                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
                 }
             }
         }
@@ -275,8 +252,6 @@ impl MainArea {
                             toasts_to_add.push((format!("Replace failed: {}", e), Color32::RED));
                         }
                     }
-                } else {
-                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
                 }
             }
         }
@@ -302,13 +277,6 @@ impl MainArea {
                         "Confirm",
                         &format!("Are you sure you want to delete the audio \"{}\"? This action cannot be undone.", audio_info.name)
                     );
-                    
-                    toasts_to_add.push((
-                        format!("请确认是否删除音频: {}", audio_info.name),
-                        Color32::GOLD,
-                    ));
-                } else {
-                    toasts_to_add.push(("No file selected".to_string(), Color32::RED));
                 }
             }
         }
@@ -318,8 +286,41 @@ impl MainArea {
             // Reset the confirmed state
             self.confirm_modal.reset_state();
             
+            // If there is a pending export all action, perform the export
+            if self.pending_export_all {
+                self.pending_export_all = false;
+                
+                let selected_file = self.selected_file.clone();
+                let output_path = self.output_path.clone();
+
+                if let Some(file_path) = &selected_file {
+                    if let Some(output_dir) = &output_path {
+                        // Use ExportUtils to export all files
+                        match ExportUtils::export_all_to_wav(file_path, output_dir) {
+                            Ok(paths) => {
+                                toasts_to_add.push((
+                                    format!(
+                                        "Successfully exported {} files to: {}",
+                                        paths.len(),
+                                        output_dir
+                                    ),
+                                    Color32::GREEN,
+                                ));
+                            }
+                            Err(e) => {
+                                toasts_to_add.push((format!("Export failed: {}", e), Color32::RED));
+                            }
+                        }
+                    } else {
+                        toasts_to_add.push((
+                            "No output directory set. Please set an output directory.".to_string(),
+                            Color32::GOLD,
+                        ));
+                    }
+                }
+            }
             // If there is an audio to be removed, perform the removal
-            if let Some(audio_info) = &self.pending_remove_audio {
+            else if let Some(audio_info) = &self.pending_remove_audio {
                 if let Some(file_path) = &self.selected_file {
                     println!(
                         "Confirmed removal of audio: {} (ID: {})",
@@ -357,15 +358,12 @@ impl MainArea {
                 }
             }
         } else if self.confirm_modal.cancelled {
-            // Process the case of cancelling the deletion
+            // Process the case of cancelling the action
             self.confirm_modal.reset_state();
             
-            if let Some(audio_info) = &self.pending_remove_audio {
-                toasts_to_add.push((
-                    format!("Cancelled deletion of audio: {}", audio_info.name),
-                    Color32::BLUE,
-                ));
-                
+            if self.pending_export_all {
+                self.pending_export_all = false;
+            } else if let Some(audio_info) = &self.pending_remove_audio {
                 // Clear the audio info to be removed
                 self.pending_remove_audio = None;
             }
