@@ -389,6 +389,25 @@ impl ReplaceUtils {
             }
         }
         
+        // Also apply all pending additions from Nus3audioFileUtils
+        use super::nus3audio_file_utils::Nus3audioFileUtils;
+        let pending_additions = Nus3audioFileUtils::get_pending_additions();
+        for (id, name, data) in pending_additions {
+            // Convert ID to u32
+            let id_val = match id.parse::<u32>() {
+                Ok(val) => val,
+                Err(_) => continue, // Skip if ID is invalid
+            };
+            
+            // Add the new audio file
+            nus3_file.files.push(AudioFile {
+                id: id_val,
+                name: name.clone(),
+                data: data.clone(),
+            });
+            println!("Added audio file: {} (ID: {})", name, id);
+        }
+        
         // Create memory buffer for writing the updated NUS3AUDIO file
         let mut output_buffer = Vec::new();
         

@@ -198,8 +198,8 @@ impl Nus3audioFileUtils {
             Err(_) => return Err("ID must be a valid number".to_string()),
         };
         
-        // Create a key for the file change
-        let key = format!("ADD:{}:{}", audio_info.name, audio_info.id);
+        // Create a key for the file change - use consistent format
+        let key = format!("{}:{}", audio_info.name, audio_info.id);
         
         // Register the add operation
         if let Ok(mut changes) = FILE_CHANGES.lock() {
@@ -220,23 +220,120 @@ impl Nus3audioFileUtils {
     
     /// Get pending added audio data for a specific audio file
     pub fn get_pending_added_data(audio_name: &str, audio_id: &str) -> Option<Vec<u8>> {
-        // 先尝试使用普通键格式
         let key = format!("{}:{}", audio_name, audio_id);
-        // 再尝试使用添加时使用的前缀格式
-        let add_key = format!("ADD:{}:{}", audio_name, audio_id);
         
         if let Ok(changes) = FILE_CHANGES.lock() {
-            // 检查普通键
             if let Some(FileChangeType::Add(_, _, data)) = changes.get(&key) {
-                return Some(data.clone());
-            }
-            
-            // 检查带ADD前缀的键
-            if let Some(FileChangeType::Add(_, _, data)) = changes.get(&add_key) {
                 return Some(data.clone());
             }
         }
         
         None
     }
+    
+    /// Get all pending additions for external processing
+    pub fn get_pending_additions() -> Vec<(String, String, Vec<u8>)> {
+        let mut additions = Vec::new();
+        
+        if let Ok(changes) = FILE_CHANGES.lock() {
+            for (_, change_type) in changes.iter() {
+                if let FileChangeType::Add(id, name, data) = change_type {
+                    additions.push((id.clone(), name.clone(), data.clone()));
+                }
+            }
+        }
+        
+        additions
+    }
+    
+    /// Get all pending removals for external processing
+    pub fn get_pending_removals() -> Vec<(String, String)> {
+        let mut removals = Vec::new();
+        
+        if let Ok(changes) = FILE_CHANGES.lock() {
+            for (_, change_type) in changes.iter() {
+                if let FileChangeType::Remove(id, name) = change_type {
+                    removals.push((id.clone(), name.clone()));
+                }
+            }
+        }
+        
+        removals
+    }
+    
+    /// Get all currently valid IDs and names (considering pending changes)
+    /// Returns (id, name) pairs that will exist after all pending changes are applied
+    pub fn get_effective_audio_list(existing_files: Option<&Vec<AudioFileInfo>>) -> Vec<(String, String)> {
+        let mut effective_list = Vec::new();
+        
+        // Start with existing files
+        if let Some(files) = existing_files {
+            for file in files {
+                effective_list.push((file.id.clone(), file.name.clone()));
+            }
+        }
+        
+        if let Ok(changes) = FILE_CHANGES.lock() {
+            // Collect all operations by ID and name to handle conflicts intelligently
+            let mut operations_by_id: std::collections::HashMap<String, Vec<&FileChangeType>> = std::collections::HashMap::new();
+            
+            for (_, change_type) in changes.iter() {
+                let key = match change_type {
+                    FileChangeType::Add(id, name, _) => format!("{}:{}", id, name),
+                    FileChangeType::Remove(id, name) => format!("{}:{}", id, name),
+                    FileChangeType::Replace(id, name, _) => format!("{}:{}", id, name),
+                };
+                operations_by_id.entry(key).or_insert_with(Vec::new).push(change_type);
+            }
+            
+            // Apply operations intelligently
+            for (key, ops) in operations_by_id.iter() {
+                let parts: Vec<&str> = key.split(':').collect();
+                if parts.len() != 2 {
+                    continue;
+                }
+                let id = parts[0];
+                let name = parts[1];
+                
+                // Check what operations we have for this ID:name pair
+                let has_remove = ops.iter().any(|op| matches!(op, FileChangeType::Remove(_, _)));
+                let has_add = ops.iter().any(|op| matches!(op, FileChangeType::Add(_, _, _)));
+                let has_replace = ops.iter().any(|op| matches!(op, FileChangeType::Replace(_, _, _)));
+                
+                // Remove from existing files if there's a remove operation
+                if has_remove {
+                    effective_list.retain(|(existing_id, existing_name)| {
+                        !(existing_id == id && existing_name == name)
+                    });
+                }
+                
+                // Add to effective list if there's an add operation (regardless of remove)
+                // This handles the case where user removes then adds the same ID
+                if has_add {
+                    // Only add if not already in the list (to avoid duplicates)
+                    if !effective_list.iter().any(|(existing_id, existing_name)| existing_id == id && existing_name == name) {
+                        effective_list.push((id.to_string(), name.to_string()));
+                    }
+                }
+                
+                // Replace operations don't change ID/name, just data, so no action needed for effective list
+            }
+        }
+        
+        effective_list
+    }
+    
+    /// Check if an ID and name combination is available for a new audio file
+    /// This excludes the current audio being added from conflict detection
+    pub fn is_id_name_available(id: &str, name: &str, existing_files: Option<&Vec<AudioFileInfo>>) -> bool {
+        let effective_list = Self::get_effective_audio_list(existing_files);
+        
+        // Check if this ID or name already exists in the effective list
+        let id_exists = effective_list.iter().any(|(existing_id, _)| existing_id == id);
+        let name_exists = effective_list.iter().any(|(_, existing_name)| existing_name == name);
+        
+        // Return true if both ID and name are available
+        !id_exists && !name_exists
+    }
+
 } 

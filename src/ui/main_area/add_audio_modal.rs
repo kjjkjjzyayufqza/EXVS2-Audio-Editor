@@ -135,24 +135,25 @@ impl AddAudioModal {
                 
                 self.settings.name = default_name;
                 
-                // Generate a unique ID
-                if let Some(audio_files) = &self.existing_audio_files {
-                    // Find max numeric ID and add 1
-                    let mut max_id = 0;
-                    
-                    for file in audio_files {
-                        if let Ok(id) = file.id.parse::<i32>() {
-                            if id > max_id {
-                                max_id = id;
-                            }
+                // Generate a unique ID considering all effective audio files (after pending changes)
+                use super::nus3audio_file_utils::Nus3audioFileUtils;
+                let effective_audio_list = Nus3audioFileUtils::get_effective_audio_list(self.existing_audio_files.as_ref());
+                
+                let mut max_id = 0;
+                for (id_str, _) in effective_audio_list {
+                    if let Ok(id) = id_str.parse::<i32>() {
+                        if id > max_id {
+                            max_id = id;
                         }
                     }
-                    
-                    self.settings.id = (max_id + 1).to_string();
-                } else {
-                    // Default ID if no existing files
-                    self.settings.id = "1000".to_string();
                 }
+                
+                // Set the new ID to be max_id + 1, or 1000 if no existing files
+                self.settings.id = if max_id > 0 {
+                    (max_id + 1).to_string()
+                } else {
+                    "1000".to_string()
+                };
                 
                 // Get file duration
                 let duration = match self.get_actual_audio_duration(file_path) {
@@ -272,14 +273,16 @@ impl AddAudioModal {
                     ui.text_edit_singleline(&mut self.settings.name);
                 });
 
-                // Show error if name already exists
-                let name_exists = if let Some(audio_files) = &self.existing_audio_files {
-                    audio_files.iter().any(|file| file.name == self.settings.name)
+                // Show error if name already exists (check effective audio list)
+                let name_exists = if !self.settings.name.is_empty() {
+                    use super::nus3audio_file_utils::Nus3audioFileUtils;
+                    let effective_audio_list = Nus3audioFileUtils::get_effective_audio_list(self.existing_audio_files.as_ref());
+                    effective_audio_list.iter().any(|(_, name)| *name == self.settings.name)
                 } else {
                     false
                 };
 
-                if name_exists && !self.settings.name.is_empty() {
+                if name_exists {
                     ui.colored_label(egui::Color32::RED, "Error: Name already exists!");
                 }
 
@@ -289,14 +292,16 @@ impl AddAudioModal {
                     ui.text_edit_singleline(&mut self.settings.id);
                 });
 
-                // Show error if ID already exists
-                let id_exists = if let Some(audio_files) = &self.existing_audio_files {
-                    audio_files.iter().any(|file| file.id == self.settings.id)
+                // Show error if ID already exists (check effective audio list)
+                let id_exists = if !self.settings.id.is_empty() {
+                    use super::nus3audio_file_utils::Nus3audioFileUtils;
+                    let effective_audio_list = Nus3audioFileUtils::get_effective_audio_list(self.existing_audio_files.as_ref());
+                    effective_audio_list.iter().any(|(id, _)| *id == self.settings.id)
                 } else {
                     false
                 };
 
-                if id_exists && !self.settings.id.is_empty() {
+                if id_exists {
                     ui.colored_label(egui::Color32::RED, "Error: ID already exists!");
                 }
 
@@ -314,14 +319,18 @@ impl AddAudioModal {
                     }
 
                     // Disable confirm button if there are validation errors
-                    let name_exists = if let Some(audio_files) = &self.existing_audio_files {
-                        audio_files.iter().any(|file| file.name == self.settings.name)
+                    let name_exists = if !self.settings.name.is_empty() {
+                        use super::nus3audio_file_utils::Nus3audioFileUtils;
+                        let effective_audio_list = Nus3audioFileUtils::get_effective_audio_list(self.existing_audio_files.as_ref());
+                        effective_audio_list.iter().any(|(_, name)| *name == self.settings.name)
                     } else {
                         false
                     };
-
-                    let id_exists = if let Some(audio_files) = &self.existing_audio_files {
-                        audio_files.iter().any(|file| file.id == self.settings.id)
+                    
+                    let id_exists = if !self.settings.id.is_empty() {
+                        use super::nus3audio_file_utils::Nus3audioFileUtils;
+                        let effective_audio_list = Nus3audioFileUtils::get_effective_audio_list(self.existing_audio_files.as_ref());
+                        effective_audio_list.iter().any(|(id, _)| *id == self.settings.id)
                     } else {
                         false
                     };
