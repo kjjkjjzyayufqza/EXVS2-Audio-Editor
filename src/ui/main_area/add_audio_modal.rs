@@ -120,12 +120,6 @@ impl AddAudioModal {
             Ok(data) => {
                 self.file_data = Some(data);
                 
-                // Extract filename without extension
-                let filename = Path::new(file_path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                
                 // Set a default name based on the filename
                 let default_name = Path::new(file_path)
                     .file_stem()

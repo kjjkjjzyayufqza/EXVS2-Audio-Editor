@@ -18,16 +18,6 @@ static INDEXING_PATTERN_CACHE: Lazy<Mutex<HashMap<String, bool>>> = Lazy::new(||
 pub struct ExportUtils;
 
 impl ExportUtils {
-    /// Clear the indexing pattern cache
-    /// 
-    /// This can be useful when switching between different nus3audio files
-    /// or when you want to force re-analysis of indexing patterns.
-    pub fn clear_indexing_cache() {
-        if let Ok(mut cache) = INDEXING_PATTERN_CACHE.lock() {
-            cache.clear();
-            println!("Cleared indexing pattern cache");
-        }
-    }
     /// Determine the correct vgmstream index based on the nus3audio file's indexing pattern
     /// 
     /// This function analyzes the nus3audio file to detect whether it uses:

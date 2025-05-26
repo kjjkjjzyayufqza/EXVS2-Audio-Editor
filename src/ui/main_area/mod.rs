@@ -7,7 +7,6 @@ mod replace_utils;
 mod loop_settings_modal;
 mod add_audio_modal;
 mod add_audio_utils;
-mod remove_utils;
 mod confirm_modal;
 mod nus3audio_file_utils;
 

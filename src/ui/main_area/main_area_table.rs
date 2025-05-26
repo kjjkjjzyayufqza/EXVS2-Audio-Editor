@@ -2,8 +2,7 @@ use egui::{Color32, Frame, Stroke, Ui};
 
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
-    replace_utils::ReplaceUtils, table_renderer::TableRenderer, add_audio_utils::AddAudioUtils,
-    remove_utils::RemoveUtils, nus3audio_file_utils::Nus3audioFileUtils,
+    replace_utils::ReplaceUtils, table_renderer::TableRenderer, add_audio_utils::AddAudioUtils, nus3audio_file_utils::Nus3audioFileUtils,
 };
 
 impl MainArea {
@@ -122,7 +121,7 @@ impl MainArea {
         if action_data.add_audio {
             let selected_file = self.selected_file.clone();
             
-            if let Some(file_path) = &selected_file {
+            if let Some(_file_path) = &selected_file {
                 // Use AddAudioUtils to open file dialog and show add audio modal
                 match AddAudioUtils::add_with_file_dialog(&mut self.add_audio_modal, self.audio_files.clone()) {
                     Ok(_) => {
@@ -321,7 +320,7 @@ impl MainArea {
             }
             // If there is an audio to be removed, perform the removal
             else if let Some(audio_info) = &self.pending_remove_audio {
-                if let Some(file_path) = &self.selected_file {
+                if let Some(_file_path) = &self.selected_file {
                     println!(
                         "Confirmed removal of audio: {} (ID: {})",
                         audio_info.name, audio_info.id
@@ -363,7 +362,7 @@ impl MainArea {
             
             if self.pending_export_all {
                 self.pending_export_all = false;
-            } else if let Some(audio_info) = &self.pending_remove_audio {
+            } else if let Some(_audio_info) = &self.pending_remove_audio {
                 // Clear the audio info to be removed
                 self.pending_remove_audio = None;
             }
@@ -375,7 +374,7 @@ impl MainArea {
             self.add_audio_modal.confirmed = false;
 
             // Get the selected file
-            if let Some(file_path) = &self.selected_file {
+            if let Some(_file_path) = &self.selected_file {
                 // 1. 获取原始文件路径
                 let original_file_path = match &self.add_audio_modal.settings.file_path {
                     Some(path) => path,
@@ -386,7 +385,7 @@ impl MainArea {
                 };
                 
                 // 2. 处理新音频文件
-                match AddAudioUtils::process_new_audio(&self.add_audio_modal, file_path) {
+                match AddAudioUtils::process_new_audio(&self.add_audio_modal) {
                     Ok(new_audio_info) => {
                         // 3. 尝试将音频转换为WAV格式
                         match AddAudioUtils::convert_to_wav(original_file_path) {
