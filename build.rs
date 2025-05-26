@@ -3,6 +3,14 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
+    // Add Windows icon resource
+    #[cfg(target_os = "windows")]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set_icon("assets/favicon.ico");
+        res.compile().unwrap();
+    }
+
     // Get the output directory
     let out_dir = env::var("OUT_DIR").unwrap();
     let _profile = env::var("PROFILE").unwrap();
@@ -27,6 +35,8 @@ fn main() {
     
     // Tell Cargo to re-run this build script if the tools directory changes
     println!("cargo:rerun-if-changed=tools");
+    // Tell Cargo to re-run this build script if the icon changes
+    println!("cargo:rerun-if-changed=assets/favicon.ico");
 }
 
 // Function to recursively copy a directory
@@ -56,4 +66,4 @@ fn copy_directory<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) {
                 .expect(&format!("Failed to copy file from {:?} to {:?}", src_path, dst_path));
         }
     }
-}
+} 
