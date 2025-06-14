@@ -318,6 +318,24 @@ impl ReplaceUtils {
         }
     }
 
+    /// Check if there are any replacement data stored
+    pub fn has_replacement_data() -> bool {
+        if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
+            !map.is_empty()
+        } else {
+            false
+        }
+    }
+
+    /// Get the number of replacement data stored
+    pub fn get_replacement_count() -> usize {
+        if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
+            map.len()
+        } else {
+            0
+        }
+    }
+
     /// Get a reference to the loop settings map
     pub fn get_loop_settings() -> Result<std::sync::MutexGuard<'static, HashMap<String, (Option<f32>, Option<f32>, bool)>>, String> {
         if let Ok(settings) = LOOP_SETTINGS.lock() {

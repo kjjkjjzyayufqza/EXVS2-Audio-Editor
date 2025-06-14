@@ -63,63 +63,15 @@ impl Nus3audioFileUtils {
     pub fn save_changes_to_file(file_path: &str) -> Result<(), String> {
         // Try to create a backup of the original file first
         let backup_path = format!("{}.backup", file_path);
-        match fs::copy(file_path, &backup_path) {
+        match std::fs::copy(file_path, &backup_path) {
             Ok(_) => println!("Created backup at {}", backup_path),
             Err(e) => println!("Warning: Failed to create backup: {}", e),
         }
 
-        // Load the original NUS3AUDIO file
-        let mut nus3_file = match Nus3audioFile::open(file_path) {
-            Ok(file) => file,
-            Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
-        };
-
-        // Apply all changes
-        if let Ok(changes) = FILE_CHANGES.lock() {
-            // First process removals
-            for (_, change_type) in changes.iter() {
-                if let FileChangeType::Remove(id, name) = change_type {
-                    // Find the index of the audio file to remove
-                    if let Some(idx) = nus3_file
-                        .files
-                        .iter()
-                        .position(|f| f.name == *name && f.id.to_string() == *id)
-                    {
-                        // Remove the audio file
-                        nus3_file.files.remove(idx);
-                        println!("Removed audio file: {} (ID: {})", name, id);
-                    }
-                }
-            }
-
-            // Finally process additions
-            for (_, change_type) in changes.iter() {
-                if let FileChangeType::Add(id, name, data) = change_type {
-                    // Convert ID to u32
-                    let id_val = match id.parse::<u32>() {
-                        Ok(val) => val,
-                        Err(_) => continue, // Skip if ID is invalid
-                    };
-
-                    // Add the new audio file
-                    nus3_file.files.push(AudioFile {
-                        id: id_val,
-                        name: name.clone(),
-                        data: data.clone(),
-                    });
-                    println!("Added audio file: {} (ID: {})", name, id);
-                }
-            }
-        }
-
-        // Write the modified NUS3AUDIO data to a memory buffer
-        let mut output_buffer = Vec::new();
-        nus3_file.write(&mut output_buffer);
-
-        // Write the buffer back to the original file
-        match fs::write(file_path, output_buffer) {
+        // Use ReplaceUtils to apply all in-memory replacements and save the file (覆盖原文件)
+        match super::replace_utils::ReplaceUtils::apply_replacements_and_save(file_path, file_path) {
             Ok(_) => {
-                // Clear the changes after successful save
+                // 清空 FILE_CHANGES
                 Self::clear_changes();
                 Ok(())
             }
@@ -129,20 +81,32 @@ impl Nus3audioFileUtils {
 
     /// Check if there are any pending changes
     pub fn has_pending_changes() -> bool {
-        if let Ok(changes) = FILE_CHANGES.lock() {
+        // Check for pending changes in FILE_CHANGES
+        let has_file_changes = if let Ok(changes) = FILE_CHANGES.lock() {
             !changes.is_empty()
         } else {
             false
-        }
+        };
+        
+        // Check for replacement data in ReplaceUtils
+        let has_replacements = super::replace_utils::ReplaceUtils::has_replacement_data();
+        
+        has_file_changes || has_replacements
     }
 
     /// Get the number of pending changes
     pub fn get_pending_changes_count() -> usize {
-        if let Ok(changes) = FILE_CHANGES.lock() {
+        // Count pending changes in FILE_CHANGES
+        let file_changes_count = if let Ok(changes) = FILE_CHANGES.lock() {
             changes.len()
         } else {
             0
-        }
+        };
+        
+        // Count replacement data in ReplaceUtils
+        let replacements_count = super::replace_utils::ReplaceUtils::get_replacement_count();
+        
+        file_changes_count + replacements_count
     }
 
     /// Register an audio file to be added to the NUS3AUDIO file
