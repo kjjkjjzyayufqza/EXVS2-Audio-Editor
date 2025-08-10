@@ -15,6 +15,8 @@ pub struct LoopSettings {
     pub use_custom_loop: bool,
     /// Estimated duration of the audio file (in seconds)
     pub estimated_duration: f32,
+    /// Gain in decibels to apply after import
+    pub gain_db: f32,
 }
 
 impl Default for LoopSettings {
@@ -24,6 +26,7 @@ impl Default for LoopSettings {
             loop_end: None,
             use_custom_loop: false,
             estimated_duration: 0.0,
+            gain_db: 0.0,
         }
     }
 }
@@ -150,6 +153,7 @@ impl LoopSettingsModal {
             loop_end: None,
             use_custom_loop: false,
             estimated_duration: duration,
+            gain_db: 0.0,
         };
 
         self.open = true;
@@ -279,6 +283,38 @@ impl LoopSettingsModal {
                 } else {
                     ui.label("Audio will loop from beginning to end");
                 }
+
+                ui.add_space(16.0);
+
+                // Gain section
+                ui.vertical_centered(|ui| {
+                    ui.heading("Gain");
+                    ui.add_space(8.0);
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Gain (dB):");
+                    let mut gain_value = self.settings.gain_db;
+                    if ui
+                        .add(egui::Slider::new(&mut gain_value, -24.0..=24.0).suffix(" dB"))
+                        .changed()
+                    {
+                        self.settings.gain_db = gain_value;
+                    }
+
+                    if ui.button("-6 dB").clicked() {
+                        self.settings.gain_db = -6.0;
+                    }
+                    if ui.button("+6 dB").clicked() {
+                        self.settings.gain_db = 6.0;
+                    }
+                    if ui.button("Reset").clicked() {
+                        self.settings.gain_db = 0.0;
+                    }
+                });
+
+                let linear_factor = 10f32.powf(self.settings.gain_db / 20.0);
+                ui.label(format!("Linear factor: {:.3}", linear_factor));
 
                 ui.add_space(20.0);
             });

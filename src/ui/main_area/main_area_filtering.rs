@@ -123,10 +123,10 @@ impl MainArea {
                             // Attempt to detect file type based on header
                             let file_type = if audio_file.data.len() >= 4 {
                                 match &audio_file.data[..4] {
-                                    b"OPUS" => "OPUS Audio",
-                                    b"IDSP" => "IDSP Audio",
-                                    b"RIFF" => "WAV Audio",
-                                    b"BNSF" => "BNSF Audio",
+                                    b"OPUS" => "OPUS",
+                                    b"IDSP" => "IDSP",
+                                    b"RIFF" => "WAV",
+                                    b"BNSF" => "BNSF",
                                     _ => "Unknown",
                                 }
                             } else {

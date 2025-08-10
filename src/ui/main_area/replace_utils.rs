@@ -10,6 +10,7 @@ use super::loop_settings_modal::LoopSettingsModal;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
+use hound;
 
 // 使用静态HashMap存储替换后的音频数据
 // 键是"文件路径:音频名称"，值是替换后的音频数据
@@ -98,10 +99,11 @@ impl ReplaceUtils {
         
         // Create a temporary output file path
         let temp_dir = std::env::temp_dir();
-        let original_filename = file_path.file_name()
+        let stem = file_path
+            .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
-        let temp_filename = format!("looping_{}", original_filename);
+        let temp_filename = format!("looping_{}.wav", stem);
         let temp_output_path = temp_dir.join(&temp_filename);
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
         
@@ -176,6 +178,63 @@ impl ReplaceUtils {
         }
     }
 
+    /// Apply gain in decibels to a WAV file and write to a new temporary WAV file
+    fn apply_wav_gain(input_path: &Path, gain_db: f32) -> Result<PathBuf, String> {
+        if gain_db.abs() < std::f32::EPSILON {
+            return Ok(input_path.to_path_buf());
+        }
+
+        let gain = 10f32.powf(gain_db / 20.0);
+
+        // Open reader
+        let mut reader = hound::WavReader::open(input_path)
+            .map_err(|e| format!("Failed to open WAV for gain: {}", e))?;
+        let spec = reader.spec();
+
+        // Prepare output path
+        let parent_dir: PathBuf = input_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::temp_dir());
+        let out_path = parent_dir.join(format!(
+            "gain_{}",
+            input_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        ));
+
+        let mut writer = hound::WavWriter::create(&out_path, spec)
+            .map_err(|e| format!("Failed to create output WAV: {}", e))?;
+
+        match (spec.sample_format, spec.bits_per_sample) {
+            (hound::SampleFormat::Int, 16) => {
+                for s in reader.samples::<i16>() {
+                    let v = s.map_err(|e| format!("Read sample error: {}", e))? as f32 / 32768.0;
+                    let scaled = (v * gain).clamp(-1.0, 1.0);
+                    let out = (scaled * 32767.0).round() as i16;
+                    writer.write_sample(out).map_err(|e| format!("Write sample error: {}", e))?;
+                }
+            }
+            (hound::SampleFormat::Float, 32) => {
+                for s in reader.samples::<f32>() {
+                    let v = s.map_err(|e| format!("Read sample error: {}", e))?;
+                    let out = (v * gain).clamp(-1.0, 1.0);
+                    writer.write_sample(out).map_err(|e| format!("Write sample error: {}", e))?;
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "Unsupported WAV format: {:?} {}-bit",
+                    spec.sample_format, spec.bits_per_sample
+                ));
+            }
+        }
+
+        writer.finalize().map_err(|e| format!("Finalize WAV error: {}", e))?;
+        Ok(out_path)
+    }
+
     /// Show file dialog to select replacement audio file and open the loop settings modal
     /// Does not replace anything in memory yet - this happens after loop settings are confirmed
     pub fn replace_with_file_dialog(
@@ -241,7 +300,8 @@ impl ReplaceUtils {
         file_path: Option<&Path>,
         loop_start: Option<f32>,
         loop_end: Option<f32>,
-        use_custom_loop: bool
+        use_custom_loop: bool,
+        gain_db: f32,
     ) -> Result<AudioFileInfo, String> {
         // 打印调试信息
         println!("Attempting to process replacement for: {} (ID: {})", audio_file_info.name, audio_file_info.id);
@@ -288,21 +348,33 @@ impl ReplaceUtils {
             }
         };
         
-        // Replace the audio file with the processed file in memory only
-        let result = Self::replace_in_memory(audio_file_info, processed_path.to_str().unwrap());
+        // Apply gain if requested and if the processed file is a WAV
+        let final_path = if gain_db.abs() > std::f32::EPSILON {
+            match Self::apply_wav_gain(&processed_path, gain_db) {
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Warning: Failed to apply gain: {}. Using unmodified output.", e);
+                    processed_path.clone()
+                }
+            }
+        } else {
+            processed_path.clone()
+        };
+
+        // Replace the audio file with the processed (and possibly gain-applied) file in memory only
+        let result = Self::replace_in_memory(audio_file_info, final_path.to_str().unwrap());
         
         // Store loop settings
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
             settings.insert(key, (loop_start, loop_end, use_custom_loop));
         }
         
-        // Clean up temporary file if it's different from the original
+        // Clean up temporary files if they are different from the original
         if processed_path != actual_file_path && processed_path.exists() {
-            // 使用 let 绑定来延长临时值的生命周期
-            let remove_result = fs::remove_file(&processed_path);
-            if let Err(e) = remove_result {
-                println!("Warning: Failed to remove temporary file: {}", e);
-            }
+            let _ = fs::remove_file(&processed_path);
+        }
+        if final_path != processed_path && final_path != actual_file_path && final_path.exists() {
+            let _ = fs::remove_file(&final_path);
         }
         
         result

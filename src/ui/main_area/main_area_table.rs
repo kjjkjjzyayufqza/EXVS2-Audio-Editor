@@ -554,6 +554,7 @@ impl MainArea {
                         loop_start,
                         loop_end,
                         use_custom_loop,
+                        self.loop_settings_modal.settings.gain_db,
                     ) {
                         Ok(new_audio_info) => {
                             // Update the audio file in memory

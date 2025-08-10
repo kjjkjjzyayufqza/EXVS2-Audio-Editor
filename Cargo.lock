@@ -1401,6 +1401,7 @@ dependencies = [
  "egui",
  "egui-phosphor",
  "env_logger",
+ "hound",
  "js-sys",
  "log",
  "mp3-duration",
