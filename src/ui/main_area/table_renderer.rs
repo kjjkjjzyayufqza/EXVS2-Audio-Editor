@@ -15,6 +15,7 @@ impl TableRenderer {
         ui: &mut Ui,
         audio_files: &[AudioFileInfo],
         selected_rows: &mut HashSet<usize>,
+        persistent_selected: &mut HashSet<String>,
         striped: bool,
         clickable: bool,
         show_grid_lines: bool,
@@ -36,12 +37,14 @@ impl TableRenderer {
         // ui.set_height(text_height * 2.0); // Set height to twice the text height
 
         // Define column width with minimum sizes
-        let col_width_name = available_width / 5.0; // Adjusted for better fit
-        let col_width_id = available_width / 9.0; // Increased for long IDs
-        let col_width_size = available_width / 9.0;
-        let col_width_filename = available_width / 5.0;
-        let col_width_type = available_width / 10.0;
-        let col_action = available_width
+        let col_width_checkbox = 28.0; // Checkbox column
+        let remaining_width = (available_width - col_width_checkbox).max(100.0);
+        let col_width_name = remaining_width / 5.0; // Adjusted for better fit
+        let col_width_id = remaining_width / 9.0; // Increased for long IDs
+        let col_width_size = remaining_width / 9.0;
+        let col_width_filename = remaining_width / 5.0;
+        let col_width_type = remaining_width / 10.0;
+        let col_action = remaining_width
             - col_width_name
             - col_width_id
             - col_width_size
@@ -66,10 +69,16 @@ impl TableRenderer {
         );
 
         Grid::new("table_header")
-            .num_columns(6)
+            .num_columns(7)
             .spacing([5.0, 0.0])
             .show(ui, |ui| {
                 // Header with sort indicators and clickable functionality
+                // Column 0: Selection header (not sortable)
+                ui.add_sized(
+                    [col_width_checkbox, 35.0],
+                    egui::Label::new(RichText::new("Sel").size(heading_size).strong()),
+                )
+                .on_hover_text("Selection");
                 
                 // Name column header
                 let name_sort_icon = if *sort_column == SortColumn::Name {
@@ -208,12 +217,15 @@ impl TableRenderer {
 
         ScrollArea::vertical().show_rows(ui, row_height, audio_files.len(), |ui, row_range| {
             Grid::new("table_content")
-                .num_columns(6)
+                .num_columns(7)
                 .spacing([5.0, 2.0])
                 .show(ui, |ui| {
                     for row_index in row_range {
                         let file = &audio_files[row_index];
-                        let is_selected = selected_rows.contains(&row_index);
+                        let key = format!("{}:{}", file.name, file.id);
+                        let is_persist_selected = persistent_selected.contains(&key);
+                        let is_row_selected = selected_rows.contains(&row_index);
+                        let is_selected = is_persist_selected || is_row_selected;
 
                         // Striped background
                         if striped && row_index % 2 == 1 {
@@ -257,12 +269,25 @@ impl TableRenderer {
                             sense,
                         );
 
-                        // Handle row click events
+                        // Handle row click events: toggle row selection only (checkbox controls persistent selection)
                         if row_response.clicked() && clickable {
                             if selected_rows.contains(&row_index) {
                                 selected_rows.remove(&row_index);
                             } else {
                                 selected_rows.insert(row_index);
+                            }
+                        }
+
+                        // Column 0: Checkbox
+                        {
+                            let mut checked = is_persist_selected;
+                            let resp = ui.add_sized([col_width_checkbox, row_height], egui::Checkbox::new(&mut checked, ""));
+                            if resp.changed() {
+                                if checked {
+                                    persistent_selected.insert(key.clone());
+                                } else {
+                                    persistent_selected.remove(&key);
+                                }
                             }
                         }
 

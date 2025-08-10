@@ -438,4 +438,47 @@ impl ReplaceUtils {
             Err(e) => Err(format!("Failed to write updated file: {}", e)),
         }
     }
+
+    /// Replace target audio in memory with an empty WAV buffer, preserving name and id
+    pub fn replace_with_empty_wav_in_memory(
+        audio_file_info: &AudioFileInfo,
+        _nus3_path: &str,
+    ) -> Result<AudioFileInfo, String> {
+        // A minimal valid 44-byte WAV header with 0 data bytes (PCM mono 8kHz 16-bit)
+        // This is sufficient for representing an empty/near-empty WAV for our in-memory replacement use-case
+        const EMPTY_WAV_HEADER: [u8; 44] = [
+            0x52, 0x49, 0x46, 0x46, // 'RIFF'
+            0x24, 0x00, 0x00, 0x00, // Chunk size = 36 + data_size (0)
+            0x57, 0x41, 0x56, 0x45, // 'WAVE'
+            0x66, 0x6d, 0x74, 0x20, // 'fmt '
+            0x10, 0x00, 0x00, 0x00, // Subchunk1Size = 16
+            0x01, 0x00,             // AudioFormat = PCM
+            0x01, 0x00,             // NumChannels = 1
+            0x40, 0x1f, 0x00, 0x00, // SampleRate = 8000
+            0x80, 0x3e, 0x00, 0x00, // ByteRate = SampleRate * NumChannels * BitsPerSample/8
+            0x02, 0x00,             // BlockAlign = NumChannels * BitsPerSample/8
+            0x10, 0x00,             // BitsPerSample = 16
+            0x64, 0x61, 0x74, 0x61, // 'data'
+            0x00, 0x00, 0x00, 0x00, // Subchunk2Size = 0
+        ];
+
+        let replacement_data = EMPTY_WAV_HEADER.to_vec();
+
+        // Store into in-memory replacement map under key name:id
+        let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
+        if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {
+            map.insert(key, replacement_data.clone());
+        }
+
+        // Create a new AudioFileInfo reflecting the empty wav size and filename
+        let new_audio_info = AudioFileInfo {
+            name: audio_file_info.name.clone(),
+            id: audio_file_info.id.clone(),
+            size: replacement_data.len(),
+            filename: format!("{}_empty.wav", audio_file_info.filename),
+            file_type: "WAV Audio".to_string(),
+        };
+
+        Ok(new_audio_info)
+    }
 }

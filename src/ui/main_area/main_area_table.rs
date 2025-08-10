@@ -56,10 +56,29 @@ impl MainArea {
                                 println!("Add Audio button clicked");
                                 action_data.add_audio = true;
                             }
+
+                            // New: Replace with Empty WAV button with confirmation
+                            if ui.button("Replace with Empty WAV").clicked() {
+                                // Count current selected items across filtering (persistent set)
+                                let selected_count = self.selected_items.len();
+                                if selected_count == 0 {
+                                    self.add_toast("No items selected".to_string(), Color32::GOLD);
+                                } else {
+                                    self.pending_replace_empty = true;
+                                    self.confirm_modal.open(
+                                        "Confirm Replace with Empty WAV",
+                                        &format!(
+                                            "This will replace the audio data of {} selected file(s) with empty WAV. Names and IDs will be preserved. Continue?",
+                                            selected_count
+                                        ),
+                                    );
+                                }
+                            }
                         });
 
                         // File count display
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // First add Found/Total on the rightmost, then Selected to its left (due to RTL layout)
                             if !self.search_query.is_empty() {
                                 ui.label(format!(
                                     "Found: {} / {} files",
@@ -68,6 +87,11 @@ impl MainArea {
                                 ));
                             } else {
                                 ui.label(format!("Total: {} files", files_count));
+                            }
+                            let selected_count = self.selected_items.len();
+                            if selected_count > 0 {
+                                ui.add_space(12.0);
+                                ui.label(format!("Selected: {}", selected_count));
                             }
                         });
 
@@ -84,6 +108,7 @@ impl MainArea {
                             ui,
                             &filtered_audio_files,
                             &mut self.selected_rows,
+                            &mut self.selected_items,
                             self.striped,
                             self.clickable,
                             self.show_grid_lines,
@@ -116,6 +141,8 @@ impl MainArea {
         let mut toasts_to_add = Vec::new();
 
         // Process all actions and collect toast messages
+
+        // Persistent selection is handled within the table renderer via checkboxes and row clicks
 
         // Handle "Add Audio" action if clicked
         if action_data.add_audio {
@@ -318,6 +345,49 @@ impl MainArea {
                     }
                 }
             }
+            // If there is a pending replace with empty wav action, perform it
+            else if self.pending_replace_empty {
+                self.pending_replace_empty = false;
+
+                if let Some(file_path) = &self.selected_file {
+                    // Replace for each selected item that exists in current full list
+                    let mut replaced = 0usize;
+                    if let Some(ref mut audio_files) = self.audio_files {
+                        // Build index by key for quick lookup
+                        use std::collections::HashMap;
+                        let mut index_by_key: HashMap<String, usize> = HashMap::new();
+                        for (i, f) in audio_files.iter().enumerate() {
+                            index_by_key.insert(format!("{}:{}", f.name, f.id), i);
+                        }
+
+                        for key in self.selected_items.clone().into_iter() {
+                            if let Some(&idx) = index_by_key.get(&key) {
+                                let audio_info = audio_files[idx].clone();
+                                match ReplaceUtils::replace_with_empty_wav_in_memory(&audio_info, file_path) {
+                                    Ok(new_info) => {
+                                        audio_files[idx] = new_info;
+                                        replaced += 1;
+                                    }
+                                    Err(e) => {
+                                        toasts_to_add.push((format!("Failed to replace {}: {}", key, e), Color32::RED));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Update file count and notify
+                        self.file_count = Some(audio_files.len());
+                        if replaced > 0 {
+                            toasts_to_add.push((
+                                format!("Replaced {} item(s) with empty WAV (names/ids preserved)", replaced),
+                                Color32::GREEN,
+                            ));
+                        } else {
+                            toasts_to_add.push(("No matching selected items to replace".to_string(), Color32::GOLD));
+                        }
+                    }
+                }
+            }
             // If there is an audio to be removed, perform the removal
             else if let Some(audio_info) = &self.pending_remove_audio {
                 if let Some(_file_path) = &self.selected_file {
@@ -339,6 +409,10 @@ impl MainArea {
                                     
                                     // Update the file count
                                     self.file_count = Some(audio_files.len());
+                                    
+                                    // Remove from persistent selection if present
+                                    let key = format!("{}:{}", audio_info.name, audio_info.id);
+                                    self.selected_items.remove(&key);
                                     
                                     toasts_to_add.push((
                                         format!("Successfully marked for deletion: {}", audio_info.name),
@@ -362,6 +436,8 @@ impl MainArea {
             
             if self.pending_export_all {
                 self.pending_export_all = false;
+            } else if self.pending_replace_empty {
+                self.pending_replace_empty = false;
             } else if let Some(_audio_info) = &self.pending_remove_audio {
                 // Clear the audio info to be removed
                 self.pending_remove_audio = None;

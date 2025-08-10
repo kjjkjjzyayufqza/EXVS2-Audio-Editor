@@ -1,16 +1,12 @@
-use std::collections::HashSet;
 use egui::Color32;
+use std::collections::HashSet;
 
-use crate::ui::audio_player::AudioPlayer;
 use super::{
-    sort_column::SortColumn, 
-    search_column::SearchColumn, 
-    audio_file_info::AudioFileInfo,
+    add_audio_modal::AddAudioModal, audio_file_info::AudioFileInfo, confirm_modal::ConfirmModal,
+    loop_settings_modal::LoopSettingsModal, search_column::SearchColumn, sort_column::SortColumn,
     toast_message::ToastMessage,
-    loop_settings_modal::LoopSettingsModal,
-    add_audio_modal::AddAudioModal,
-    confirm_modal::ConfirmModal
 };
+use crate::ui::audio_player::AudioPlayer;
 
 /// Main editing area component
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -29,6 +25,9 @@ pub struct MainArea {
     pub clickable: bool,
     #[serde(skip)]
     pub selected_rows: HashSet<usize>,
+    // Persistent multi-selection across filtering/search, keyed by "name:id"
+    #[serde(skip)]
+    pub selected_items: HashSet<String>,
     // Whether to display table grid lines
     pub show_grid_lines: bool,
     // Search functionality
@@ -47,26 +46,30 @@ pub struct MainArea {
     // Toast notifications
     #[serde(skip)]
     pub(crate) toast_messages: Vec<ToastMessage>,
-    
+
     // Loop settings modal window
     #[serde(skip)]
     pub loop_settings_modal: LoopSettingsModal,
-    
+
     // Add audio modal window
     #[serde(skip)]
     pub add_audio_modal: AddAudioModal,
-    
+
     // Confirm dialog modal window
     #[serde(skip)]
     pub confirm_modal: ConfirmModal,
-    
+
     // Pending remove action data
     #[serde(skip)]
     pub pending_remove_audio: Option<AudioFileInfo>,
-    
+
     // Pending export all action flag
     #[serde(skip)]
     pub pending_export_all: bool,
+
+    // Pending replace-with-empty-wav action flag
+    #[serde(skip)]
+    pub pending_replace_empty: bool,
 }
 
 impl Default for MainArea {
@@ -79,7 +82,7 @@ impl MainArea {
     /// Create a new main area
     pub fn new() -> Self {
         println!("Creating new MainArea instance");
-        
+
         Self {
             selected_file: None,
             file_count: None,
@@ -90,6 +93,7 @@ impl MainArea {
             resizable: true,
             clickable: true,
             selected_rows: HashSet::new(),
+            selected_items: HashSet::new(),
             show_grid_lines: false,
             // Initialize search query as empty
             search_query: String::new(),
@@ -104,30 +108,33 @@ impl MainArea {
             output_path: None,
             // Initialize toast messages
             toast_messages: Vec::new(),
-            
+
             // Initialize loop settings modal
             loop_settings_modal: LoopSettingsModal::new(),
-            
+
             // Initialize add audio modal
             add_audio_modal: AddAudioModal::new(),
-            
+
             // Initialize confirm modal
             confirm_modal: ConfirmModal::new(),
-            
+
             // Initialize pending remove audio
             pending_remove_audio: None,
-            
+
             // Initialize pending export all
             pending_export_all: false,
+
+            // Initialize pending replace with empty wav
+            pending_replace_empty: false,
         }
     }
-    
+
     /// Add a toast notification
     pub fn add_toast(&mut self, message: String, color: Color32) {
         let toast = ToastMessage::new(message, color, 3); // Display for 3 seconds
         self.toast_messages.push(toast);
     }
-    
+
     /// Ensure that the audio player is initialized
     /// This is called after deserialization to make sure audio player is recreated
     pub fn ensure_audio_player_initialized(&mut self) {
