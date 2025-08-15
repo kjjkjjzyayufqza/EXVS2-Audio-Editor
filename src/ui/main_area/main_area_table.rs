@@ -57,6 +57,47 @@ impl MainArea {
                                 action_data.add_audio = true;
                             }
 
+                            // New: Replace with New Audio button (batch)
+                            if ui.button("Replace with New Audio").clicked() {
+                                let selected_count = self.selected_items.len();
+                                if selected_count == 0 {
+                                    self.add_toast("No items selected".to_string(), Color32::GOLD);
+                                } else {
+                                    if let Some(ref audio_files) = self.audio_files {
+                                        // Pick a representative selected audio to drive the dialog
+                                        let mut representative: Option<AudioFileInfo> = None;
+                                        for key in self.selected_items.iter() {
+                                            if let Some((name, id)) = key.split_once(':') {
+                                                if let Some(info) = audio_files.iter().find(|f| f.name == name && f.id == id) {
+                                                    representative = Some(info.clone());
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if let Some(rep) = representative {
+                                            match ReplaceUtils::replace_with_file_dialog(&rep, &mut self.loop_settings_modal) {
+                                                Ok(_) => {
+                                                    self.pending_replace_new = true;
+                                                    self.add_toast(
+                                                        format!(
+                                                            "Please configure loop settings (will apply to {} selected item(s))",
+                                                            selected_count
+                                                        ),
+                                                        Color32::GOLD,
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    self.add_toast(format!("Replace failed: {}", e), Color32::RED);
+                                                }
+                                            }
+                                        } else {
+                                            self.add_toast("No matching selected items found in list".to_string(), Color32::GOLD);
+                                        }
+                                    }
+                                }
+                            }
+
                             // New: Replace with Empty WAV button with confirmation
                             if ui.button("Replace with Empty WAV").clicked() {
                                 // Count current selected items across filtering (persistent set)
@@ -259,6 +300,9 @@ impl MainArea {
                         "Starting replacement for audio: {} (ID: {})",
                         audio_info.name, audio_info.id
                     );
+
+                    // Ensure batch replace flag is cleared when doing single replace
+                    self.pending_replace_new = false;
 
                     // Use ReplaceUtils to open file dialog and show loop settings modal
                     // This doesn't replace the audio in memory yet - just stores the file path
@@ -540,88 +584,176 @@ impl MainArea {
 
                     let use_custom_loop = self.loop_settings_modal.settings.use_custom_loop;
 
-                    // Print debug information to help us understand the processing
-                    println!(
-                        "Processing replacement for audio: {} (ID: {})",
-                        audio_info.name, audio_info.id
-                    );
+                    if self.pending_replace_new {
+                        // Batch replace for all selected items using the chosen file and loop settings
+                        self.pending_replace_new = false;
 
-                    // Use the stored file path instead of asking the user to reselect the file
-                    // Process the replacement with the confirmed loop settings
-                    match ReplaceUtils::process_replacement_with_loop_settings(
-                        audio_info,
-                        None, // Pass None to use the stored file path
-                        loop_start,
-                        loop_end,
-                        use_custom_loop,
-                        self.loop_settings_modal.settings.gain_db,
-                    ) {
-                        Ok(new_audio_info) => {
-                            // Update the audio file in memory
-                            if let Some(ref mut audio_files) = self.audio_files {
-                                if let Some(original_idx) = audio_files.iter().position(|f| {
-                                    f.name == audio_info.name && f.id == audio_info.id
-                                }) {
-                                    // Replace with the new audio info
-                                    audio_files[original_idx] = new_audio_info.clone();
+                        // Retrieve the file path chosen during the dialog (from representative)
+                        let rep_path_opt = ReplaceUtils::get_replacement_path(&audio_info.name, &audio_info.id);
+                        if rep_path_opt.is_none() {
+                            toasts_to_add.push(("No replacement file path found".to_string(), Color32::RED));
+                            return;
+                        }
+                        let rep_path = rep_path_opt.unwrap();
+                        let rep_path_ref = rep_path.as_path();
 
-                                    // Get the replacement audio data from our static HashMap
-                                    if let Some(replacement_data) =
-                                        ReplaceUtils::get_replacement_data(
-                                            &audio_info.name,
-                                            &audio_info.id,
-                                        )
-                                    {
-                                        // Create an audio file struct for the audio player
-                                        let audio = crate::ui::audio_player::AudioFile {
-                                            file_path: file_path.to_string(),
-                                            data: replacement_data,
-                                            name: audio_info.name.clone(),
-                                            file_type: audio_info.file_type.clone(),
-                                            id: audio_info.id.clone(),
-                                            #[cfg(target_arch = "wasm32")]
-                                            temp_url: None,
-                                        };
+                        if let Some(ref mut audio_files) = self.audio_files {
+                            use std::collections::HashMap;
+                            let mut index_by_key: HashMap<String, usize> = HashMap::new();
+                            for (i, f) in audio_files.iter().enumerate() {
+                                index_by_key.insert(format!("{}:{}", f.name, f.id), i);
+                            }
 
-                                        // Update the audio player if it exists
-                                        if let Some(audio_player) = &mut self.audio_player {
-                                            let state = audio_player.get_audio_state();
-                                            let mut state = state.lock().unwrap();
-                                            state.set_audio(audio);
-
-                                            // AudioPlayer.load_audio will automatically apply the loop settings for the specific audio file
-                                            // Therefore we don't need to set the loop points here
+                            let mut replaced_count: usize = 0;
+                            for key in self.selected_items.clone().into_iter() {
+                                if let Some(&idx) = index_by_key.get(&key) {
+                                    let target_info = audio_files[idx].clone();
+                                    match ReplaceUtils::process_replacement_with_loop_settings(
+                                        &target_info,
+                                        Some(rep_path_ref),
+                                        loop_start,
+                                        loop_end,
+                                        use_custom_loop,
+                                        self.loop_settings_modal.settings.gain_db,
+                                    ) {
+                                        Ok(new_audio_info) => {
+                                            audio_files[idx] = new_audio_info;
+                                            replaced_count += 1;
+                                        }
+                                        Err(e) => {
+                                            toasts_to_add.push((format!("Failed to process replacement for {}: {}", key, e), Color32::RED));
                                         }
                                     }
-
-                                    let loop_message = if use_custom_loop {
-                                        let start_str = loop_start
-                                            .map_or("start".to_string(), |s| format!("{:.2}s", s));
-                                        let end_str = loop_end
-                                            .map_or("end".to_string(), |e| format!("{:.2}s", e));
-                                        format!(" (Loop: {} to {})", start_str, end_str)
-                                    } else {
-                                        " (Full track loop)".to_string()
-                                    };
-
-                                    toasts_to_add.push((
-                                        format!(
-                                            "Successfully replaced audio in memory: {}{}",
-                                            audio_info.name, loop_message
-                                        ),
-                                        Color32::GREEN,
-                                    ));
                                 }
                             }
-                        }
-                        Err(e) => {
-                            toasts_to_add.push((
-                                format!("Failed to process replacement: {}", e),
-                                Color32::RED,
-                            ));
 
-                            // Add more debug information when there is an error
-                            println!("Replacement error details: {}", e);
+                            self.file_count = Some(audio_files.len());
+
+                            let loop_message = if use_custom_loop {
+                                let start_str = loop_start.map_or("start".to_string(), |s| format!("{:.2}s", s));
+                                let end_str = loop_end.map_or("end".to_string(), |e| format!("{:.2}s", e));
+                                format!(" (Loop: {} to {})", start_str, end_str)
+                            } else {
+                                " (Full track loop)".to_string()
+                            };
+
+                            if replaced_count > 0 {
+                                // Update audio player with representative audio replacement, similar to single flow
+                                if let Some(replacement_data) =
+                                    ReplaceUtils::get_replacement_data(
+                                        &audio_info.name,
+                                        &audio_info.id,
+                                    )
+                                {
+                                    let audio = crate::ui::audio_player::AudioFile {
+                                        file_path: file_path.to_string(),
+                                        data: replacement_data,
+                                        name: audio_info.name.clone(),
+                                        file_type: audio_info.file_type.clone(),
+                                        id: audio_info.id.clone(),
+                                        #[cfg(target_arch = "wasm32")]
+                                        temp_url: None,
+                                    };
+                                    if let Some(audio_player) = &mut self.audio_player {
+                                        let state = audio_player.get_audio_state();
+                                        let mut state = state.lock().unwrap();
+                                        state.set_audio(audio);
+                                    }
+                                }
+
+                                toasts_to_add.push((
+                                    format!("Successfully replaced {} item(s) in memory{}", replaced_count, loop_message),
+                                    Color32::GREEN,
+                                ));
+                            } else {
+                                toasts_to_add.push(("No matching selected items to replace".to_string(), Color32::GOLD));
+                            }
+                        }
+                    } else {
+                        // Single item flow (existing behavior)
+                        // Print debug information to help us understand the processing
+                        println!(
+                            "Processing replacement for audio: {} (ID: {})",
+                            audio_info.name, audio_info.id
+                        );
+
+                        // Use the stored file path instead of asking the user to reselect the file
+                        // Process the replacement with the confirmed loop settings
+                        match ReplaceUtils::process_replacement_with_loop_settings(
+                            audio_info,
+                            None, // Pass None to use the stored file path
+                            loop_start,
+                            loop_end,
+                            use_custom_loop,
+                            self.loop_settings_modal.settings.gain_db,
+                        ) {
+                            Ok(new_audio_info) => {
+                                // Update the audio file in memory
+                                if let Some(ref mut audio_files) = self.audio_files {
+                                    if let Some(original_idx) = audio_files.iter().position(|f| {
+                                        f.name == audio_info.name && f.id == audio_info.id
+                                    }) {
+                                        // Replace with the new audio info
+                                        audio_files[original_idx] = new_audio_info.clone();
+
+                                        // Get the replacement audio data from our static HashMap
+                                        if let Some(replacement_data) =
+                                            ReplaceUtils::get_replacement_data(
+                                                &audio_info.name,
+                                                &audio_info.id,
+                                            )
+                                        {
+                                            // Create an audio file struct for the audio player
+                                            let audio = crate::ui::audio_player::AudioFile {
+                                                file_path: file_path.to_string(),
+                                                data: replacement_data,
+                                                name: audio_info.name.clone(),
+                                                file_type: audio_info.file_type.clone(),
+                                                id: audio_info.id.clone(),
+                                                #[cfg(target_arch = "wasm32")]
+                                                temp_url: None,
+                                            };
+
+                                            // Update the audio player if it exists
+                                            if let Some(audio_player) = &mut self.audio_player {
+                                                let state = audio_player.get_audio_state();
+                                                let mut state = state.lock().unwrap();
+                                                state.set_audio(audio);
+
+                                                // AudioPlayer.load_audio will automatically apply the loop settings for the specific audio file
+                                                // Therefore we don't need to set the loop points here
+                                            }
+                                        }
+
+                                        let loop_message = if use_custom_loop {
+                                            let start_str = loop_start
+                                                .map_or("start".to_string(), |s| format!("{:.2}s", s));
+                                            let end_str = loop_end
+                                                .map_or("end".to_string(), |e| format!("{:.2}s", e));
+                                            format!(" (Loop: {} to {})", start_str, end_str)
+                                        } else {
+                                            " (Full track loop)".to_string()
+                                        };
+
+                                        toasts_to_add.push((
+                                            format!(
+                                                "Successfully replaced audio in memory: {}{}",
+                                                audio_info.name, loop_message
+                                            ),
+                                            Color32::GREEN,
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                toasts_to_add.push((
+                                    format!("Failed to process replacement: {}", e),
+                                    Color32::RED,
+                                ));
+
+                                // Add more debug information when there is an error
+                                println!("Replacement error details: {}", e);
+                            }
                         }
                     }
                 }

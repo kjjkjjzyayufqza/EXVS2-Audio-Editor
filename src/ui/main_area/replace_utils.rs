@@ -178,6 +178,16 @@ impl ReplaceUtils {
         }
     }
 
+    /// Get stored replacement file path for a specific audio key (name:id)
+    pub fn get_replacement_path(audio_name: &str, audio_id: &str) -> Option<PathBuf> {
+        let key = format!("{}:{}", audio_name, audio_id);
+        if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
+            map.get(&key).cloned()
+        } else {
+            None
+        }
+    }
+
     /// Apply gain in decibels to a WAV file and write to a new temporary WAV file
     fn apply_wav_gain(input_path: &Path, gain_db: f32) -> Result<PathBuf, String> {
         if gain_db.abs() < std::f32::EPSILON {

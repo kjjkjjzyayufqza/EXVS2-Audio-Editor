@@ -70,6 +70,14 @@ pub struct MainArea {
     // Pending replace-with-empty-wav action flag
     #[serde(skip)]
     pub pending_replace_empty: bool,
+
+    // Pending batch replace-with-new-audio action flag
+    #[serde(skip)]
+    pub pending_replace_new: bool,
+
+    // Stored file path for batch replace-with-new-audio
+    #[serde(skip)]
+    pub pending_replace_new_file_path: Option<String>,
 }
 
 impl Default for MainArea {
@@ -126,6 +134,10 @@ impl MainArea {
 
             // Initialize pending replace with empty wav
             pending_replace_empty: false,
+
+            // Initialize pending replace with new audio
+            pending_replace_new: false,
+            pending_replace_new_file_path: None,
         }
     }
 
