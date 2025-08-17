@@ -422,6 +422,9 @@ impl MainArea {
                         // Update file count and notify
                         self.file_count = Some(audio_files.len());
                         if replaced > 0 {
+                            // Clear all selected items after successful batch replacement
+                            self.selected_items.clear();
+                            
                             toasts_to_add.push((
                                 format!("Replaced {} item(s) with empty WAV (names/ids preserved)", replaced),
                                 Color32::GREEN,
@@ -583,6 +586,7 @@ impl MainArea {
                     };
 
                     let use_custom_loop = self.loop_settings_modal.settings.use_custom_loop;
+                    let enable_loop = self.loop_settings_modal.settings.enable_loop;
 
                     if self.pending_replace_new {
                         // Batch replace for all selected items using the chosen file and loop settings
@@ -614,6 +618,7 @@ impl MainArea {
                                         loop_start,
                                         loop_end,
                                         use_custom_loop,
+                                        enable_loop,
                                         self.loop_settings_modal.settings.gain_db,
                                     ) {
                                         Ok(new_audio_info) => {
@@ -661,6 +666,9 @@ impl MainArea {
                                     }
                                 }
 
+                                // Clear all selected items after successful batch replacement
+                                self.selected_items.clear();
+
                                 toasts_to_add.push((
                                     format!("Successfully replaced {} item(s) in memory{}", replaced_count, loop_message),
                                     Color32::GREEN,
@@ -685,6 +693,7 @@ impl MainArea {
                             loop_start,
                             loop_end,
                             use_custom_loop,
+                            enable_loop,
                             self.loop_settings_modal.settings.gain_db,
                         ) {
                             Ok(new_audio_info) => {

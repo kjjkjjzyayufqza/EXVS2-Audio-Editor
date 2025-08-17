@@ -84,9 +84,10 @@ impl ReplaceUtils {
     /// Process audio file with vgmstream-cli to add loop points
     pub fn process_with_vgmstream(
         file_path: &Path,
-        loop_start: Option<f32>,
-        loop_end: Option<f32>,
-        use_custom_loop: bool,
+        _loop_start: Option<f32>,
+        _loop_end: Option<f32>,
+        _use_custom_loop: bool,
+        enable_loop: bool,
     ) -> Result<PathBuf, String> {
         // Path to vgmstream-cli.exe in tools directory
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
@@ -139,11 +140,14 @@ impl ReplaceUtils {
         // Start building arguments
         let mut args: Vec<String> = vec!["-i".to_string()];
 
-        // Enable loop from beginning to end
-        args.push("-e".to_string());
+        // Add loop functionality only if enabled
+        if enable_loop {
+            // Enable loop from beginning to end
+            args.push("-e".to_string());
 
-        // Add smpl chunk
-        args.push("-L".to_string());
+            // Add smpl chunk
+            args.push("-L".to_string());
+        }
 
         // if use_custom_loop {
         //     if let Some(start) = loop_start {
@@ -340,6 +344,7 @@ impl ReplaceUtils {
         loop_start: Option<f32>,
         loop_end: Option<f32>,
         use_custom_loop: bool,
+        enable_loop: bool,
         gain_db: f32,
     ) -> Result<AudioFileInfo, String> {
         // 打印调试信息
@@ -385,6 +390,7 @@ impl ReplaceUtils {
             loop_start,
             loop_end,
             use_custom_loop,
+            enable_loop,
         ) {
             Ok(path) => path,
             Err(e) => {

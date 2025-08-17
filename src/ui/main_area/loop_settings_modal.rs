@@ -13,6 +13,8 @@ pub struct LoopSettings {
     pub loop_end: Option<f32>,
     /// Whether to use the custom loop points
     pub use_custom_loop: bool,
+    /// Whether to enable loop functionality
+    pub enable_loop: bool,
     /// Estimated duration of the audio file (in seconds)
     pub estimated_duration: f32,
     /// Gain in decibels to apply after import
@@ -25,6 +27,7 @@ impl Default for LoopSettings {
             loop_start: None,
             loop_end: None,
             use_custom_loop: false,
+            enable_loop: true,
             estimated_duration: 0.0,
             gain_db: 0.0,
         }
@@ -152,6 +155,7 @@ impl LoopSettingsModal {
             loop_start: None,
             loop_end: None,
             use_custom_loop: false,
+            enable_loop: true,
             estimated_duration: duration,
             gain_db: 0.0,
         };
@@ -220,9 +224,21 @@ impl LoopSettingsModal {
                     ui.add_space(10.0);
                 });
 
-                ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                ui.checkbox(&mut self.settings.enable_loop, "Enable loop functionality");
+                
+                ui.add_space(5.0);
+                
+                if self.settings.enable_loop {
+                    ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                } else {
+                    // Disable custom loop when loop is disabled
+                    self.settings.use_custom_loop = false;
+                    ui.add_enabled_ui(false, |ui| {
+                        ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                    });
+                }
 
-                if self.settings.use_custom_loop {
+                if self.settings.enable_loop && self.settings.use_custom_loop {
                     ui.add_space(10.0);
 
                     // Loop start input
@@ -280,8 +296,10 @@ impl LoopSettingsModal {
 
                     ui.add_space(10.0);
                     ui.label(format!("Loop Duration: {:.2} seconds", loop_duration));
-                } else {
+                } else if self.settings.enable_loop {
                     ui.label("Audio will loop from beginning to end");
+                } else {
+                    ui.label("Loop functionality is disabled");
                 }
 
                 ui.add_space(16.0);
