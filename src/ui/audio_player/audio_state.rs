@@ -308,30 +308,9 @@ impl AudioState {
                 let total_duration = self.total_duration;
                 let current_pos = self.current_position;
                 
-                // Handle custom loop points if enabled
-                if use_custom_loop {
-                    // If we've reached or passed the loop end point, jump back to loop start
-                    if let Some(end_point) = loop_end {
-                        if current_pos >= end_point {
-                            // Jump back to loop start or beginning
-                            let start_point = loop_start.unwrap_or(0.0);
-                            
-                            // Calculate the new position
-                            let new_pos = start_point.clamp(0.0, total_duration);
-                            self.current_position = new_pos;
-                            
-                            // Update backend position directly
-                            if let Err(e) = backend.set_position(new_pos) {
-                                log::error!("Failed to set audio position for loop: {}", e);
-                            }
-                        }
-                    }
-                } else {
-                    // Default behavior - check if we've reached the end
-                    if self.current_position >= self.total_duration {
-                        self.is_playing = false;
-                        self.current_position = self.total_duration;
-                    }
+                if self.current_position >= self.total_duration {
+                    self.is_playing = false;
+                    self.current_position = self.total_duration;
                 }
             }
             

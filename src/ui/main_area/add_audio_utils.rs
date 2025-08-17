@@ -82,7 +82,7 @@ impl AddAudioUtils {
         let result = FileDialog::new()
             .add_filter(
                 "Audio Files",
-                &["wav", "mp3", "ogg", "lopus", "idsp", "bin"],
+                &["wav", "mp3", "flac", "ogg", "lopus", "idsp", "bin"],
             )
             .add_filter("All Files", &["*"])
             .set_title("Select Audio File to Add")

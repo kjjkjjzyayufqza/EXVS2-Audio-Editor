@@ -125,9 +125,11 @@ impl ExportUtils {
         let vgmstream_index = Self::get_vgmstream_index(&audio_file_info.id, original_file_path)?;
         
         println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
-
+        println!("Temp output path: {:?}", temp_output_path);
+        
         let result = command
             .args([
+                "-i",
                 "-o",
                 &temp_output_path_str,
                 "-s",
@@ -195,6 +197,7 @@ impl ExportUtils {
 
         let result = command
             .args([
+                "-i",
                 "-o",
                 &output_path_str,
                 "-s",

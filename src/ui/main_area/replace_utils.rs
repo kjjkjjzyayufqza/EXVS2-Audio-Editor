@@ -1,34 +1,31 @@
-use nus3audio::{Nus3audioFile, AudioFile};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-use rfd::FileDialog;
 use super::audio_file_info::AudioFileInfo;
 use super::loop_settings_modal::LoopSettingsModal;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
 use hound;
+use nus3audio::{AudioFile, Nus3audioFile};
+use once_cell::sync::Lazy;
+use rfd::FileDialog;
+use std::collections::HashMap;
+use std::fs;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Mutex;
 
 // 使用静态HashMap存储替换后的音频数据
 // 键是"文件路径:音频名称"，值是替换后的音频数据
-static REPLACED_AUDIO_DATA: Lazy<Mutex<HashMap<String, Vec<u8>>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static REPLACED_AUDIO_DATA: Lazy<Mutex<HashMap<String, Vec<u8>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 // 使用静态HashMap存储循环设置
 // 键是"文件路径:音频名称"，值是(loop_start, loop_end, use_custom_loop)
-static LOOP_SETTINGS: Lazy<Mutex<HashMap<String, (Option<f32>, Option<f32>, bool)>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static LOOP_SETTINGS: Lazy<Mutex<HashMap<String, (Option<f32>, Option<f32>, bool)>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 // 使用静态HashMap存储用户选择的替换文件路径
 // 键是"文件路径:音频名称"，值是用户选择的替换文件路径
-static REPLACEMENT_FILE_PATHS: Lazy<Mutex<HashMap<String, PathBuf>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static REPLACEMENT_FILE_PATHS: Lazy<Mutex<HashMap<String, PathBuf>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Utility functions for replacing audio files
 pub struct ReplaceUtils;
@@ -44,10 +41,10 @@ impl ReplaceUtils {
             Ok(data) => data,
             Err(e) => return Err(format!("Failed to read replacement file: {}", e)),
         };
-        
+
         // Create the key once
         let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
-        
+
         // Store the replacement data in our static HashMap
         {
             let map_result = REPLACED_AUDIO_DATA.lock();
@@ -55,7 +52,7 @@ impl ReplaceUtils {
                 map.insert(key.clone(), replacement_data.clone());
             }
         }
-        
+
         // Store the replacement file path
         {
             let path_buf = Path::new(replacement_file_path).to_path_buf();
@@ -64,14 +61,14 @@ impl ReplaceUtils {
                 map.insert(key, path_buf);
             }
         }
-        
+
         // Get the filename for the new AudioFileInfo
         let filename = Path::new(replacement_file_path)
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-            
+
         // Create a new AudioFileInfo with the replacement data
         let new_audio_info = AudioFileInfo {
             name: audio_file_info.name.clone(),
@@ -80,94 +77,119 @@ impl ReplaceUtils {
             filename,
             file_type: audio_file_info.file_type.clone(),
         };
-        
+
         Ok(new_audio_info)
     }
-    
+
     /// Process audio file with vgmstream-cli to add loop points
     pub fn process_with_vgmstream(
         file_path: &Path,
         loop_start: Option<f32>,
         loop_end: Option<f32>,
-        use_custom_loop: bool
+        use_custom_loop: bool,
     ) -> Result<PathBuf, String> {
         // Path to vgmstream-cli.exe in tools directory
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
         if !vgmstream_path.exists() {
             return Err(format!("vgmstream-cli not found at {:?}", vgmstream_path));
         }
-        
+
         // Create a temporary output file path
         let temp_dir = std::env::temp_dir();
-        let stem = file_path
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let stem = file_path.file_stem().unwrap_or_default().to_string_lossy();
         let temp_filename = format!("looping_{}.wav", stem);
         let temp_output_path = temp_dir.join(&temp_filename);
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
-        
-        println!("Processing with vgmstream: {:?} -> {:?}", file_path, temp_output_path);
-        
-        // Run vgmstream-cli to convert audio with loop points
-        // -i: Print metadata information
-        // -L: Loop the file forever
-        // -o: Output file path
-        // -l / -f: Set loop start/end points if custom loop is enabled
+
+        println!(
+            "Processing with vgmstream: {:?} -> {:?}",
+            file_path, temp_output_path
+        );
+
+        // Usage: vgmstream-cli [-o <outfile.wav>] [options] <infile> ...
+        // Options:
+        //     -o <outfile.wav>: name of output .wav file, default <infile>.wav
+        //        <outfile> wildcards can be ?s=subsong, ?n=stream name, ?f=infile
+        //     -m: print metadata only, don't decode
+        //     -i: ignore looping information and play the whole stream once
+        //     -l N.n: loop count, default 2.0
+        //     -f N.n: fade time in seconds after N loops, default 10.0
+        //     -d N.n: fade delay in seconds, default 0.0
+        //     -F: don't fade after N loops and play the rest of the stream
+        //     -e: set end-to-end looping (if file has no loop points)
+        //     -E: force end-to-end looping even if file has real loop points
+        //     -s N: select subsong N, if the format supports multiple subsongs
+        //     -S N: select end subsong N (set 0 for 'all')
+        //     -p: output to stdout (for piping into another program)
+        //     -P: output to stdout even if stdout is a terminal
+        //     -c: loop forever (continuously) to stdout
+        //     -L: append a smpl chunk and create a looping wav
+        //     -w: allow .wav in original sample format rather than mixing to PCM16
+        //     -V: print version info and supported extensions as JSON
+        //     -I: print requested file info as JSON
+        //     -h: print all commands
         let mut command = Command::new(&vgmstream_path);
-        
+
         #[cfg(windows)]
         {
             use winapi::um::winbase::CREATE_NO_WINDOW;
             command.creation_flags(CREATE_NO_WINDOW);
         }
-        
+
         // Start building arguments
         let mut args: Vec<String> = vec!["-i".to_string()];
-        
-        if use_custom_loop {
-            if let Some(start) = loop_start {
-                // Convert seconds to samples (assuming 48000Hz as a common sample rate)
-                // This is a rough estimate - could be improved with actual sample rate detection
-                let sample_rate = 48000.0;
-                let start_sample = (start * sample_rate) as i32;
-                args.push("-l".to_string());
-                args.push(start_sample.to_string());
-                
-                if let Some(end) = loop_end {
-                    let end_sample = (end * sample_rate) as i32;
-                    args.push("-F".to_string());
-                    args.push(end_sample.to_string());
-                } else {
-                    // If no end point specified, use -L for standard looping
-                    args.push("-L".to_string());
-                }
-            } else {
-                // If custom loop is enabled but no start point, just use standard looping
-                args.push("-L".to_string());
-            }
-        } else {
-            // Standard looping from beginning to end
-            args.push("-L".to_string());
-        }
-        
+
+        // Enable loop from beginning to end
+        args.push("-e".to_string());
+
+        // Add smpl chunk
+        args.push("-L".to_string());
+
+        // if use_custom_loop {
+        //     if let Some(start) = loop_start {
+        //         // Convert seconds to samples (assuming 48000Hz as a common sample rate)
+        //         // This is a rough estimate - could be improved with actual sample rate detection
+        //         let sample_rate = 48000.0;
+        //         let start_sample = (start * sample_rate) as i32;
+        //         args.push("-L".to_string());
+        //         args.push(start_sample.to_string());
+
+        //         if let Some(end) = loop_end {
+        //             let end_sample = (end * sample_rate) as i32;
+        //             args.push("-F".to_string());
+        //             args.push(end_sample.to_string());
+        //         } else {
+        //             // If no end point specified, use -L for standard looping
+        //             args.push("-L".to_string());
+        //         }
+        //     } else {
+        //         // If custom loop is enabled but no start point, just use standard looping
+        //         args.push("-L".to_string());
+        //     }
+        // }
+
         // Add output file path and input file path
         args.push("-o".to_string());
         args.push(temp_output_path_str);
-        
+
         // 将路径转换为字符串，并将其所有权移入args向量
         let file_path_str = file_path.to_string_lossy().into_owned();
         args.push(file_path_str);
-        
+
+        println!("vgmstream-cli args: {:?}", args);
+
         // 将Vec<String>转换为Vec<&str>以传递给command.args()
         let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        
+
         let result = command.args(args_ref).output();
-            
+
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    println!("Successfully processed file with vgmstream: {:?}", temp_output_path);
+                    println!(
+                        "Successfully processed file with vgmstream: {:?}",
+                        temp_output_path
+                    );
                     Ok(temp_output_path)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
@@ -208,10 +230,7 @@ impl ReplaceUtils {
             .unwrap_or_else(|| std::env::temp_dir());
         let out_path = parent_dir.join(format!(
             "gain_{}",
-            input_path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
+            input_path.file_name().unwrap_or_default().to_string_lossy()
         ));
 
         let mut writer = hound::WavWriter::create(&out_path, spec)
@@ -223,14 +242,18 @@ impl ReplaceUtils {
                     let v = s.map_err(|e| format!("Read sample error: {}", e))? as f32 / 32768.0;
                     let scaled = (v * gain).clamp(-1.0, 1.0);
                     let out = (scaled * 32767.0).round() as i16;
-                    writer.write_sample(out).map_err(|e| format!("Write sample error: {}", e))?;
+                    writer
+                        .write_sample(out)
+                        .map_err(|e| format!("Write sample error: {}", e))?;
                 }
             }
             (hound::SampleFormat::Float, 32) => {
                 for s in reader.samples::<f32>() {
                     let v = s.map_err(|e| format!("Read sample error: {}", e))?;
                     let out = (v * gain).clamp(-1.0, 1.0);
-                    writer.write_sample(out).map_err(|e| format!("Write sample error: {}", e))?;
+                    writer
+                        .write_sample(out)
+                        .map_err(|e| format!("Write sample error: {}", e))?;
                 }
             }
             _ => {
@@ -241,31 +264,36 @@ impl ReplaceUtils {
             }
         }
 
-        writer.finalize().map_err(|e| format!("Finalize WAV error: {}", e))?;
+        writer
+            .finalize()
+            .map_err(|e| format!("Finalize WAV error: {}", e))?;
         Ok(out_path)
     }
 
     /// Show file dialog to select replacement audio file and open the loop settings modal
     /// Does not replace anything in memory yet - this happens after loop settings are confirmed
     pub fn replace_with_file_dialog(
-        audio_file_info: &AudioFileInfo, 
-        loop_settings_modal: &mut LoopSettingsModal
+        audio_file_info: &AudioFileInfo,
+        loop_settings_modal: &mut LoopSettingsModal,
     ) -> Result<AudioFileInfo, String> {
         // Open a file dialog to select the replacement audio file
         let result = FileDialog::new()
-            .add_filter("Audio Files", &["wav", "mp3", "ogg", "lopus", "idsp", "bin"])
+            .add_filter(
+                "Audio Files",
+                &["wav", "mp3", "flac", "ogg", "lopus", "idsp", "bin"],
+            )
             .add_filter("All Files", &["*"])
             .set_title("Select Replacement Audio File")
             .pick_file();
-        
+
         if result.is_none() {
             return Err("No file selected".to_string());
         }
-        
+
         // Get selected file path
         // Make a clone so we own the path (prevents borrowing errors)
         let selected_path = result.unwrap().clone();
-        
+
         // Extract filename safely as a string
         let mut filename = String::from("unknown");
         if let Some(name) = selected_path.file_name() {
@@ -273,35 +301,36 @@ impl ReplaceUtils {
                 filename = name_str.to_string();
             }
         }
-        
+
         // Create key for hashmaps - Use the original audio name and ID
         let map_key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
-        
+
         // Store file path only - no audio data is replaced yet
         let replacement_path = selected_path.clone();
         if let Ok(mut map) = REPLACEMENT_FILE_PATHS.lock() {
             map.insert(map_key.clone(), replacement_path);
         }
-        
+
         // Initialize with empty loop settings
         let empty_loop_settings = (None, None, false);
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
             settings.insert(map_key, empty_loop_settings);
         }
-        
+
         // 创建一个新的AudioFileInfo，但保持原始的name和id
         // 只更新filename字段为新选择的文件
         let new_audio_info = AudioFileInfo {
             name: audio_file_info.name.clone(), // 保持原始name
             id: audio_file_info.id.clone(),     // 保持原始id
             size: audio_file_info.size,         // 保持原始大小
-            filename,                 // 显示新文件名
+            filename,                           // 显示新文件名
             file_type: audio_file_info.file_type.clone(),
         };
-        
+
         // 打开modal并传递新选择的音频信息
-        loop_settings_modal.open_with_audio(new_audio_info.clone(), selected_path.to_str().unwrap_or(""));
-        
+        loop_settings_modal
+            .open_with_audio(new_audio_info.clone(), selected_path.to_str().unwrap_or(""));
+
         Ok(new_audio_info)
     }
     /// Process the replacement after loop settings are confirmed
@@ -314,12 +343,15 @@ impl ReplaceUtils {
         gain_db: f32,
     ) -> Result<AudioFileInfo, String> {
         // 打印调试信息
-        println!("Attempting to process replacement for: {} (ID: {})", audio_file_info.name, audio_file_info.id);
-        
+        println!(
+            "Attempting to process replacement for: {} (ID: {})",
+            audio_file_info.name, audio_file_info.id
+        );
+
         // Create key for hashmaps - Use the original audio name and ID
         let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
         println!("Using hashmap key: {}", key);
-        
+
         // Get the file path from the provided path or from the stored paths
         let actual_file_path = if let Some(path) = file_path {
             println!("Using provided file path: {:?}", path);
@@ -332,7 +364,7 @@ impl ReplaceUtils {
                     println!("  Key: {}, Path: {:?}", k, v);
                 }
             }
-            
+
             if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
                 if let Some(path) = map.get(&key) {
                     println!("Found stored file path: {:?}", path);
@@ -344,11 +376,16 @@ impl ReplaceUtils {
                 return Err("Failed to access replacement file paths".to_string());
             }
         };
-        
+
         println!("Using actual file path: {:?}", actual_file_path);
-        
+
         // Process the selected file with vgmstream to add loop points
-        let processed_path = match Self::process_with_vgmstream(&actual_file_path, loop_start, loop_end, use_custom_loop) {
+        let processed_path = match Self::process_with_vgmstream(
+            &actual_file_path,
+            loop_start,
+            loop_end,
+            use_custom_loop,
+        ) {
             Ok(path) => path,
             Err(e) => {
                 println!("Warning: Failed to process file with vgmstream: {}", e);
@@ -357,13 +394,16 @@ impl ReplaceUtils {
                 actual_file_path.clone()
             }
         };
-        
+
         // Apply gain if requested and if the processed file is a WAV
         let final_path = if gain_db.abs() > std::f32::EPSILON {
             match Self::apply_wav_gain(&processed_path, gain_db) {
                 Ok(p) => p,
                 Err(e) => {
-                    println!("Warning: Failed to apply gain: {}. Using unmodified output.", e);
+                    println!(
+                        "Warning: Failed to apply gain: {}. Using unmodified output.",
+                        e
+                    );
                     processed_path.clone()
                 }
             }
@@ -373,12 +413,12 @@ impl ReplaceUtils {
 
         // Replace the audio file with the processed (and possibly gain-applied) file in memory only
         let result = Self::replace_in_memory(audio_file_info, final_path.to_str().unwrap());
-        
+
         // Store loop settings
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
             settings.insert(key, (loop_start, loop_end, use_custom_loop));
         }
-        
+
         // Clean up temporary files if they are different from the original
         if processed_path != actual_file_path && processed_path.exists() {
             let _ = fs::remove_file(&processed_path);
@@ -386,10 +426,10 @@ impl ReplaceUtils {
         if final_path != processed_path && final_path != actual_file_path && final_path.exists() {
             let _ = fs::remove_file(&final_path);
         }
-        
+
         result
     }
-    
+
     /// Get the replacement audio data for a specific audio file
     pub fn get_replacement_data(audio_name: &str, audio_id: &str) -> Option<Vec<u8>> {
         let key = format!("{}:{}", audio_name, audio_id);
@@ -419,7 +459,10 @@ impl ReplaceUtils {
     }
 
     /// Get a reference to the loop settings map
-    pub fn get_loop_settings() -> Result<std::sync::MutexGuard<'static, HashMap<String, (Option<f32>, Option<f32>, bool)>>, String> {
+    pub fn get_loop_settings() -> Result<
+        std::sync::MutexGuard<'static, HashMap<String, (Option<f32>, Option<f32>, bool)>>,
+        String,
+    > {
         if let Ok(settings) = LOOP_SETTINGS.lock() {
             Ok(settings)
         } else {
@@ -433,12 +476,12 @@ impl ReplaceUtils {
             map.clear();
             println!("Cleared all audio replacements from memory");
         }
-        
+
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
             settings.clear();
             println!("Cleared all loop settings from memory");
         }
-        
+
         if let Ok(mut paths) = REPLACEMENT_FILE_PATHS.lock() {
             paths.clear();
             println!("Cleared all replacement file paths from memory");
@@ -455,7 +498,7 @@ impl ReplaceUtils {
             Ok(file) => file,
             Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
         };
-        
+
         // Apply all replacements from our static HashMap
         if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
             for (key, replacement_data) in map.iter() {
@@ -464,31 +507,31 @@ impl ReplaceUtils {
                 if parts.len() != 2 {
                     continue;
                 }
-                
+
                 let audio_name = parts[0];
-                
+
                 // Find the target audio file by name
                 let target_index = match nus3_file.files.iter().position(|f| f.name == audio_name) {
                     Some(index) => index,
                     None => continue, // Skip if not found
                 };
-                
+
                 // Replace the audio data while preserving the ID and name
                 let id = nus3_file.files[target_index].id;
                 let name = nus3_file.files[target_index].name.clone();
-                
+
                 // Create a new AudioFile with the replacement data
                 let new_audio_file = AudioFile {
                     id,
                     name,
                     data: replacement_data.clone(),
                 };
-                
+
                 // Replace the old file with the new one
                 nus3_file.files[target_index] = new_audio_file;
             }
         }
-        
+
         // Also apply all pending additions from Nus3audioFileUtils
         use super::nus3audio_file_utils::Nus3audioFileUtils;
         let pending_additions = Nus3audioFileUtils::get_pending_additions();
@@ -498,7 +541,7 @@ impl ReplaceUtils {
                 Ok(val) => val,
                 Err(_) => continue, // Skip if ID is invalid
             };
-            
+
             // Add the new audio file
             nus3_file.files.push(AudioFile {
                 id: id_val,
@@ -507,13 +550,13 @@ impl ReplaceUtils {
             });
             println!("Added audio file: {} (ID: {})", name, id);
         }
-        
+
         // Create memory buffer for writing the updated NUS3AUDIO file
         let mut output_buffer = Vec::new();
-        
+
         // Write the modified NUS3AUDIO data to memory buffer
         nus3_file.write(&mut output_buffer);
-        
+
         // Write the buffer to the save file
         match fs::write(save_path, output_buffer) {
             Ok(_) => Ok(()),
@@ -534,12 +577,12 @@ impl ReplaceUtils {
             0x57, 0x41, 0x56, 0x45, // 'WAVE'
             0x66, 0x6d, 0x74, 0x20, // 'fmt '
             0x10, 0x00, 0x00, 0x00, // Subchunk1Size = 16
-            0x01, 0x00,             // AudioFormat = PCM
-            0x01, 0x00,             // NumChannels = 1
+            0x01, 0x00, // AudioFormat = PCM
+            0x01, 0x00, // NumChannels = 1
             0x40, 0x1f, 0x00, 0x00, // SampleRate = 8000
             0x80, 0x3e, 0x00, 0x00, // ByteRate = SampleRate * NumChannels * BitsPerSample/8
-            0x02, 0x00,             // BlockAlign = NumChannels * BitsPerSample/8
-            0x10, 0x00,             // BitsPerSample = 16
+            0x02, 0x00, // BlockAlign = NumChannels * BitsPerSample/8
+            0x10, 0x00, // BitsPerSample = 16
             0x64, 0x61, 0x74, 0x61, // 'data'
             0x00, 0x00, 0x00, 0x00, // Subchunk2Size = 0
         ];
