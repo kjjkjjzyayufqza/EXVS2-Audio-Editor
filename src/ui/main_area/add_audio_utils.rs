@@ -79,7 +79,7 @@ impl AddAudioUtils {
         existing_audio_files: Option<Vec<AudioFileInfo>>,
     ) -> Result<(), String> {
         // Open a file dialog to select the audio file
-        let result = FileDialog::new()
+        let result: Option<std::path::PathBuf> = FileDialog::new()
             .add_filter(
                 "Audio Files",
                 &["wav", "mp3", "flac", "ogg", "lopus", "idsp", "bin"],
