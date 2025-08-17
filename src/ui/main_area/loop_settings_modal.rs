@@ -228,15 +228,15 @@ impl LoopSettingsModal {
                 
                 ui.add_space(5.0);
                 
-                if self.settings.enable_loop {
-                    ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
-                } else {
-                    // Disable custom loop when loop is disabled
-                    self.settings.use_custom_loop = false;
-                    ui.add_enabled_ui(false, |ui| {
-                        ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
-                    });
-                }
+                // if self.settings.enable_loop {
+                //     ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                // } else {
+                //     // Disable custom loop when loop is disabled
+                //     self.settings.use_custom_loop = false;
+                //     ui.add_enabled_ui(false, |ui| {
+                //         ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                //     });
+                // }
 
                 if self.settings.enable_loop && self.settings.use_custom_loop {
                     ui.add_space(10.0);
