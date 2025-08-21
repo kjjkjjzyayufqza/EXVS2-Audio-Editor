@@ -300,14 +300,7 @@ impl AudioState {
             // Update position
             if self.is_playing {
                 self.current_position = backend.get_position();
-                
-                // Store the needed values before doing any operations that borrow self
-                let use_custom_loop = self.use_custom_loop;
-                let loop_end = self.loop_end;
-                let loop_start = self.loop_start;
-                let total_duration = self.total_duration;
-                let current_pos = self.current_position;
-                
+
                 if self.current_position >= self.total_duration {
                     self.is_playing = false;
                     self.current_position = self.total_duration;

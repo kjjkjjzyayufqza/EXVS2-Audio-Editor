@@ -2,13 +2,14 @@
 
 A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extreme VS 2) game.
 
-![Version](https://img.shields.io/badge/version-0.5.0-blue)
+![Version](https://img.shields.io/badge/version-0.6.0-blue)
 
 ## Overview
 
 EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format audio files. It allows you to extract, play, replace, and export audio files contained within NUS3AUDIO containers, which are commonly used in Bandai Namco's Extreme VS 2 game.
 
 ![preview](/git_images/preview.png)
+![Loop Settings](/git_images/loop_setting.png)
 
 ## Features
 
@@ -16,7 +17,9 @@ EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format aud
 - **Audio Playback**: Built-in audio player for previewing tracks
 - **Audio Extraction**: Export audio tracks to WAV format
 - **Audio Replacement**: Replace audio tracks with your own audio files
-- **Loop Point Processing**: Add loop points to audio files for seamless looping
+- **Advanced Loop Settings**: Configure custom loop points with precise timing control
+- **Audio Gain Adjustment**: Apply volume gain (amplification/attenuation) to audio files before processing
+- **Loop Point Processing**: Add loop points to audio files for seamless looping using vgmstream
 - **Search & Filter**: Easily find specific audio tracks within large containers
 
 ## System Requirements
@@ -54,7 +57,29 @@ EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format aud
 1. Select an audio track you want to replace
 2. Click the "Replace" button
 3. Choose a replacement audio file from your computer
-4. The audio track will be replaced in memory (changes aren't saved until you explicitly save the file)
+4. A loop settings dialog will appear, allowing you to configure advanced audio processing options
+
+#### Loop Settings Configuration
+
+![Loop Settings](/git_images/loop_setting.png)
+
+The loop settings dialog provides the following options:
+
+- **Enable Loop**: Toggle to enable/disable loop point processing
+- **Use Custom Loop Points**: Enable custom loop point configuration
+- **Loop Start**: Set the loop start time in seconds (when using custom loop points)
+- **Loop End**: Set the loop end time in seconds (when using custom loop points)
+- **Gain (dB)**: Apply volume adjustment in decibels (-20 to +20 dB range)
+  - Negative values reduce volume
+  - Positive values increase volume
+  - 0 dB means no change
+
+**Processing Order**: When both gain adjustment and loop processing are enabled:
+1. Gain adjustment is applied first to the original audio file
+2. Loop point processing is then applied to the gain-adjusted audio
+
+5. Click "Apply" to process the audio with your settings
+6. The audio track will be replaced in memory (changes aren't saved until you explicitly save the file)
 
 ### Saving Changes
 
@@ -66,8 +91,9 @@ EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format aud
 
 This application uses the following tools to process audio files:
 
-- **vgmstream-cli**: For decoding and encoding various game audio formats
+- **vgmstream-cli**: For decoding and encoding various game audio formats, and adding loop points
 - **rodio**: For audio playback
+- **hound**: For WAV file processing and gain adjustment
 
 ## Development
 

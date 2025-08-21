@@ -1,8 +1,6 @@
 use super::audio_file_info::AudioFileInfo;
-use nus3audio::{AudioFile, Nus3audioFile};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::fs;
 use std::sync::Mutex;
 
 // Store temporary audio data for files that have been added, removed, or modified

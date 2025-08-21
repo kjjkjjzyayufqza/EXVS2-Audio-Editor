@@ -84,9 +84,9 @@ impl ReplaceUtils {
     /// Process audio file with vgmstream-cli to add loop points
     pub fn process_with_vgmstream(
         file_path: &Path,
-        _loop_start: Option<f32>,
-        _loop_end: Option<f32>,
-        _use_custom_loop: bool,
+        loop_start: Option<f32>,
+        loop_end: Option<f32>,
+        use_custom_loop: bool,
         enable_loop: bool,
     ) -> Result<PathBuf, String> {
         // Path to vgmstream-cli.exe in tools directory
@@ -149,29 +149,6 @@ impl ReplaceUtils {
             args.push("-L".to_string());
         }
 
-        // if use_custom_loop {
-        //     if let Some(start) = loop_start {
-        //         // Convert seconds to samples (assuming 48000Hz as a common sample rate)
-        //         // This is a rough estimate - could be improved with actual sample rate detection
-        //         let sample_rate = 48000.0;
-        //         let start_sample = (start * sample_rate) as i32;
-        //         args.push("-L".to_string());
-        //         args.push(start_sample.to_string());
-
-        //         if let Some(end) = loop_end {
-        //             let end_sample = (end * sample_rate) as i32;
-        //             args.push("-F".to_string());
-        //             args.push(end_sample.to_string());
-        //         } else {
-        //             // If no end point specified, use -L for standard looping
-        //             args.push("-L".to_string());
-        //         }
-        //     } else {
-        //         // If custom loop is enabled but no start point, just use standard looping
-        //         args.push("-L".to_string());
-        //     }
-        // }
-
         // Add output file path and input file path
         args.push("-o".to_string());
         args.push(temp_output_path_str);
@@ -194,6 +171,28 @@ impl ReplaceUtils {
                         "Successfully processed file with vgmstream: {:?}",
                         temp_output_path
                     );
+                    
+                    // Apply custom loop points if specified (after vgmstream processing)
+                    if use_custom_loop {
+                        if let Some(start) = loop_start {
+                            // Get the sample rate from the processed WAV file
+                            let sample_rate = Self::get_wav_sample_rate(&temp_output_path)?;
+                            let start_sample = (start * sample_rate as f32) as u32;
+                            
+                            let end_sample = if let Some(end) = loop_end {
+                                (end * sample_rate as f32) as u32
+                            } else {
+                                // If no end specified, use the total samples
+                                Self::get_wav_total_samples(&temp_output_path)?
+                            };
+                            
+                            // Modify the WAV file's smpl chunk with custom loop points
+                            Self::modify_wav_smpl_chunk(&temp_output_path, start_sample, end_sample)?;
+                            
+                            println!("Applied custom loop points: start={} samples, end={} samples", start_sample, end_sample);
+                        }
+                    }
+                    
                     Ok(temp_output_path)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
@@ -384,9 +383,28 @@ impl ReplaceUtils {
 
         println!("Using actual file path: {:?}", actual_file_path);
 
-        // Process the selected file with vgmstream to add loop points
-        let processed_path = match Self::process_with_vgmstream(
-            &actual_file_path,
+        // Apply gain first if requested
+        let gain_processed_path = if gain_db.abs() > std::f32::EPSILON {
+            match Self::apply_wav_gain(&actual_file_path, gain_db) {
+                Ok(p) => {
+                    println!("Successfully applied gain to file: {:?}", p);
+                    p
+                },
+                Err(e) => {
+                    println!(
+                        "Warning: Failed to apply gain: {}. Using original file.",
+                        e
+                    );
+                    actual_file_path.clone()
+                }
+            }
+        } else {
+            actual_file_path.clone()
+        };
+
+        // Then process the gain-adjusted file with vgmstream to add loop points
+        let final_path = match Self::process_with_vgmstream(
+            &gain_processed_path,
             loop_start,
             loop_end,
             use_custom_loop,
@@ -395,29 +413,13 @@ impl ReplaceUtils {
             Ok(path) => path,
             Err(e) => {
                 println!("Warning: Failed to process file with vgmstream: {}", e);
-                println!("Falling back to original file");
-                // Fall back to the original file if processing fails
-                actual_file_path.clone()
+                println!("Falling back to gain-processed file");
+                // Fall back to the gain-processed file if vgmstream processing fails
+                gain_processed_path.clone()
             }
         };
 
-        // Apply gain if requested and if the processed file is a WAV
-        let final_path = if gain_db.abs() > std::f32::EPSILON {
-            match Self::apply_wav_gain(&processed_path, gain_db) {
-                Ok(p) => p,
-                Err(e) => {
-                    println!(
-                        "Warning: Failed to apply gain: {}. Using unmodified output.",
-                        e
-                    );
-                    processed_path.clone()
-                }
-            }
-        } else {
-            processed_path.clone()
-        };
-
-        // Replace the audio file with the processed (and possibly gain-applied) file in memory only
+        // Replace the audio file with the final processed file (gain-applied then vgmstream-processed) in memory only
         let result = Self::replace_in_memory(audio_file_info, final_path.to_str().unwrap());
 
         // Store loop settings
@@ -426,11 +428,13 @@ impl ReplaceUtils {
         }
 
         // Clean up temporary files if they are different from the original
-        if processed_path != actual_file_path && processed_path.exists() {
-            let _ = fs::remove_file(&processed_path);
+        if gain_processed_path != actual_file_path && gain_processed_path.exists() {
+            let _ = fs::remove_file(&gain_processed_path);
+            println!("Cleaned up temporary gain file: {:?}", gain_processed_path);
         }
-        if final_path != processed_path && final_path != actual_file_path && final_path.exists() {
+        if final_path != gain_processed_path && final_path != actual_file_path && final_path.exists() {
             let _ = fs::remove_file(&final_path);
+            println!("Cleaned up temporary vgmstream file: {:?}", final_path);
         }
 
         result
@@ -611,5 +615,148 @@ impl ReplaceUtils {
         };
 
         Ok(new_audio_info)
+    }
+
+    /// Get the sample rate from a WAV file
+    fn get_wav_sample_rate(wav_path: &Path) -> Result<u32, String> {
+        let data = std::fs::read(wav_path)
+            .map_err(|e| format!("Failed to read WAV file: {}", e))?;
+        
+        // Check for RIFF header (52 49 46 46)
+        if data.len() < 44 || &data[0..4] != b"RIFF" {
+            return Err("Invalid WAV file: missing RIFF header".to_string());
+        }
+        
+        // Check for WAVE format
+        if &data[8..12] != b"WAVE" {
+            return Err("Invalid WAV file: not WAVE format".to_string());
+        }
+        
+        // Find fmt chunk and extract sample rate
+        let mut offset = 12;
+        while offset + 8 <= data.len() {
+            let chunk_id = &data[offset..offset + 4];
+            let chunk_size = u32::from_le_bytes([
+                data[offset + 4], data[offset + 5], 
+                data[offset + 6], data[offset + 7]
+            ]);
+            
+            if chunk_id == b"fmt " {
+                if offset + 8 + 24 <= data.len() {
+                    // Sample rate is at offset 24 in fmt chunk (offset + 8 + 24 - 8 = offset + 24)
+                    let sample_rate = u32::from_le_bytes([
+                        data[offset + 8 + 4], data[offset + 8 + 5],
+                        data[offset + 8 + 6], data[offset + 8 + 7]
+                    ]);
+                    return Ok(sample_rate);
+                }
+                break;
+            }
+            
+            offset += 8 + chunk_size as usize;
+            // Ensure 16-bit alignment
+            if chunk_size % 2 != 0 {
+                offset += 1;
+            }
+        }
+        
+        Err("Could not find fmt chunk in WAV file".to_string())
+    }
+
+    /// Get the total samples from a WAV file
+    fn get_wav_total_samples(wav_path: &Path) -> Result<u32, String> {
+        let data = std::fs::read(wav_path)
+            .map_err(|e| format!("Failed to read WAV file: {}", e))?;
+        
+        // Check for RIFF header
+        if data.len() < 44 || &data[0..4] != b"RIFF" {
+            return Err("Invalid WAV file: missing RIFF header".to_string());
+        }
+        
+        let mut fmt_chunk_info: Option<(u16, u32, u16)> = None; // (channels, sample_rate, bits_per_sample)
+        let mut data_chunk_size: Option<u32> = None;
+        
+        // Parse chunks to find fmt and data
+        let mut offset = 12; // Skip RIFF header
+        while offset + 8 <= data.len() {
+            let chunk_id = &data[offset..offset + 4];
+            let chunk_size = u32::from_le_bytes([
+                data[offset + 4], data[offset + 5], 
+                data[offset + 6], data[offset + 7]
+            ]);
+            
+            if chunk_id == b"fmt " && offset + 8 + 16 <= data.len() {
+                let channels = u16::from_le_bytes([data[offset + 8 + 2], data[offset + 8 + 3]]);
+                let sample_rate = u32::from_le_bytes([
+                    data[offset + 8 + 4], data[offset + 8 + 5],
+                    data[offset + 8 + 6], data[offset + 8 + 7]
+                ]);
+                let bits_per_sample = u16::from_le_bytes([data[offset + 8 + 14], data[offset + 8 + 15]]);
+                fmt_chunk_info = Some((channels, sample_rate, bits_per_sample));
+            } else if chunk_id == b"data" {
+                data_chunk_size = Some(chunk_size);
+            }
+            
+            offset += 8 + chunk_size as usize;
+            if chunk_size % 2 != 0 {
+                offset += 1;
+            }
+        }
+        
+        match (fmt_chunk_info, data_chunk_size) {
+            (Some((channels, _sample_rate, bits_per_sample)), Some(data_size)) => {
+                let bytes_per_sample = (bits_per_sample / 8) as u32;
+                let total_samples = data_size / (channels as u32 * bytes_per_sample);
+                Ok(total_samples)
+            }
+            _ => Err("Could not find required chunks to calculate total samples".to_string())
+        }
+    }
+
+    /// Modify the smpl chunk in a WAV file to set custom loop points
+    fn modify_wav_smpl_chunk(wav_path: &Path, start_sample: u32, end_sample: u32) -> Result<(), String> {
+        let mut data = std::fs::read(wav_path)
+            .map_err(|e| format!("Failed to read WAV file: {}", e))?;
+        
+        // Check for RIFF header
+        if data.len() < 12 || &data[0..4] != b"RIFF" {
+            return Err("Invalid WAV file: missing RIFF header".to_string());
+        }
+        
+        // Find smpl chunk at 0x24 offset
+        if data.len() < 0x24 + 4 {
+            return Err("WAV file too small to contain smpl chunk".to_string());
+        }
+        
+        // Check if smpl chunk exists at expected position (0x24)
+        if &data[0x24..0x24 + 4] != b"smpl" {
+            return Err("smpl chunk not found at expected position 0x24".to_string());
+        }
+        
+        // Verify we have enough space for the loop points
+        if data.len() < 0x58 + 8 {
+            return Err("WAV file too small to contain loop point data".to_string());
+        }
+        
+        // Write start_sample at 0x58
+        let start_bytes = start_sample.to_le_bytes();
+        data[0x58] = start_bytes[0];
+        data[0x59] = start_bytes[1];
+        data[0x5A] = start_bytes[2];
+        data[0x5B] = start_bytes[3];
+        
+        // Write end_sample at 0x5C
+        let end_bytes = end_sample.to_le_bytes();
+        data[0x5C] = end_bytes[0];
+        data[0x5D] = end_bytes[1];
+        data[0x5E] = end_bytes[2];
+        data[0x5F] = end_bytes[3];
+        
+        // Save the modified WAV file
+        std::fs::write(wav_path, &data)
+            .map_err(|e| format!("Failed to write modified WAV file: {}", e))?;
+        
+        println!("Successfully modified smpl chunk: loop start={}, end={}", start_sample, end_sample);
+        Ok(())
     }
 }
