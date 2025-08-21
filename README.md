@@ -21,6 +21,7 @@ EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format aud
 - **Audio Gain Adjustment**: Apply volume gain (amplification/attenuation) to audio files before processing
 - **Loop Point Processing**: Add loop points to audio files for seamless looping using vgmstream
 - **Search & Filter**: Easily find specific audio tracks within large containers
+- **Add New Audio**: Add new audio
 
 ## System Requirements
 
