@@ -1,5 +1,6 @@
 use super::audio_file_info::AudioFileInfo;
 use nus3audio::Nus3audioFile;
+use crate::nus3bank::export::Nus3bankExporter;
 use std::fs;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -99,10 +100,17 @@ impl ExportUtils {
     }
 
     /// Convert audio to WAV format using vgmstream-cli and return the data in memory
+    /// Supports both NUS3AUDIO and NUS3BANK files
     pub fn convert_to_wav_in_memory(
         audio_file_info: &AudioFileInfo,
         original_file_path: &str,
     ) -> Result<Vec<u8>, String> {
+        // Check if this is a NUS3BANK file
+        if audio_file_info.is_nus3bank {
+            return Self::convert_nus3bank_to_wav_in_memory(audio_file_info, original_file_path);
+        }
+        
+        // Original NUS3AUDIO implementation
         // Path to vgmstream-cli.exe in tools directory
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
@@ -309,5 +317,62 @@ impl ExportUtils {
         }
 
         Ok(exported_paths)
+    }
+    
+    /// Convert NUS3BANK track to WAV format in memory (direct extraction)
+    fn convert_nus3bank_to_wav_in_memory(
+        audio_file_info: &AudioFileInfo,
+        original_file_path: &str,
+    ) -> Result<Vec<u8>, String> {
+        // For NUS3BANK files, we can directly extract the WAV data
+        let hex_id = audio_file_info.hex_id.as_ref()
+            .ok_or_else(|| "No hex ID found for NUS3BANK track".to_string())?;
+        
+        Nus3bankExporter::export_track_to_memory(original_file_path, hex_id)
+    }
+    
+    /// Export NUS3BANK track to WAV file with custom output directory
+    pub fn export_nus3bank_to_wav_with_custom_dir(
+        audio_file_info: &AudioFileInfo,
+        original_file_path: &str,
+        output_dir: &str,
+    ) -> Result<String, String> {
+        let hex_id = audio_file_info.hex_id.as_ref()
+            .ok_or_else(|| "No hex ID found for NUS3BANK track".to_string())?;
+        
+        Nus3bankExporter::export_track(original_file_path, hex_id, output_dir)
+    }
+    
+    /// Export all tracks from NUS3BANK file
+    pub fn export_all_nus3bank_to_wav(
+        original_file_path: &str,
+        output_dir: &str,
+    ) -> Result<Vec<String>, String> {
+        Nus3bankExporter::export_all_tracks(original_file_path, output_dir)
+    }
+    
+    /// Unified export method that works with both NUS3AUDIO and NUS3BANK files
+    pub fn export_to_wav_with_custom_dir_unified(
+        audio_file_info: &AudioFileInfo,
+        original_file_path: &str,
+        output_dir: &str,
+    ) -> Result<String, String> {
+        if audio_file_info.is_nus3bank {
+            Self::export_nus3bank_to_wav_with_custom_dir(audio_file_info, original_file_path, output_dir)
+        } else {
+            Self::export_to_wav_with_custom_dir(audio_file_info, original_file_path, output_dir)
+        }
+    }
+    
+    /// Unified export all method that works with both file types
+    pub fn export_all_to_wav_unified(
+        original_file_path: &str,
+        output_dir: &str,
+    ) -> Result<Vec<String>, String> {
+        if original_file_path.to_lowercase().ends_with(".nus3bank") {
+            Self::export_all_nus3bank_to_wav(original_file_path, output_dir)
+        } else {
+            Self::export_all_to_wav(original_file_path, output_dir)
+        }
     }
 }

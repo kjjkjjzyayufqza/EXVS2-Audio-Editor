@@ -1,5 +1,6 @@
 use super::audio_file_info::AudioFileInfo;
 use super::loop_settings_modal::LoopSettingsModal;
+use crate::nus3bank::{replace::Nus3bankReplacer};
 use hound;
 use nus3audio::{AudioFile, Nus3audioFile};
 use once_cell::sync::Lazy;
@@ -32,6 +33,7 @@ pub struct ReplaceUtils;
 
 impl ReplaceUtils {
     /// Replace audio data in memory only (does not modify the actual file on disk)
+    /// Supports both NUS3AUDIO and NUS3BANK files
     pub fn replace_in_memory(
         audio_file_info: &AudioFileInfo,
         replacement_file_path: &str,
@@ -42,8 +44,14 @@ impl ReplaceUtils {
             Err(e) => return Err(format!("Failed to read replacement file: {}", e)),
         };
 
-        // Create the key once
-        let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
+        // Create the key based on file type
+        let key = if audio_file_info.is_nus3bank {
+            // For NUS3BANK, use hex_id:name format
+            format!("{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
+        } else {
+            // For NUS3AUDIO, use original name:id format
+            format!("{}:{}", audio_file_info.name, audio_file_info.id)
+        };
 
         // Store the replacement data in our static HashMap
         {
@@ -76,6 +84,8 @@ impl ReplaceUtils {
             size: replacement_data.len(),
             filename,
             file_type: audio_file_info.file_type.clone(),
+            hex_id: audio_file_info.hex_id.clone(),
+            is_nus3bank: audio_file_info.is_nus3bank,
         };
 
         Ok(new_audio_info)
@@ -328,6 +338,8 @@ impl ReplaceUtils {
             size: audio_file_info.size,         // 保持原始大小
             filename,                           // 显示新文件名
             file_type: audio_file_info.file_type.clone(),
+            hex_id: audio_file_info.hex_id.clone(),
+            is_nus3bank: audio_file_info.is_nus3bank,
         };
 
         // 打开modal并传递新选择的音频信息
@@ -480,11 +492,12 @@ impl ReplaceUtils {
         }
     }
 
-    /// Clear all replacement data from memory
+    /// Clear all replacement data from memory (unified for both file types)
     pub fn clear_replacements() {
+        // Clear NUS3AUDIO replacements
         if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {
             map.clear();
-            println!("Cleared all audio replacements from memory");
+            println!("Cleared all NUS3AUDIO replacements from memory");
         }
 
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
@@ -496,6 +509,9 @@ impl ReplaceUtils {
             paths.clear();
             println!("Cleared all replacement file paths from memory");
         }
+        
+        // Clear NUS3BANK replacements
+        Nus3bankReplacer::clear_replacements();
     }
 
     /// Apply all in-memory replacements to a NUS3AUDIO file and save it
@@ -612,6 +628,8 @@ impl ReplaceUtils {
             size: replacement_data.len(),
             filename: format!("{}_empty.wav", audio_file_info.filename),
             file_type: "WAV Audio".to_string(),
+            hex_id: audio_file_info.hex_id.clone(),
+            is_nus3bank: audio_file_info.is_nus3bank,
         };
 
         Ok(new_audio_info)
@@ -758,5 +776,35 @@ impl ReplaceUtils {
         
         println!("Successfully modified smpl chunk: loop start={}, end={}", start_sample, end_sample);
         Ok(())
+    }
+    
+    /// Apply all in-memory replacements and save (unified for both file types)
+    pub fn apply_replacements_and_save_unified(
+        original_file_path: &str,
+        save_path: &str,
+    ) -> Result<(), String> {
+        if original_file_path.to_lowercase().ends_with(".nus3bank") {
+            // Handle NUS3BANK files
+            Nus3bankReplacer::apply_replacements_and_save(original_file_path, save_path)
+        } else {
+            // Handle NUS3AUDIO files (original implementation)
+            Self::apply_replacements_and_save(original_file_path, save_path)
+        }
+    }
+    
+    /// Replace audio data in memory for NUS3BANK files
+    pub fn replace_nus3bank_in_memory(
+        file_path: &str,
+        audio_file_info: &AudioFileInfo,
+        replacement_file_path: &str,
+    ) -> Result<(), String> {
+        // Load the replacement file data
+        let replacement_data = fs::read(replacement_file_path)
+            .map_err(|e| format!("Failed to read replacement file: {}", e))?;
+        
+        let hex_id = audio_file_info.hex_id.as_ref()
+            .ok_or_else(|| "No hex ID found for NUS3BANK track".to_string())?;
+        
+        Nus3bankReplacer::replace_track_in_memory(file_path, hex_id, replacement_data)
     }
 }

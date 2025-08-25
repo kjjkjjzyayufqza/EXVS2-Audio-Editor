@@ -6,6 +6,7 @@ use super::{
     sort_column::SortColumn,
     replace_utils::ReplaceUtils
 };
+use crate::nus3bank::Nus3bankFile;
 
 impl MainArea {
     /// Get filtered audio files based on search query and column, then sort them
@@ -106,12 +107,20 @@ impl MainArea {
         self.audio_files = None;
         self.error_message = None;
 
-        // If file is selected and it's a NUS3AUDIO file, load its info
+        // If file is selected, determine type and load accordingly
         if let Some(file_name) = &self.selected_file {
-            if file_name.to_lowercase().ends_with(".nus3audio")
-                || file_name.to_lowercase().ends_with(".nus3bank")
-            {
-                match Nus3audioFile::open(file_name) {
+            let file_name = file_name.clone(); // Clone to avoid borrowing issues
+            if file_name.to_lowercase().ends_with(".nus3audio") {
+                self.load_nus3audio_file(&file_name);
+            } else if file_name.to_lowercase().ends_with(".nus3bank") {
+                self.load_nus3bank_file(&file_name);
+            }
+        }
+    }
+    
+    /// Load NUS3AUDIO file (existing implementation)
+    fn load_nus3audio_file(&mut self, file_name: &str) {
+        match Nus3audioFile::open(file_name) {
                     Ok(nus3_file) => {
                         // Store file count
                         self.file_count = Some(nus3_file.files.len());
@@ -133,13 +142,13 @@ impl MainArea {
                                 "Unknown"
                             };
 
-                            audio_files.push(AudioFileInfo {
-                                name: audio_file.name.clone(),
-                                id: audio_file.id.to_string(),
-                                size: audio_file.data.len(),
-                                filename: audio_file.filename(),
-                                file_type: file_type.to_string(),
-                            });
+                            audio_files.push(AudioFileInfo::from_nus3audio(
+                                audio_file.name.clone(),
+                                audio_file.id.to_string(),
+                                audio_file.data.len(),
+                                audio_file.filename(),
+                                file_type.to_string(),
+                            ));
                         }
 
                         self.audio_files = Some(audio_files);
@@ -148,6 +157,29 @@ impl MainArea {
                         self.error_message = Some(format!("Error loading NUS3AUDIO file: {}", e));
                     }
                 }
+    }
+    
+    /// Load NUS3BANK file (new implementation)
+    fn load_nus3bank_file(&mut self, file_name: &str) {
+        match Nus3bankFile::open(file_name) {
+            Ok(nus3bank_file) => {
+                self.file_count = Some(nus3bank_file.tracks.len());
+                let mut audio_files = Vec::new();
+
+                for track in nus3bank_file.tracks.iter() {
+                    audio_files.push(AudioFileInfo::from_nus3bank_track(
+                        track.name.clone(),
+                        track.numeric_id,
+                        track.hex_id.clone(),
+                        track.size as usize,
+                        track.filename(),
+                    ));
+                }
+
+                self.audio_files = Some(audio_files);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Error loading NUS3BANK file: {}", e));
             }
         }
     }

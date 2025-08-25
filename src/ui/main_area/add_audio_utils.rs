@@ -158,6 +158,8 @@ impl AddAudioUtils {
                     .to_string_lossy()
             ),
             file_type: "WAV Audio".to_string(),
+            hex_id: None,  // Not a NUS3BANK file
+            is_nus3bank: false,  // This is for NUS3AUDIO files
         };
 
         // Return the new AudioFileInfo and the converted WAV data
