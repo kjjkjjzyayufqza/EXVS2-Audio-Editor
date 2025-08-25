@@ -23,7 +23,7 @@ impl Nus3bankExporter {
             fs::write(&output_path, audio_data)
                 .map_err(|e| format!("Failed to write audio file: {}", e))?;
         } else {
-            return Err("Audio data not loaded for track".to_string());
+            return Err(format!("Audio data not loaded for track '{}' ({}). The track may be corrupted or the file may not have been parsed correctly.", track.name, track.hex_id));
         }
         
         Ok(output_path)
@@ -61,6 +61,6 @@ impl Nus3bankExporter {
             .ok_or_else(|| format!("Track with hex ID {} not found", hex_id))?;
         
         track.audio_data.clone()
-            .ok_or_else(|| "Audio data not loaded for track".to_string())
+            .ok_or_else(|| format!("Audio data not loaded for track '{}' ({}). The track may be corrupted or the file may not have been parsed correctly.", track.name, track.hex_id))
     }
 }

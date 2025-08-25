@@ -103,26 +103,44 @@ impl AudioPlayer {
             // No replacement data, use the original file
             log::info!("No replacement/added data found, using original file for: {}", file_info.name);
             
-            // Try to open the NUS3AUDIO file
-            let nus3_file = match Nus3audioFile::open(file_path) {
-                Ok(file) => file,
-                Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
-            };
-            
-            // Find the audio file with matching name
-            let audio_file = nus3_file.files.iter()
-                .find(|f| f.name == file_info.name)
-                .ok_or_else(|| format!("Audio file '{}' not found in NUS3AUDIO file", file_info.name))?;
+            // Check if this is a NUS3BANK or NUS3AUDIO file
+            if file_info.is_nus3bank {
+                // For NUS3BANK files, use vgmstream to convert to WAV
+                log::info!("Processing NUS3BANK file for: {} (hex_id: {})", file_info.name, file_info.hex_id.as_ref().unwrap_or(&file_info.id));
+                match crate::ui::main_area::ExportUtils::convert_to_wav_in_memory(file_info, file_path) {
+                    Ok(wav_data) => {
+                        log::info!("Successfully converted NUS3BANK audio to WAV format: {} ({} bytes)", file_info.name, wav_data.len());
+                        wav_data
+                    },
+                    Err(e) => {
+                        log::error!("Failed to convert NUS3BANK audio to WAV format for track '{}' ({}): {}", 
+                                   file_info.name, file_info.hex_id.as_ref().unwrap_or(&file_info.id), e);
+                        return Err(format!("Failed to convert NUS3BANK audio to WAV format: {}", e));
+                    }
+                }
+            } else {
+                // For NUS3AUDIO files, use the nus3audio library
+                log::info!("Processing NUS3AUDIO file for: {}", file_info.name);
+                let nus3_file = match Nus3audioFile::open(file_path) {
+                    Ok(file) => file,
+                    Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
+                };
+                
+                // Find the audio file with matching name
+                let audio_file = nus3_file.files.iter()
+                    .find(|f| f.name == file_info.name)
+                    .ok_or_else(|| format!("Audio file '{}' not found in NUS3AUDIO file", file_info.name))?;
 
-            // Try to convert the audio data to WAV format using vgmstream
-            match crate::ui::main_area::ExportUtils::convert_to_wav_in_memory(file_info, file_path) {
-                Ok(wav_data) => {
-                    log::info!("Successfully converted audio to WAV format: {} ({} bytes)", file_info.name, wav_data.len());
-                    wav_data
-                },
-                Err(e) => {
-                    log::warn!("Failed to convert audio to WAV format: {}. Using original format instead.", e);
-                    audio_file.data.clone()
+                // Try to convert the audio data to WAV format using vgmstream
+                match crate::ui::main_area::ExportUtils::convert_to_wav_in_memory(file_info, file_path) {
+                    Ok(wav_data) => {
+                        log::info!("Successfully converted NUS3AUDIO audio to WAV format: {} ({} bytes)", file_info.name, wav_data.len());
+                        wav_data
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to convert NUS3AUDIO audio to WAV format: {}. Using original format instead.", e);
+                        audio_file.data.clone()
+                    }
                 }
             }
         };

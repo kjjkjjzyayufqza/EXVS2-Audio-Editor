@@ -311,12 +311,13 @@ impl Nus3bankParser {
         }
         
         let mut tracks = Vec::new();
+        let mut track_index = 0; // Use separate index for tracks array (like Python 'i' variable)
         
         // Now process each track by seeking to its metadata location (following Python implementation)
-        for (i, (metadata_offset, meta_size)) in track_pointers.iter().enumerate() {
+        for (original_index, (metadata_offset, meta_size)) in track_pointers.iter().enumerate() {
             // Skip tracks with insufficient metadata (as done in Python: if tones[i].metaSize <= 0xc: continue)
             if *meta_size <= 0xc {
-                println!("Skipping track {} due to insufficient metaSize: {}", i, meta_size);
+                println!("Skipping track {} due to insufficient metaSize: {}", original_index, meta_size);
                 continue;
             }
             
@@ -344,7 +345,8 @@ impl Nus3bankParser {
             // Skip null terminator
             reader.seek(SeekFrom::Current(1))?;
             
-            println!("\t0x{:x}:{}", i, name);
+            // Use track_index for display and ID generation (like Python 'i' variable)
+            println!("\t0x{:x}:{}", track_index, name);
             
             // Handle padding (Python logic)
             let padding = (string_size as usize + 1) % 4;
@@ -354,18 +356,20 @@ impl Nus3bankParser {
                 reader.seek(SeekFrom::Current((4 - padding + 4) as i64))?;
             }
             
-            // Skip 4 bytes
-            reader.seek(SeekFrom::Current(4))?;
+            // Read the 4-byte value (usually 8) before packOffset and size
+            // This corresponds to the commented assert in Python: assert readu32le(nus3) == 8
+            let unknown_value = BinaryReader::read_u32_le(reader)?;
+            println!("Track {}: unknown_value before offsets = {}", track_index, unknown_value);
             
             let pack_offset = BinaryReader::read_u32_le(reader)?;
             let size = BinaryReader::read_u32_le(reader)?;
             
-            println!("Track {}: pack_offset={}, size={}", i, pack_offset, size);
+            println!("Track {}: pack_offset={}, size={}", track_index, pack_offset, size);
             
             tracks.push(AudioTrack {
-                index: i,
-                hex_id: format!("0x{:x}", i),
-                numeric_id: i as u32,
+                index: track_index, // Use track_index instead of original_index
+                hex_id: format!("0x{:x}", track_index), // Use track_index for hex_id (like Python 'i')
+                numeric_id: track_index as u32, // Use track_index for numeric_id
                 name,
                 pack_offset,
                 size,
@@ -374,6 +378,8 @@ impl Nus3bankParser {
                 audio_data: None,
                 audio_format: AudioFormat::Unknown,
             });
+            
+            track_index += 1; // Increment track_index for next valid track
         }
         
         Ok(tracks)
@@ -400,25 +406,55 @@ impl Nus3bankParser {
             }
         }
         
-        // Load audio data for each track
+        // Load audio data for all tracks and set it directly
         for track in tracks.iter_mut() {
-            if track.pack_offset + track.size <= section_size {
-                let start = track.pack_offset as usize;
-                let end = start + track.size as usize;
-                track.audio_data = Some(pack_data[start..end].to_vec());
-                
-                // Detect format (WAV only as per requirements)
-                if let Some(data) = &track.audio_data {
-                    if data.starts_with(b"RIFF") {
-                        track.audio_format = AudioFormat::Wav;
-                        println!("Track '{}': WAV format detected", track.name);
+            // Python check: if tones[i].packOffset < 0xffffffff
+            if track.pack_offset < 0xffffffff {
+                // Validate offset and size bounds
+                if track.pack_offset + track.size <= section_size {
+                    let start = track.pack_offset as usize;
+                    let end = start + track.size as usize;
+                    
+                    // Verify the size is reasonable (not 0 and not too large)
+                    if track.size > 0 && track.size <= section_size {
+                        let audio_data = pack_data[start..end].to_vec();
+                        
+                        // Detect format (WAV only as per requirements)
+                        if audio_data.starts_with(b"RIFF") {
+                            track.audio_format = AudioFormat::Wav;
+                            println!("Track '{}' ({}): WAV format detected, size: {} bytes", 
+                                     track.name, track.hex_id, track.size);
+                        } else {
+                            track.audio_format = AudioFormat::Unknown;
+                            println!("Track '{}' ({}): Unknown format (first 4 bytes: {:02X?}), size: {} bytes", 
+                                     track.name, track.hex_id, &audio_data[..4.min(audio_data.len())], track.size);
+                        }
+                        
+                        // Set the audio data directly to the track
+                        track.audio_data = Some(audio_data);
+                        
+                        println!("Track '{}' ({}): Audio data loaded successfully, size: {} bytes", 
+                                 track.name, track.hex_id, track.size);
                     } else {
-                        println!("Track '{}': Unknown format (first 4 bytes: {:02X?})", track.name, &data[..4.min(data.len())]);
+                        eprintln!("Track '{}' ({}): Invalid size: {} bytes", 
+                                  track.name, track.hex_id, track.size);
+                        // Reset invalid data
+                        track.size = 0;
+                        track.audio_data = None;
                     }
+                } else {
+                    eprintln!("Track '{}' ({}): Invalid offset/size combination (offset={}, size={}, section_size={})", 
+                              track.name, track.hex_id, track.pack_offset, track.size, section_size);
+                    // Reset invalid data
+                    track.size = 0;
+                    track.audio_data = None;
                 }
             } else {
-                eprintln!("Track '{}': Invalid offset/size combination (offset={}, size={}, section_size={})", 
-                          track.name, track.pack_offset, track.size, section_size);
+                println!("Track '{}' ({}): Skipping due to invalid pack_offset: 0x{:x}", 
+                         track.name, track.hex_id, track.pack_offset);
+                // Reset invalid data for invalid tracks
+                track.size = 0;
+                track.audio_data = None;
             }
         }
         

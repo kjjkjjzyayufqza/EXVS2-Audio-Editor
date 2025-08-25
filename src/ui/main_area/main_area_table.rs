@@ -261,8 +261,12 @@ impl MainArea {
                 let audio_name = audio_info.name.clone();
                 let file_path = self.selected_file.clone();
 
+                log::info!("Play button clicked for audio: {} (id: {}, is_nus3bank: {})", 
+                          audio_name, audio_info.id, audio_info.is_nus3bank);
+
                 if let Some(path) = &file_path {
                     if let Some(audio_player) = &mut self.audio_player {
+                        log::info!("Loading audio from file: {}", path);
                         match audio_player.load_audio(audio_info, path) {
                             Ok(()) => {
                                 // Start playing
@@ -274,17 +278,32 @@ impl MainArea {
 
                                 toasts_to_add
                                     .push((format!("Now playing: {}", audio_name), Color32::GREEN));
+                                log::info!("Successfully started playing: {}", audio_name);
                             }
                             Err(e) => {
+                                let error_msg = format!("Failed to load audio '{}': {}", audio_name, e);
+                                log::error!("{}", error_msg);
                                 toasts_to_add
-                                    .push((format!("Failed to load audio: {}", e), Color32::RED));
+                                    .push((error_msg, Color32::RED));
                             }
                         }
                     } else {
+                        let error_msg = "Audio player is not initialized".to_string();
+                        log::error!("{}", error_msg);
                         toasts_to_add
-                            .push(("Audio player is not initialized".to_string(), Color32::RED));
+                            .push((error_msg, Color32::RED));
                     }
+                } else {
+                    let error_msg = "No file selected for playback".to_string();
+                    log::error!("{}", error_msg);
+                    toasts_to_add
+                        .push((error_msg, Color32::RED));
                 }
+            } else {
+                let error_msg = format!("Invalid audio index: {} (max: {})", idx, filtered_audio_files.len());
+                log::error!("{}", error_msg);
+                toasts_to_add
+                    .push((error_msg, Color32::RED));
             }
         }
 
