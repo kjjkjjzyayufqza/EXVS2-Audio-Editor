@@ -134,59 +134,47 @@ impl Nus3bankParser {
         }
         
         // Validate section size before proceeding
-        if section_size < 16 || section_size > 10000 {
+        if section_size < 12 || section_size > 10000 {
             return Err(Nus3bankError::InvalidFormat {
-                reason: format!("Invalid BINF section size: {} bytes (expected 16-10000)", section_size)
+                reason: format!("Invalid BINF section size: {} bytes (expected 12-10000)", section_size)
             });
         }
         
         let unknown1 = BinaryReader::read_u32_le(reader)?;
         let bank_id = BinaryReader::read_u32_le(reader)?;
-        let string_length = BinaryReader::read_u32_le(reader)?;
         
-        println!("BINF details - Unknown1: 0x{:08X}, Bank ID: {}, String length: {}", unknown1, bank_id, string_length);
+        println!("BINF details - Unknown1: 0x{:08X}, Bank ID: {}", unknown1, bank_id);
         
-        // Calculate maximum allowed string length
-        let max_string_length = section_size.saturating_sub(12).min(1000);
-        
-        // Handle potentially invalid string length by falling back to empty string
-        let bank_string = if string_length == 0 || string_length > max_string_length {
-            println!("Warning: Invalid string length {}, using empty string", string_length);
-            String::new()
-        } else {
-            match BinaryReader::read_padded_string(reader, string_length as usize) {
-                Ok(s) => {
-                    println!("Bank string: '{}'", s);
-                    
-                    // Skip padding
-                    let padding = BinaryReader::calculate_padding(string_length as usize);
-                    if padding > 0 {
-                        let mut padding_buf = vec![0u8; padding];
-                        match reader.read_exact(&mut padding_buf) {
-                            Ok(_) => println!("Skipped {} bytes of padding", padding),
-                            Err(e) => {
-                                eprintln!("Failed to skip BINF padding: {}", e);
-                                // Don't fail here, just log the error
-                                println!("Continuing despite padding skip error");
-                            }
-                        }
-                    }
-                    s
-                }
-                Err(e) => {
-                    eprintln!("Failed to read bank string, using fallback: {}", e);
-                    String::from("unknown_bank")
-                }
+        // Read the remaining bytes to find the null-terminated string
+        let remaining_bytes = section_size.saturating_sub(8); // 8 = 4 (unknown1) + 4 (bank_id)
+        let mut remaining_data = vec![0u8; remaining_bytes as usize];
+        match reader.read_exact(&mut remaining_data) {
+            Ok(_) => {
+                // Find null terminator to extract string
+                let string_end = remaining_data.iter().position(|&b| b == 0).unwrap_or(remaining_data.len());
+                let bank_string = String::from_utf8_lossy(&remaining_data[..string_end]).to_string();
+                println!("Bank string: '{}'", bank_string);
+                
+                Ok(BankInfo {
+                    bank_id,
+                    bank_string,
+                    total_size: 0, // Will be set by caller
+                    track_count: 0, // Will be set by caller
+                    section_offsets: SectionOffsets::default(),
+                })
             }
-        };
-        
-        Ok(BankInfo {
-            bank_id,
-            bank_string,
-            total_size: 0, // Will be set by caller
-            track_count: 0, // Will be set by caller
-            section_offsets: SectionOffsets::default(),
-        })
+            Err(e) => {
+                eprintln!("Failed to read remaining BINF data: {}", e);
+                // Return with fallback values
+                Ok(BankInfo {
+                    bank_id,
+                    bank_string: String::from("unknown_bank"),
+                    total_size: 0,
+                    track_count: 0,
+                    section_offsets: SectionOffsets::default(),
+                })
+            }
+        }
     }
     
     /// Parse BINF section with known size from BANKTOC
@@ -208,68 +196,47 @@ impl Nus3bankParser {
         }
         
         // Validate section size before proceeding
-        if size_to_use < 16 || size_to_use > 10000 {
+        if size_to_use < 12 || size_to_use > 10000 {
             return Err(Nus3bankError::InvalidFormat {
-                reason: format!("Invalid BINF section size: {} bytes (expected 16-10000)", size_to_use)
+                reason: format!("Invalid BINF section size: {} bytes (expected 12-10000)", size_to_use)
             });
         }
         
         let unknown1 = BinaryReader::read_u32_le(reader)?;
         let bank_id = BinaryReader::read_u32_le(reader)?;
-        let string_length = BinaryReader::read_u32_le(reader)?;
         
-        println!("BINF details - Unknown1: 0x{:08X}, Bank ID: {}, String length: {}", unknown1, bank_id, string_length);
+        println!("BINF details - Unknown1: 0x{:08X}, Bank ID: {}", unknown1, bank_id);
         
-        // Calculate maximum allowed string length
-        let max_string_length = size_to_use.saturating_sub(16).min(1000); // 16 bytes for header + size + unknown1 + bank_id + string_length
-        
-        // Handle potentially invalid string length by falling back to empty string
-        let bank_string = if string_length == 0 || string_length > max_string_length {
-            println!("Warning: Invalid string length {}, using empty string", string_length);
-            // Skip remaining bytes in BINF section
-            let remaining_bytes = size_to_use.saturating_sub(16);
-            if remaining_bytes > 0 {
-                let mut skip_buf = vec![0u8; remaining_bytes as usize];
-                match reader.read_exact(&mut skip_buf) {
-                    Ok(_) => println!("Skipped {} remaining bytes in BINF section", remaining_bytes),
-                    Err(e) => eprintln!("Failed to skip remaining BINF bytes: {}", e),
-                }
+        // Read the remaining bytes to find the null-terminated string
+        let remaining_bytes = size_to_use.saturating_sub(8); // 8 = 4 (unknown1) + 4 (bank_id)
+        let mut remaining_data = vec![0u8; remaining_bytes as usize];
+        match reader.read_exact(&mut remaining_data) {
+            Ok(_) => {
+                // Find null terminator to extract string
+                let string_end = remaining_data.iter().position(|&b| b == 0).unwrap_or(remaining_data.len());
+                let bank_string = String::from_utf8_lossy(&remaining_data[..string_end]).to_string();
+                println!("Bank string: '{}'", bank_string);
+                
+                Ok(BankInfo {
+                    bank_id,
+                    bank_string,
+                    total_size: 0, // Will be set by caller
+                    track_count: 0, // Will be set by caller
+                    section_offsets: SectionOffsets::default(),
+                })
             }
-            String::new()
-        } else {
-            match BinaryReader::read_padded_string(reader, string_length as usize) {
-                Ok(s) => {
-                    println!("Bank string: '{}'", s);
-                    
-                    // Skip padding
-                    let padding = BinaryReader::calculate_padding(string_length as usize);
-                    if padding > 0 {
-                        let mut padding_buf = vec![0u8; padding];
-                        match reader.read_exact(&mut padding_buf) {
-                            Ok(_) => println!("Skipped {} bytes of padding", padding),
-                            Err(e) => {
-                                eprintln!("Failed to skip BINF padding: {}", e);
-                                // Don't fail here, just log the error
-                                println!("Continuing despite padding skip error");
-                            }
-                        }
-                    }
-                    s
-                }
-                Err(e) => {
-                    eprintln!("Failed to read bank string, using fallback: {}", e);
-                    String::from("unknown_bank")
-                }
+            Err(e) => {
+                eprintln!("Failed to read remaining BINF data: {}", e);
+                // Return with fallback values
+                Ok(BankInfo {
+                    bank_id,
+                    bank_string: String::from("unknown_bank"),
+                    total_size: 0,
+                    track_count: 0,
+                    section_offsets: SectionOffsets::default(),
+                })
             }
-        };
-        
-        Ok(BankInfo {
-            bank_id,
-            bank_string,
-            total_size: 0, // Will be set by caller
-            track_count: 0, // Will be set by caller
-            section_offsets: SectionOffsets::default(),
-        })
+        }
     }
     
     /// Safe BINF section parser with enhanced error recovery
@@ -294,66 +261,118 @@ impl Nus3bankParser {
     }
     
     /// Parse TONE section (track metadata)
-    fn parse_tone_section<R: Read>(reader: &mut R) -> Result<Vec<AudioTrack>, Nus3bankError> {
+    fn parse_tone_section<R: Read + Seek>(reader: &mut R) -> Result<Vec<AudioTrack>, Nus3bankError> {
         let section_size = BinaryReader::read_u32_le(reader)?;
         println!("TONE section size: {} bytes", section_size);
         
-        let _unknown1 = BinaryReader::read_u32_le(reader)?;
         let track_count = BinaryReader::read_u32_le(reader)?;
         
         println!("Number of tracks: {}", track_count);
         
-        if track_count > 1000 { // Sanity check
+        // Basic validation for track count
+        if track_count == 0 {
             return Err(Nus3bankError::InvalidFormat {
-                reason: format!("Invalid track count: {}", track_count)
+                reason: "Track count cannot be zero".to_string()
             });
+        }
+        
+        // Reasonable upper limit validation
+        if track_count > 100000 {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!("Track count {} exceeds reasonable limit of 100,000", track_count)
+            });
+        }
+        
+        // Correct validation based on Python implementation:
+        // TONE section contains: 4 bytes (section_size) + 4 bytes (track_count) + track_count * 8 bytes (offset+metaSize pairs)
+        // The actual track metadata is stored at the offsets, not directly in TONE section
+        let min_bytes_needed = 8 + (track_count as u64) * 8; // 8 bytes header + 8 bytes per track pointer
+        if min_bytes_needed > section_size as u64 {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!("Track count {} requires at least {} bytes for pointer table but section only has {} bytes", 
+                    track_count, min_bytes_needed, section_size)
+            });
+        }
+
+        
+        // Store the TONE section base offset for calculating absolute positions
+        let tone_section_base = BinaryReader::get_current_position(reader)? - 8; // Subtract 8 for section_size + track_count
+        
+        // First, read the pointer table (offset + metaSize pairs) as in Python implementation
+        let mut track_pointers = Vec::new();
+        for i in 0..track_count {
+            let relative_offset = BinaryReader::read_u32_le(reader)?;
+            let meta_size = BinaryReader::read_u32_le(reader)?;
+            // Calculate absolute offset (Python: offset = readu32le(nus3) + toneOffset + 8)
+            let absolute_offset = relative_offset + tone_section_base + 8;
+            track_pointers.push((absolute_offset, meta_size));
+            println!("Track {} pointer: relative_offset={}, absolute_offset={}, metaSize={}", 
+                     i, relative_offset, absolute_offset, meta_size);
         }
         
         let mut tracks = Vec::new();
         
-        for i in 0..track_count {
-            let numeric_id = BinaryReader::read_u32_le(reader)?;
-            let hex_id = format!("0x{:x}", numeric_id);
-            
-            let name_length = BinaryReader::read_u32_le(reader)?;
-            
-            if name_length > 1000 { // Sanity check
-                return Err(Nus3bankError::InvalidFormat {
-                    reason: format!("Invalid track name length: {}", name_length)
-                });
+        // Now process each track by seeking to its metadata location (following Python implementation)
+        for (i, (metadata_offset, meta_size)) in track_pointers.iter().enumerate() {
+            // Skip tracks with insufficient metadata (as done in Python: if tones[i].metaSize <= 0xc: continue)
+            if *meta_size <= 0xc {
+                println!("Skipping track {} due to insufficient metaSize: {}", i, meta_size);
+                continue;
             }
             
-            let name = BinaryReader::read_padded_string(reader, name_length as usize)?;
+            // Seek to the track's metadata location
+            reader.seek(SeekFrom::Start(*metadata_offset as u64))?;
             
-            // Skip name padding
-            let padding = BinaryReader::calculate_padding(name_length as usize);
-            if padding > 0 {
-                let mut padding_buf = vec![0u8; padding];
-                match reader.read_exact(&mut padding_buf) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        eprintln!("Failed to skip track name padding for track {}: {}", i, e);
-                        return Err(Nus3bankError::Io(e));
-                    }
-                }
+            // Read track metadata following Python logic
+            // Python code: nus3.seek(tones[i].offset+6)
+            reader.seek(SeekFrom::Current(6))?;
+            
+            let temp_byte = BinaryReader::read_u8(reader)?;
+            if temp_byte > 9 || temp_byte == 0 {
+                reader.seek(SeekFrom::Current(5))?;
+            } else {
+                reader.seek(SeekFrom::Current(1))?;
             }
             
-            let size = BinaryReader::read_u32_le(reader)?;
+            let string_size = BinaryReader::read_u8(reader)?;
+            
+            // Read track name
+            let mut name_bytes = vec![0u8; (string_size - 1) as usize];
+            reader.read_exact(&mut name_bytes)?;
+            let name = String::from_utf8_lossy(&name_bytes).to_string();
+            
+            // Skip null terminator
+            reader.seek(SeekFrom::Current(1))?;
+            
+            println!("\t0x{:x}:{}", i, name);
+            
+            // Handle padding (Python logic)
+            let padding = (string_size as usize + 1) % 4;
+            if padding == 0 {
+                reader.seek(SeekFrom::Current(4))?;
+            } else {
+                reader.seek(SeekFrom::Current((4 - padding + 4) as i64))?;
+            }
+            
+            // Skip 4 bytes
+            reader.seek(SeekFrom::Current(4))?;
+            
             let pack_offset = BinaryReader::read_u32_le(reader)?;
+            let size = BinaryReader::read_u32_le(reader)?;
             
-            println!("Track {}: ID={}, name='{}', size={}, offset={}", i, hex_id, name, size, pack_offset);
+            println!("Track {}: pack_offset={}, size={}", i, pack_offset, size);
             
             tracks.push(AudioTrack {
-                index: i as usize,
-                hex_id,
-                numeric_id,
+                index: i,
+                hex_id: format!("0x{:x}", i),
+                numeric_id: i as u32,
                 name,
                 pack_offset,
                 size,
-                metadata_offset: 0, // Position tracking simplified
-                metadata_size: 16 + name_length + padding as u32, // Approximate
+                metadata_offset: *metadata_offset,
+                metadata_size: *meta_size,
                 audio_data: None,
-                audio_format: AudioFormat::Unknown, // Will be detected when loading data
+                audio_format: AudioFormat::Unknown,
             });
         }
         
@@ -456,59 +475,47 @@ impl Nus3bankParser {
             let section_name = String::from_utf8_lossy(&magic).to_string();
             sections_found.push(section_name.clone());
             
+            // In BANKTOC structure, sections are laid out consecutively:
+            // [magic][size][data][magic][size][data]...
+            // We need to verify the magic matches, then read the size
+            let current_pos = BinaryReader::get_current_position(reader)?;
+            let actual_magic = BinaryReader::read_section_magic(reader)?;
+            if actual_magic != magic {
+                eprintln!("Warning: Section magic mismatch for {}: expected {:?}, got {:?}", 
+                         section_name, String::from_utf8_lossy(&magic), String::from_utf8_lossy(&actual_magic));
+            }
+            
             match &magic[..] {
                 b"PROP" => {
-                    let current_pos = BinaryReader::get_current_position(reader)?;
                     section_offsets.prop_offset = current_pos;
-                    let actual_magic = BinaryReader::read_section_magic(reader)?;
-                    if actual_magic != magic {
-                        eprintln!("Warning: Section magic mismatch for PROP");
-                    }
                     Self::parse_prop_section(reader)?;
                 },
                 b"BINF" => {
-                    let current_pos = BinaryReader::get_current_position(reader)?;
                     section_offsets.binf_offset = current_pos;
-                    let actual_magic = BinaryReader::read_section_magic(reader)?;
-                    if actual_magic != magic {
-                        eprintln!("Warning: Section magic mismatch for BINF");
-                    }
                     *bank_info = Some(Self::parse_binf_section_with_size(reader, expected_size)?);
                 },
                 b"TONE" => {
-                    let current_pos = BinaryReader::get_current_position(reader)?;
                     section_offsets.tone_offset = current_pos;
-                    let actual_magic = BinaryReader::read_section_magic(reader)?;
-                    if actual_magic != magic {
-                        eprintln!("Warning: Section magic mismatch for TONE");
-                    }
                     *tracks = Self::parse_tone_section(reader)?;
                 },
                 b"PACK" => {
-                    let current_pos = BinaryReader::get_current_position(reader)?;
                     section_offsets.pack_offset = current_pos;
-                    let actual_magic = BinaryReader::read_section_magic(reader)?;
-                    if actual_magic != magic {
-                        eprintln!("Warning: Section magic mismatch for PACK");
-                    }
                     Self::parse_pack_section(reader, tracks)?;
                 },
                 _ => {
                     // Skip unknown sections
                     println!("Skipping unknown section '{}' of size {} bytes", section_name, expected_size);
-                    let actual_magic = BinaryReader::read_section_magic(reader)?;
-                    if actual_magic != magic {
-                        eprintln!("Warning: Section magic mismatch for {}", section_name);
-                    }
                     let actual_size = BinaryReader::read_u32_le(reader)?;
                     if actual_size != expected_size {
                         eprintln!("Warning: Section size mismatch for {}: expected {}, got {}", section_name, expected_size, actual_size);
+                        // Use the actual size from the file, not the TOC
                     }
-                    if actual_size > 0 && actual_size < 10_000_000 { // Increased limit for large sections
-                        let mut skip_buf = vec![0u8; actual_size as usize];
+                    let size_to_skip = actual_size.min(expected_size); // Use the smaller size for safety
+                    if size_to_skip > 0 && size_to_skip < 10_000_000 { // Increased limit for large sections
+                        let mut skip_buf = vec![0u8; size_to_skip as usize];
                         reader.read_exact(&mut skip_buf)?;
                     } else {
-                        eprintln!("Invalid section size for '{}': {}", section_name, actual_size);
+                        eprintln!("Invalid section size for '{}': {}", section_name, size_to_skip);
                         break;
                     }
                 }
