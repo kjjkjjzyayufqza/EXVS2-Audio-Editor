@@ -295,8 +295,10 @@ impl Nus3bankParser {
         }
 
         
-        // Store the TONE section base offset for calculating absolute positions
-        let tone_section_base = BinaryReader::get_current_position(reader)? - 8; // Subtract 8 for section_size + track_count
+        // Store the TONE magic offset for calculating absolute positions
+        // After reading section_size (4) and track_count (4), current position = TONE_magic_start + 12
+        // We want TONE_magic_start, so subtract 12
+        let tone_magic_offset = BinaryReader::get_current_position(reader)? - 12;
         
         // First, read the pointer table (offset + metaSize pairs) as in Python implementation
         let mut track_pointers = Vec::new();
@@ -304,7 +306,7 @@ impl Nus3bankParser {
             let relative_offset = BinaryReader::read_u32_le(reader)?;
             let meta_size = BinaryReader::read_u32_le(reader)?;
             // Calculate absolute offset (Python: offset = readu32le(nus3) + toneOffset + 8)
-            let absolute_offset = relative_offset + tone_section_base + 8;
+            let absolute_offset = relative_offset + tone_magic_offset + 8;
             track_pointers.push((absolute_offset, meta_size));
             println!("Track {} pointer: relative_offset={}, absolute_offset={}, metaSize={}", 
                      i, relative_offset, absolute_offset, meta_size);
