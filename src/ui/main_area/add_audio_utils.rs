@@ -43,9 +43,17 @@ impl AddAudioUtils {
             command.creation_flags(CREATE_NO_WINDOW);
         }
 
+        println!(
+            "Running command: {:?} -o {} {}",
+            vgmstream_path,
+            temp_output_path_str,
+            file_path
+        );
+
         let result = command
             .args(["-o", &temp_output_path_str, file_path])
             .output();
+        println!("vgmstream-cli command result: {:?}", result);
 
         match result {
             Ok(output) => {

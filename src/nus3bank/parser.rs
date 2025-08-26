@@ -347,8 +347,8 @@ impl Nus3bankParser {
             // Skip null terminator
             reader.seek(SeekFrom::Current(1))?;
             
-            // Use track_index for display and ID generation (like Python 'i' variable)
-            println!("\t0x{:x}:{}", track_index, name);
+            // Display the original pointer table index as the track ID (matches expected hex ids)
+            println!("\t0x{:x}:{}", original_index, name);
             
             // Handle padding (Python logic)
             let padding = (string_size as usize + 1) % 4;
@@ -361,17 +361,17 @@ impl Nus3bankParser {
             // Read the 4-byte value (usually 8) before packOffset and size
             // This corresponds to the commented assert in Python: assert readu32le(nus3) == 8
             let unknown_value = BinaryReader::read_u32_le(reader)?;
-            println!("Track {}: unknown_value before offsets = {}", track_index, unknown_value);
+            println!("Track {}: unknown_value before offsets = {}", original_index, unknown_value);
             
             let pack_offset = BinaryReader::read_u32_le(reader)?;
             let size = BinaryReader::read_u32_le(reader)?;
             
-            println!("Track {}: pack_offset={}, size={}", track_index, pack_offset, size);
+            println!("Track {}: pack_offset={}, size={}", original_index, pack_offset, size);
             
             tracks.push(AudioTrack {
-                index: track_index, // Use track_index instead of original_index
-                hex_id: format!("0x{:x}", track_index), // Use track_index for hex_id (like Python 'i')
-                numeric_id: track_index as u32, // Use track_index for numeric_id
+                index: track_index, // Keep sequential index for UI/ordering
+                hex_id: format!("0x{:x}", original_index), // Use original pointer index as stable hex ID
+                numeric_id: original_index as u32, // Use original pointer index as numeric ID
                 name,
                 pack_offset,
                 size,
@@ -389,16 +389,22 @@ impl Nus3bankParser {
     
     /// Parse PACK section (audio data)
     fn parse_pack_section<R: Read>(reader: &mut R, tracks: &mut Vec<AudioTrack>) -> Result<(), Nus3bankError> {
+        // Kept for backward compatibility when TONE is already parsed before PACK
+        let pack_data = Self::read_pack_section(reader)?;
+        Self::attach_pack_data_to_tracks(&pack_data, tracks)
+    }
+
+    /// Read PACK section bytes into memory (data only, excluding the 8-byte header already consumed)
+    fn read_pack_section<R: Read>(reader: &mut R) -> Result<Vec<u8>, Nus3bankError> {
         let section_size = BinaryReader::read_u32_le(reader)?;
         println!("PACK section size: {} bytes", section_size);
-        
-        if section_size > 100_000_000 { // Sanity check: max 100MB
+
+        if section_size > 100_000_000 {
             return Err(Nus3bankError::InvalidFormat {
-                reason: format!("PACK section too large: {} bytes", section_size)
+                reason: format!("PACK section too large: {} bytes", section_size),
             });
         }
-        
-        // Read entire PACK section into memory
+
         let mut pack_data = vec![0u8; section_size as usize];
         match reader.read_exact(&mut pack_data) {
             Ok(_) => println!("Successfully read PACK section"),
@@ -407,59 +413,73 @@ impl Nus3bankParser {
                 return Err(Nus3bankError::Io(e));
             }
         }
-        
-        // Load audio data for all tracks and set it directly
+
+        Ok(pack_data)
+    }
+
+    /// Attach PACK data to parsed tracks
+    fn attach_pack_data_to_tracks(pack_data: &[u8], tracks: &mut Vec<AudioTrack>) -> Result<(), Nus3bankError> {
+        let section_size = pack_data.len() as u32;
         for track in tracks.iter_mut() {
-            // Python check: if tones[i].packOffset < 0xffffffff
-            if track.pack_offset < 0xffffffff {
-                // Validate offset and size bounds
+            if track.pack_offset < 0xffff_ffff {
                 if track.pack_offset + track.size <= section_size {
                     let start = track.pack_offset as usize;
                     let end = start + track.size as usize;
-                    
-                    // Verify the size is reasonable (not 0 and not too large)
+
                     if track.size > 0 && track.size <= section_size {
                         let audio_data = pack_data[start..end].to_vec();
-                        
-                        // Detect format (WAV only as per requirements)
+
                         if audio_data.starts_with(b"RIFF") {
                             track.audio_format = AudioFormat::Wav;
-                            println!("Track '{}' ({}): WAV format detected, size: {} bytes", 
-                                     track.name, track.hex_id, track.size);
+                            println!(
+                                "Track '{}' ({}): WAV format detected, size: {} bytes",
+                                track.name, track.hex_id, track.size
+                            );
                         } else {
                             track.audio_format = AudioFormat::Unknown;
-                            println!("Track '{}' ({}): Unknown format (first 4 bytes: {:02X?}), size: {} bytes", 
-                                     track.name, track.hex_id, &audio_data[..4.min(audio_data.len())], track.size);
+                            println!(
+                                "Track '{}' ({}): Unknown format (first 4 bytes: {:02X?}), size: {} bytes",
+                                track.name,
+                                track.hex_id,
+                                &audio_data[..4.min(audio_data.len())],
+                                track.size
+                            );
                         }
-                        
-                        // Set the audio data directly to the track
+
                         track.audio_data = Some(audio_data);
-                        
-                        println!("Track '{}' ({}): Audio data loaded successfully, size: {} bytes", 
-                                 track.name, track.hex_id, track.size);
+                        println!(
+                            "Track '{}' ({}): Audio data loaded successfully, size: {} bytes",
+                            track.name, track.hex_id, track.size
+                        );
                     } else {
-                        eprintln!("Track '{}' ({}): Invalid size: {} bytes", 
-                                  track.name, track.hex_id, track.size);
-                        // Reset invalid data
+                        eprintln!(
+                            "Track '{}' ({}): Invalid size: {} bytes",
+                            track.name, track.hex_id, track.size
+                        );
                         track.size = 0;
                         track.audio_data = None;
                     }
                 } else {
-                    eprintln!("Track '{}' ({}): Invalid offset/size combination (offset={}, size={}, section_size={})", 
-                              track.name, track.hex_id, track.pack_offset, track.size, section_size);
-                    // Reset invalid data
+                    eprintln!(
+                        "Track '{}' ({}): Invalid offset/size combination (offset={}, size={}, section_size={})",
+                        track.name,
+                        track.hex_id,
+                        track.pack_offset,
+                        track.size,
+                        section_size
+                    );
                     track.size = 0;
                     track.audio_data = None;
                 }
             } else {
-                println!("Track '{}' ({}): Skipping due to invalid pack_offset: 0x{:x}", 
-                         track.name, track.hex_id, track.pack_offset);
-                // Reset invalid data for invalid tracks
+                println!(
+                    "Track '{}' ({}): Skipping due to invalid pack_offset: 0x{:x}",
+                    track.name, track.hex_id, track.pack_offset
+                );
                 track.size = 0;
                 track.audio_data = None;
             }
         }
-        
         Ok(())
     }
     
@@ -471,6 +491,8 @@ impl Nus3bankParser {
         section_offsets: &mut SectionOffsets,
         sections_found: &mut Vec<String>
     ) -> Result<(), Nus3bankError> {
+        // Defer PACK data until tracks are parsed to ensure audio_data can be attached regardless of section order
+        let mut deferred_pack_data: Option<Vec<u8>> = None;
         // Read "TOC " part
         let mut toc_magic = [0u8; 4];
         reader.read_exact(&mut toc_magic)?;
@@ -535,10 +557,20 @@ impl Nus3bankParser {
                 b"TONE" => {
                     section_offsets.tone_offset = current_pos;
                     *tracks = Self::parse_tone_section(reader)?;
+                    // If PACK data was read earlier, attach it now
+                    if let Some(pack_data) = deferred_pack_data.take() {
+                        Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
+                    }
                 },
                 b"PACK" => {
                     section_offsets.pack_offset = current_pos;
-                    Self::parse_pack_section(reader, tracks)?;
+                    // Read PACK data now, but attach to tracks only when they are available
+                    let pack_data = Self::read_pack_section(reader)?;
+                    if tracks.is_empty() {
+                        deferred_pack_data = Some(pack_data);
+                    } else {
+                        Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
+                    }
                 },
                 _ => {
                     // Skip unknown sections
@@ -559,6 +591,12 @@ impl Nus3bankParser {
                 }
             }
         }
+        // Finalize: if PACK was encountered before TONE, attach now
+        if let Some(pack_data) = deferred_pack_data.take() {
+            if !tracks.is_empty() {
+                Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
+            }
+        }
         
         Ok(())
     }
@@ -571,6 +609,8 @@ impl Nus3bankParser {
         section_offsets: &mut SectionOffsets,
         sections_found: &mut Vec<String>
     ) -> Result<(), Nus3bankError> {
+        // Defer PACK data until tracks are parsed (section order may vary)
+        let mut deferred_pack_data: Option<Vec<u8>> = None;
         // Read sections sequentially
         loop {
             // Try to read section magic, break if EOF
@@ -601,11 +641,21 @@ impl Nus3bankParser {
                     let current_pos = BinaryReader::get_current_position(reader)? - 4;
                     section_offsets.tone_offset = current_pos;
                     *tracks = Self::parse_tone_section(reader)?;
+                    // If PACK data was read earlier, attach it now
+                    if let Some(pack_data) = deferred_pack_data.take() {
+                        Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
+                    }
                 },
                 b"PACK" => {
                     let current_pos = BinaryReader::get_current_position(reader)? - 4;
                     section_offsets.pack_offset = current_pos;
-                    Self::parse_pack_section(reader, tracks)?;
+                    // Read PACK bytes; attach later if tracks not parsed yet
+                    let pack_data = Self::read_pack_section(reader)?;
+                    if tracks.is_empty() {
+                        deferred_pack_data = Some(pack_data);
+                    } else {
+                        Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
+                    }
                 },
                 _ => {
                     // Skip unknown sections with better error handling
@@ -632,6 +682,12 @@ impl Nus3bankParser {
                         }
                     }
                 }
+            }
+        }
+        // Finalize: if PACK was encountered before TONE, attach now
+        if let Some(pack_data) = deferred_pack_data.take() {
+            if !tracks.is_empty() {
+                Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
             }
         }
         

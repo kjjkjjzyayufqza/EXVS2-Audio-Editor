@@ -300,17 +300,17 @@ impl TopPanel {
         }
     }
     
-    /// Save current audio files to a new nus3audio file
+    /// Save current audio files to a new file (supports both NUS3AUDIO and NUS3BANK)
     fn save_nus3audio_file(original_path: &str, save_path: &str) {
-        // Use ReplaceUtils to apply all in-memory replacements and save the file
-        match crate::ui::main_area::ReplaceUtils::apply_replacements_and_save(original_path, save_path) {
+        // Use unified method to support both NUS3AUDIO and NUS3BANK files
+        match crate::ui::main_area::ReplaceUtils::apply_replacements_and_save_unified(original_path, save_path) {
             Ok(_) => {
                 println!("File save success: {}", save_path);
                 
                 // Show success modal dialog
                 show_modal(
                     "Save success", 
-                    &format!("NUS3AUDIO has been success write to:\n{}", save_path),
+                    &format!("Audio file has been successfully saved to:\n{}", save_path),
                     false
                 );
             }

@@ -26,10 +26,11 @@ impl AudioFileInfo {
     }
     
     /// Create AudioFileInfo for NUS3BANK track
-    pub fn from_nus3bank_track(name: String, numeric_id: u32, hex_id: String, size: usize, filename: String) -> Self {
+    /// Note: `id` stores the track's index (0-based) for subsong mapping
+    pub fn from_nus3bank_track(name: String, index: u32, hex_id: String, size: usize, filename: String) -> Self {
         Self {
             name,
-            id: numeric_id.to_string(),
+            id: index.to_string(),
             size,
             filename,
             file_type: "WAV".to_string(),

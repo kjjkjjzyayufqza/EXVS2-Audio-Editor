@@ -167,12 +167,17 @@ impl ReplaceUtils {
         let file_path_str = file_path.to_string_lossy().into_owned();
         args.push(file_path_str);
 
-        println!("vgmstream-cli args: {:?}", args);
+        println!(
+            "Running command: {:?} {}",
+            vgmstream_path,
+            args.join(" ")
+        );
 
         // 将Vec<String>转换为Vec<&str>以传递给command.args()
         let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         let result = command.args(args_ref).output();
+        println!("vgmstream-cli command result: {:?}", result);
 
         match result {
             Ok(output) => {
@@ -455,6 +460,24 @@ impl ReplaceUtils {
     /// Get the replacement audio data for a specific audio file
     pub fn get_replacement_data(audio_name: &str, audio_id: &str) -> Option<Vec<u8>> {
         let key = format!("{}:{}", audio_name, audio_id);
+        if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
+            map.get(&key).cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Get the replacement audio data for a specific audio file (unified for both file types)
+    pub fn get_replacement_data_unified(audio_file_info: &AudioFileInfo) -> Option<Vec<u8>> {
+        // Create the correct key based on file type
+        let key = if audio_file_info.is_nus3bank {
+            // For NUS3BANK, use hex_id:name format
+            format!("{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
+        } else {
+            // For NUS3AUDIO, use original name:id format
+            format!("{}:{}", audio_file_info.name, audio_file_info.id)
+        };
+        
         if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
             map.get(&key).cloned()
         } else {

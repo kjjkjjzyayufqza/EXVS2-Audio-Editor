@@ -10,17 +10,9 @@ pub mod binary_utils;
 pub mod error;
 pub mod export;
 pub mod replace;
-pub mod integration;
-
-#[cfg(debug_assertions)]
-pub mod debug_test;
 
 // Re-export main types
-pub use structures::{Nus3bankFile, BankInfo, AudioTrack, AudioFormat, SectionOffsets};
-pub use error::Nus3bankError;
+pub use structures::{Nus3bankFile};
 pub use export::Nus3bankExporter;
-pub use replace::Nus3bankReplacer;
 
-/// Module version and compatibility information
-pub const VERSION: &str = "1.0.0";
-pub const SUPPORTED_FORMATS: &[&str] = &["WAV"];
+

@@ -1,6 +1,6 @@
 use super::audio_file_info::AudioFileInfo;
 use nus3audio::Nus3audioFile;
-use crate::nus3bank::export::Nus3bankExporter;
+use crate::nus3bank::Nus3bankExporter;
 use std::fs;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -135,19 +135,26 @@ impl ExportUtils {
         println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
         println!("Temp output path: {:?}", temp_output_path);
         
+        // Build args vector so we can print full command before execution
+        let args_vec: Vec<String> = vec![
+            "-i".to_string(),
+            "-o".to_string(),
+            temp_output_path_str.clone(),
+            "-s".to_string(),
+            vgmstream_index.clone(),
+            original_file_path.to_string(),
+        ];
+        println!(
+            "Running command: {:?} {}",
+            vgmstream_path,
+            args_vec.join(" ")
+        );
+
         let result = command
-            .args([
-                "-i",
-                "-o",
-                &temp_output_path_str,
-                "-s",
-                &vgmstream_index,
-                original_file_path,
-            ])
+            .args(&args_vec)
             .output();
 
-        //print the debug args
-        println!("Exporting command: {:?}", result);
+        println!("Exporting command result: {:?}", result);
 
         match result {
             Ok(output) => {
@@ -190,7 +197,7 @@ impl ExportUtils {
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
         // Run vgmstream-cli to convert audio to WAV
-        let mut command = Command::new(vgmstream_path);
+        let mut command = Command::new(&vgmstream_path);
 
         #[cfg(windows)]
         {
@@ -203,18 +210,25 @@ impl ExportUtils {
         
         println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
 
+        let args_vec: Vec<String> = vec![
+            "-i".to_string(),
+            "-o".to_string(),
+            output_path_str.clone(),
+            "-s".to_string(),
+            vgmstream_index.clone(),
+            original_file_path.to_string(),
+        ];
+        println!(
+            "Running command: {:?} {}",
+            vgmstream_path,
+            args_vec.join(" ")
+        );
+
         let result = command
-            .args([
-                "-i",
-                "-o",
-                &output_path_str,
-                "-s",
-                &vgmstream_index,
-                original_file_path,
-            ])
+            .args(&args_vec)
             .output();
 
-        println!("Exporting command: {:?}", result);
+        println!("Exporting command result: {:?}", result);
         match result {
             Ok(output) => {
                 if output.status.success() {
@@ -284,14 +298,21 @@ impl ExportUtils {
             
             println!("Original ID: {}, Detected vgmstream index: {}", audio_file.id, vgmstream_index);
 
+            let args_vec: Vec<String> = vec![
+                "-o".to_string(),
+                output_path_str.clone(),
+                "-s".to_string(),
+                vgmstream_index.clone(),
+                original_file_path.to_string(),
+            ];
+            println!(
+                "Running command: {:?} {}",
+                vgmstream_path,
+                args_vec.join(" ")
+            );
+
             let result = command
-                .args([
-                    "-o",
-                    &output_path_str,
-                    "-s",
-                    &vgmstream_index,
-                    original_file_path,
-                ])
+                .args(&args_vec)
                 .output();
 
             match result {
@@ -324,11 +345,69 @@ impl ExportUtils {
         audio_file_info: &AudioFileInfo,
         original_file_path: &str,
     ) -> Result<Vec<u8>, String> {
-        // For NUS3BANK files, we can directly extract the WAV data
-        let hex_id = audio_file_info.hex_id.as_ref()
-            .ok_or_else(|| "No hex ID found for NUS3BANK track".to_string())?;
-        
-        Nus3bankExporter::export_track_to_memory(original_file_path, hex_id)
+        // Use vgmstream-cli to decode specific subsong into a temporary WAV
+        // Compute subsong index for vgmstream (1-based). Our UI id is 0-based.
+        let id_num = audio_file_info.id.parse::<u32>()
+            .map_err(|_| format!("Invalid audio file ID: {}", audio_file_info.id))?;
+        let vgmstream_index = id_num + 1;
+
+        // Path to vgmstream-cli.exe in tools directory
+        let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
+
+        // Create a temporary output file path
+        let temp_dir = std::env::temp_dir();
+        let temp_filename = format!("temp_convert_bank_{}.wav", vgmstream_index);
+        let temp_output_path = temp_dir.join(&temp_filename);
+        let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
+
+        // Run vgmstream-cli to convert audio to WAV
+        let mut command = Command::new(&vgmstream_path);
+
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let args_vec: Vec<String> = vec![
+            "-o".to_string(),
+            temp_output_path_str.clone(),
+            "-s".to_string(),
+            vgmstream_index.to_string(),
+            original_file_path.to_string(),
+        ];
+        println!(
+            "Running command: {:?} {}",
+            vgmstream_path,
+            args_vec.join(" ")
+        );
+
+        let result = command
+            .args(&args_vec)
+            .output();
+
+        println!("Exporting command (NUS3BANK) result: {:?}", result);
+
+        match result {
+            Ok(output) => {
+                if output.status.success() {
+                    match fs::read(&temp_output_path) {
+                        Ok(wav_data) => {
+                            let _ = fs::remove_file(&temp_output_path);
+                            Ok(wav_data)
+                        }
+                        Err(e) => {
+                            let _ = fs::remove_file(&temp_output_path);
+                            Err(format!("Failed to read converted WAV data: {}", e))
+                        }
+                    }
+                } else {
+                    let error = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("vgmstream-cli error: {}", error))
+                }
+            }
+            Err(e) => Err(format!("Failed to run vgmstream-cli: {}", e)),
+        }
     }
     
     /// Export NUS3BANK track to WAV file with custom output directory
@@ -337,10 +416,59 @@ impl ExportUtils {
         original_file_path: &str,
         output_dir: &str,
     ) -> Result<String, String> {
-        let hex_id = audio_file_info.hex_id.as_ref()
-            .ok_or_else(|| "No hex ID found for NUS3BANK track".to_string())?;
-        
-        Nus3bankExporter::export_track(original_file_path, hex_id, output_dir)
+        // Compute subsong index for vgmstream (1-based). Our UI id is 0-based.
+        let id_num = audio_file_info.id.parse::<u32>()
+            .map_err(|_| format!("Invalid audio file ID: {}", audio_file_info.id))?;
+        let vgmstream_index = id_num + 1;
+
+        // Create output file path in the custom directory
+        let output_dir_path = Path::new(output_dir);
+        let output_filename = format!("{}.wav", audio_file_info.name);
+        let output_path = output_dir_path.join(output_filename);
+        let output_path_str = output_path.to_string_lossy().to_string();
+
+        // Path to vgmstream-cli.exe in tools directory
+        let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
+
+        // Run vgmstream-cli to convert audio to WAV
+        let mut command = Command::new(&vgmstream_path);
+
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let args_vec: Vec<String> = vec![
+            "-o".to_string(),
+            output_path_str.clone(),
+            "-s".to_string(),
+            vgmstream_index.to_string(),
+            original_file_path.to_string(),
+        ];
+        println!(
+            "Running command: {:?} {}",
+            vgmstream_path,
+            args_vec.join(" ")
+        );
+
+        let result = command
+            .args(&args_vec)
+            .output();
+
+        println!("Exporting command (NUS3BANK) result: {:?}", result);
+        match result {
+            Ok(output) => {
+                if output.status.success() {
+                    println!("Successfully exported WAV file to: {:?}", output_path);
+                    Ok(output_path_str)
+                } else {
+                    let error = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("vgmstream-cli error: {}", error))
+                }
+            }
+            Err(e) => Err(format!("Failed to run vgmstream-cli: {}", e)),
+        }
     }
     
     /// Export all tracks from NUS3BANK file

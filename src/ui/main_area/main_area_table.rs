@@ -231,7 +231,7 @@ impl MainArea {
 
                 if let Some(file_path) = &selected_file {
                     if let Some(output_dir) = &output_path {
-                        match ExportUtils::export_to_wav_with_custom_dir(
+                        match ExportUtils::export_to_wav_with_custom_dir_unified(
                             audio_info, file_path, output_dir,
                         ) {
                             Ok(path) => {
@@ -385,7 +385,7 @@ impl MainArea {
                 if let Some(file_path) = &selected_file {
                     if let Some(output_dir) = &output_path {
                         // Use ExportUtils to export all files
-                        match ExportUtils::export_all_to_wav(file_path, output_dir) {
+                        match ExportUtils::export_all_to_wav_unified(file_path, output_dir) {
                             Ok(paths) => {
                                 toasts_to_add.push((
                                     format!(
@@ -664,10 +664,7 @@ impl MainArea {
                             if replaced_count > 0 {
                                 // Update audio player with representative audio replacement, similar to single flow
                                 if let Some(replacement_data) =
-                                    ReplaceUtils::get_replacement_data(
-                                        &audio_info.name,
-                                        &audio_info.id,
-                                    )
+                                    ReplaceUtils::get_replacement_data_unified(audio_info)
                                 {
                                     let audio = crate::ui::audio_player::AudioFile {
                                         file_path: file_path.to_string(),
@@ -726,10 +723,7 @@ impl MainArea {
 
                                         // Get the replacement audio data from our static HashMap
                                         if let Some(replacement_data) =
-                                            ReplaceUtils::get_replacement_data(
-                                                &audio_info.name,
-                                                &audio_info.id,
-                                            )
+                                            ReplaceUtils::get_replacement_data_unified(audio_info)
                                         {
                                             // Create an audio file struct for the audio player
                                             let audio = crate::ui::audio_player::AudioFile {

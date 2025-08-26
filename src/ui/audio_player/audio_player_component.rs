@@ -82,8 +82,8 @@ impl AudioPlayer {
     
     /// Load audio from file info
     pub fn load_audio(&mut self, file_info: &AudioFileInfo, file_path: &str) -> Result<(), String> {
-        // Check if there's a replacement audio data in memory first
-        let replacement_audio_data = ReplaceUtils::get_replacement_data(&file_info.name, &file_info.id);
+        // Check if there's a replacement audio data in memory first (unified method for both file types)
+        let replacement_audio_data = ReplaceUtils::get_replacement_data_unified(file_info);
         
         // 检查是否有添加但尚未保存的音频数据
         let pending_added_data = Nus3audioFileUtils::get_pending_added_data(&file_info.name, &file_info.id);

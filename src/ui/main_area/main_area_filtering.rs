@@ -169,7 +169,7 @@ impl MainArea {
                 for track in nus3bank_file.tracks.iter() {
                     audio_files.push(AudioFileInfo::from_nus3bank_track(
                         track.name.clone(),
-                        track.numeric_id,
+                        track.index as u32,
                         track.hex_id.clone(),
                         track.size as usize,
                         track.filename(),
