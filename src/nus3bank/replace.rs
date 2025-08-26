@@ -48,6 +48,15 @@ impl Nus3bankReplacer {
         }
     }
     
+    /// Get the number of NUS3BANK replacement data stored
+    pub fn get_replacement_count() -> usize {
+        if let Ok(map) = REPLACED_NUS3BANK_DATA.lock() {
+            map.len()
+        } else {
+            0
+        }
+    }
+    
     /// Clear all NUS3BANK replacement data from memory
     pub fn clear_replacements() {
         if let Ok(mut map) = REPLACED_NUS3BANK_DATA.lock() {
@@ -63,6 +72,19 @@ impl Nus3bankReplacer {
     ) -> Result<(), String> {
         let mut nus3bank_file = Nus3bankFile::open(original_path)
             .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
+        
+        // Log track status for debugging
+        let mut tracks_without_data = 0;
+        for track in &nus3bank_file.tracks {
+            if track.audio_data.is_none() {
+                tracks_without_data += 1;
+                println!("Warning: Track {} ({}) has no audio data", track.name, track.hex_id);
+            }
+        }
+        
+        if tracks_without_data > 0 {
+            println!("Found {} tracks without audio data. They will be skipped during save.", tracks_without_data);
+        }
         
         // Apply all replacements from memory
         if let Ok(map) = REPLACED_NUS3BANK_DATA.lock() {

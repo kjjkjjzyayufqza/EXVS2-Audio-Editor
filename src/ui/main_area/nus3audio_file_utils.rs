@@ -66,8 +66,8 @@ impl Nus3audioFileUtils {
             Err(e) => println!("Warning: Failed to create backup: {}", e),
         }
 
-        // Use ReplaceUtils to apply all in-memory replacements and save the file (覆盖原文件)
-        match super::replace_utils::ReplaceUtils::apply_replacements_and_save(file_path, file_path) {
+        // Use unified method to apply all in-memory replacements and save the file (supports both NUS3AUDIO and NUS3BANK)
+        match super::replace_utils::ReplaceUtils::apply_replacements_and_save_unified(file_path, file_path) {
             Ok(_) => {
                 // 清空 FILE_CHANGES
                 Self::clear_changes();
@@ -86,10 +86,13 @@ impl Nus3audioFileUtils {
             false
         };
         
-        // Check for replacement data in ReplaceUtils
+        // Check for replacement data in ReplaceUtils (NUS3AUDIO)
         let has_replacements = super::replace_utils::ReplaceUtils::has_replacement_data();
         
-        has_file_changes || has_replacements
+        // Check for NUS3BANK replacement data
+        let has_nus3bank_replacements = crate::nus3bank::replace::Nus3bankReplacer::has_replacement_data();
+        
+        has_file_changes || has_replacements || has_nus3bank_replacements
     }
 
     /// Get the number of pending changes
@@ -101,10 +104,13 @@ impl Nus3audioFileUtils {
             0
         };
         
-        // Count replacement data in ReplaceUtils
+        // Count replacement data in ReplaceUtils (NUS3AUDIO)
         let replacements_count = super::replace_utils::ReplaceUtils::get_replacement_count();
         
-        file_changes_count + replacements_count
+        // Count NUS3BANK replacement data
+        let nus3bank_replacements_count = crate::nus3bank::replace::Nus3bankReplacer::get_replacement_count();
+        
+        file_changes_count + replacements_count + nus3bank_replacements_count
     }
 
     /// Register an audio file to be added to the NUS3AUDIO file

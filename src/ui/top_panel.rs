@@ -176,8 +176,29 @@ impl TopPanel {
                             }
                         }
                         
-                        if ui.button("Save .nus3audio").clicked() {
-                            // Save current nus3audio file
+                        // Dynamic save button based on file type
+                        let (save_button_text, file_extension, file_filter) = {
+                            let mut selected_file_path = None;
+                            if let Some(app_ref) = app.as_ref() {
+                                let main_area = app_ref.main_area();
+                                if let Some(path) = &main_area.selected_file {
+                                    selected_file_path = Some(path.to_string());
+                                }
+                            }
+                            
+                            if let Some(ref path) = selected_file_path {
+                                if path.to_lowercase().ends_with(".nus3bank") {
+                                    ("Save .nus3bank", "nus3bank", "NUS3BANK")
+                                } else {
+                                    ("Save .nus3audio", "nus3audio", "NUS3AUDIO")
+                                }
+                            } else {
+                                ("Save file", "nus3audio", "NUS3AUDIO")
+                            }
+                        };
+                        
+                        if ui.button(save_button_text).clicked() {
+                            // Save current audio file (NUS3AUDIO or NUS3BANK)
                             // Use defer to avoid borrowing issues with egui
                             ui.ctx().request_repaint();
 
@@ -208,8 +229,8 @@ impl TopPanel {
                             if !is_web {
                                 // Native platform: use file dialog
                                 if let Some(path) = rfd::FileDialog::new()
-                                    .add_filter("NUS3AUDIO", &["nus3audio"])
-                                    .set_file_name("output.nus3audio")
+                                    .add_filter(file_filter, &[file_extension])
+                                    .set_file_name(&format!("output.{}", file_extension))
                                     .save_file()
                                 {
                                     // Get path as string
@@ -217,7 +238,7 @@ impl TopPanel {
 
                                     // Execute save operation with selected file path
                                     if let Some(original_path) = selected_file_path {
-                                        // Pass the app instance to save_nus3audio_file
+                                        // Save using unified method (supports both file types)
                                         TopPanel::save_nus3audio_file(&original_path, &path_str);
                                     }
                                 }
