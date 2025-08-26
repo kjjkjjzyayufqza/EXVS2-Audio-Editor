@@ -808,6 +808,26 @@ impl ReplaceUtils {
     ) -> Result<(), String> {
         if original_file_path.to_lowercase().ends_with(".nus3bank") {
             // Handle NUS3BANK files
+            // Bridge UI in-memory replacements (hex_id:name) into Nus3bankReplacer cache (hex_id:file_path)
+            // so saving picks up the pending replacements correctly.
+            if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
+                for (key, replacement_data) in map.iter() {
+                    let parts: Vec<&str> = key.split(':').collect();
+                    if parts.len() != 2 { continue; }
+                    let left = parts[0];
+                    // Heuristic: NUS3BANK keys are stored as "hex_id:name"
+                    if left.starts_with("0x") {
+                        let hex_id = left;
+                        // Feed into Nus3bankReplacer using the current file path scope
+                        let _ = Nus3bankReplacer::replace_track_in_memory(
+                            original_file_path,
+                            hex_id,
+                            replacement_data.clone(),
+                        );
+                    }
+                }
+            }
+
             Nus3bankReplacer::apply_replacements_and_save(original_file_path, save_path)
         } else {
             // Handle NUS3AUDIO files (original implementation)

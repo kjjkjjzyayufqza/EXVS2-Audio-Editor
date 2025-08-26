@@ -53,14 +53,34 @@ impl Nus3bankWriter {
         let sections_start = 20 + toc_size; // absolute offset from file start
         if sections_start > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "Sections start out of bounds".to_string() }); }
 
-        // Build new PACK from current tracks (fallback to original PACK bytes when missing)
-        let pack_magic_offset = file.bank_info.section_offsets.pack_offset as usize;
-        if pack_magic_offset + 8 > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "PACK header out of bounds".to_string() }); }
-        let old_pack_size = read_u32_le(&original, pack_magic_offset + 4)? as usize;
-        let pack_data_start = pack_magic_offset + 8;
-        if pack_data_start + old_pack_size > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "PACK data out of bounds".to_string() }); }
-        let original_pack_slice = &original[pack_data_start..pack_data_start + old_pack_size];
+        // First pass: locate original PACK section precisely by scanning entries and compute its slice
+        let mut cursor_scan = sections_start;
+        let mut original_pack_slice: Option<&[u8]> = None;
+        let mut old_pack_size: Option<usize> = None;
+        for (magic, size) in entries.iter() {
+            match &magic[..] {
+                b"PACK" => {
+                    if cursor_scan + 8 > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "PACK header out of bounds".to_string() }); }
+                    let pack_size = read_u32_le(&original, cursor_scan + 4)? as usize;
+                    if cursor_scan + 8 + pack_size > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "PACK data out of bounds".to_string() }); }
+                    original_pack_slice = Some(&original[cursor_scan + 8 .. cursor_scan + 8 + pack_size]);
+                    old_pack_size = Some(pack_size);
+                    // advance scan cursor as in second pass for consistency
+                    cursor_scan += 8 + *size as usize;
+                }
+                _ => {
+                    // advance over this section in original stream
+                    if cursor_scan + 8 > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "Section header out of bounds during scan".to_string() }); }
+                    let sec_size = read_u32_le(&original, cursor_scan + 4)? as usize;
+                    if cursor_scan + 8 + sec_size > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "Section body out of bounds during scan".to_string() }); }
+                    cursor_scan += 8 + sec_size;
+                }
+            }
+        }
+        let original_pack_slice = original_pack_slice.ok_or_else(|| Nus3bankError::InvalidFormat { reason: "PACK section not found during scan".to_string() })?;
+        let old_pack_size = old_pack_size.unwrap();
 
+        // Build new PACK from current tracks (fallback to original PACK bytes when missing)
         let mut sorted_tracks = file.tracks.clone();
         sorted_tracks.sort_by_key(|t| t.numeric_id);
 
@@ -90,8 +110,10 @@ impl Nus3bankWriter {
         // NUS3 + placeholder size
         new_file.extend_from_slice(b"NUS3");
         new_file.extend_from_slice(&[0u8;4]);
-        // Copy BANKTOC region (from original offset 8 through entries_end)
-        new_file.extend_from_slice(&original[8..entries_end]);
+        // Copy BANKTOC region ONLY (from original offset 8 through sections_start)
+        // Note: copying up to entries_end may include the first section header/body,
+        // which would later be written again when iterating sections, causing duplication.
+        new_file.extend_from_slice(&original[8..sections_start]);
 
         // Update PACK size inside TOC in the new buffer (if present)
         if let Some(i) = pack_entry_index {
