@@ -536,15 +536,15 @@ impl Nus3bankParser {
             }
             
             match &magic[..] {
-                b"PROP" => {
+                b"PROP" => { /* "PROP": project info */
                     section_offsets.prop_offset = current_pos;
                     Self::parse_prop_section(reader)?;
                 },
-                b"BINF" => {
+                b"BINF" => { /* "BINF": bank info (filename) */
                     section_offsets.binf_offset = current_pos;
                     *bank_info = Some(Self::parse_binf_section_with_size(reader, expected_size)?);
                 },
-                b"TONE" => {
+                b"TONE" => { /* "TONE": stream info */
                     section_offsets.tone_offset = current_pos;
                     *tracks = Self::parse_tone_section(reader)?;
                     // If PACK data was read earlier, attach it now
@@ -552,7 +552,7 @@ impl Nus3bankParser {
                         Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
                     }
                 },
-                b"PACK" => {
+                b"PACK" => { /* "PACK": audio streams */
                     section_offsets.pack_offset = current_pos;
                     // Read PACK data now, but attach to tracks only when they are available
                     let pack_data = Self::read_pack_section(reader)?;
@@ -617,17 +617,17 @@ impl Nus3bankParser {
             println!("Processing section: {}", section_name);
             
             match &section_magic[..] {
-                b"PROP" => {
+                b"PROP" => { /* "PROP": project info */
                     let current_pos = BinaryReader::get_current_position(reader)? - 4;
                     section_offsets.prop_offset = current_pos;
                     Self::parse_prop_section(reader)?;
                 },
-                b"BINF" => {
+                b"BINF" => { /* "BINF": bank info (filename) */
                     let current_pos = BinaryReader::get_current_position(reader)? - 4;
                     section_offsets.binf_offset = current_pos;
                     *bank_info = Some(Self::parse_binf_section_safe(reader)?);
                 },
-                b"TONE" => {
+                b"TONE" => { /* "TONE": stream info */
                     let current_pos = BinaryReader::get_current_position(reader)? - 4;
                     section_offsets.tone_offset = current_pos;
                     *tracks = Self::parse_tone_section(reader)?;
@@ -636,7 +636,7 @@ impl Nus3bankParser {
                         Self::attach_pack_data_to_tracks(&pack_data, tracks)?;
                     }
                 },
-                b"PACK" => {
+                b"PACK" => { /* "PACK": audio streams */
                     let current_pos = BinaryReader::get_current_position(reader)? - 4;
                     section_offsets.pack_offset = current_pos;
                     // Read PACK bytes; attach later if tracks not parsed yet

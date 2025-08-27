@@ -59,7 +59,7 @@ impl Nus3bankWriter {
         let mut old_pack_size: Option<usize> = None;
         for (magic, size) in entries.iter() {
             match &magic[..] {
-                b"PACK" => {
+                b"PACK" => { /* "PACK": audio streams */
                     if cursor_scan + 8 > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "PACK header out of bounds".to_string() }); }
                     let pack_size = read_u32_le(&original, cursor_scan + 4)? as usize;
                     if cursor_scan + 8 + pack_size > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "PACK data out of bounds".to_string() }); }
@@ -127,7 +127,7 @@ impl Nus3bankWriter {
         for (magic, size) in entries.iter() {
             let magic_str = String::from_utf8_lossy(magic).to_string();
             match &magic[..] {
-                b"PACK" => {
+                b"PACK" => { /* "PACK": audio streams */
                     // Write PACK header and data
                     new_file.extend_from_slice(b"PACK");
                     new_file.extend_from_slice(&BinaryReader::write_u32_le(new_pack_size));
@@ -135,7 +135,7 @@ impl Nus3bankWriter {
                     // Advance original cursor by old PACK header + data
                     cursor += 8 + *size as usize;
                 }
-                b"TONE" => {
+                b"TONE" => { /* "TONE": stream info */
                     // Copy TONE section as-is from original
                     if cursor + 8 > original.len() { return Err(Nus3bankError::InvalidFormat { reason: format!("TONE header out of bounds at 0x{:X}", cursor) }); }
                     let tone_size = read_u32_le(&original, cursor + 4)? as usize;

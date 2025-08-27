@@ -105,7 +105,7 @@ impl Nus3bankFile {
     }
 }
 
-/// Bank-level metadata extracted from BINF section
+/// Bank-level metadata extracted from BINF section /* "BINF": bank info (filename) */
 #[derive(Clone, Debug)]
 pub struct BankInfo {
     /// Bank ID (numeric identifier)
@@ -121,12 +121,13 @@ pub struct BankInfo {
 }
 
 /// Section offset information for file reconstruction
+/// Contains offsets for PROP, BINF, TONE, and PACK sections
 #[derive(Clone, Debug)]
 pub struct SectionOffsets {
-    pub prop_offset: u32,
-    pub binf_offset: u32,
-    pub tone_offset: u32,
-    pub pack_offset: u32,
+    pub prop_offset: u32, /* "PROP": project info */
+    pub binf_offset: u32, /* "BINF": bank info (filename) */
+    pub tone_offset: u32, /* "TONE": stream info */
+    pub pack_offset: u32, /* "PACK": audio streams */
 }
 
 impl Default for SectionOffsets {
@@ -151,13 +152,13 @@ pub struct AudioTrack {
     pub numeric_id: u32,
     /// Track name
     pub name: String,
-    /// Offset within PACK section
+    /// Offset within PACK section /* "PACK": audio streams */
     pub pack_offset: u32,
     /// Audio data size in bytes
     pub size: u32,
-    /// TONE metadata offset
+    /// TONE metadata offset /* "TONE": stream info */
     pub metadata_offset: u32,
-    /// TONE metadata size
+    /// TONE metadata size /* "TONE": stream info */
     pub metadata_size: u32,
     /// Raw audio data (WAV format only)
     pub audio_data: Option<Vec<u8>>,
@@ -171,7 +172,7 @@ impl AudioTrack {
         format!("{}-{}.wav", self.hex_id, self.name)
     }
     
-    /// Load audio data from PACK section
+    /// Load audio data from PACK section /* "PACK": audio streams */
     pub fn load_audio_data(&mut self, pack_data: &[u8]) -> Result<(), Nus3bankError> {
         if self.pack_offset + self.size <= pack_data.len() as u32 {
             let start = self.pack_offset as usize;
