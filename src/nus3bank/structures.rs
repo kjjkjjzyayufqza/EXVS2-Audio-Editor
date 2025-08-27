@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use super::error::Nus3bankError;
 
 /// Main structure representing a complete NUS3BANK file
@@ -8,10 +7,6 @@ pub struct Nus3bankFile {
     pub bank_info: BankInfo,
     /// Collection of audio tracks in the bank
     pub tracks: Vec<AudioTrack>,
-    /// Whether the original file was compressed
-    pub compressed: bool,
-    /// Path to decompressed file (if applicable)
-    pub decompressed_path: Option<PathBuf>,
     /// Original file path
     pub file_path: String,
 }

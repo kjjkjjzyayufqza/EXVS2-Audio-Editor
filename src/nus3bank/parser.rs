@@ -29,15 +29,7 @@ impl Nus3bankParser {
             });
         }
         
-        let mut reader = BufReader::new(file);
-        
-        // Check if file is compressed (zlib header)
-        let compressed = BinaryReader::is_compressed(&mut reader)?;
-        
-        if compressed {
-            // Skip compressed files as per requirements
-            return Err(Nus3bankError::UnsupportedCompression);
-        }
+        let reader = BufReader::new(file);
         
         Self::parse_uncompressed(reader, path_str)
     }
@@ -92,8 +84,6 @@ impl Nus3bankParser {
         Ok(Nus3bankFile {
             bank_info: final_bank_info,
             tracks,
-            compressed: false,
-            decompressed_path: None,
             file_path,
         })
     }

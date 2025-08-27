@@ -19,8 +19,7 @@ pub enum Nus3bankError {
     Io(std::io::Error),
     /// UTF-8 conversion error
     Utf8(std::string::FromUtf8Error),
-    /// Unsupported compression
-    UnsupportedCompression,
+
     /// Invalid file format
     InvalidFormat { reason: String },
 }
@@ -48,9 +47,7 @@ impl fmt::Display for Nus3bankError {
             }
             Nus3bankError::Io(err) => write!(f, "IO error: {}", err),
             Nus3bankError::Utf8(err) => write!(f, "UTF-8 conversion error: {}", err),
-            Nus3bankError::UnsupportedCompression => {
-                write!(f, "Compressed NUS3BANK files are not supported in WAV-only mode")
-            }
+
             Nus3bankError::InvalidFormat { reason } => {
                 write!(f, "Invalid file format: {}", reason)
             }
