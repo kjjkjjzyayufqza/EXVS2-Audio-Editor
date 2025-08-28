@@ -313,7 +313,12 @@ impl Nus3bankParser {
                 continue;
             }
             
-            // Seek to the track's metadata location
+            // FIRST: Read and preserve the complete original metadata block
+            reader.seek(SeekFrom::Start(*metadata_offset as u64))?;
+            let mut original_metadata = vec![0u8; *meta_size as usize];
+            reader.read_exact(&mut original_metadata)?;
+            
+            // THEN: Seek back to parse the metadata content
             reader.seek(SeekFrom::Start(*metadata_offset as u64))?;
             
             // Read track metadata following Python logic
@@ -369,6 +374,7 @@ impl Nus3bankParser {
                 metadata_size: *meta_size,
                 audio_data: None,
                 audio_format: AudioFormat::Unknown,
+                original_metadata: Some(original_metadata), // Preserve complete original metadata
             });
             
             track_index += 1; // Increment track_index for next valid track

@@ -99,6 +99,7 @@ impl Nus3bankFile {
             metadata_size: 0,
             audio_data: Some(audio_data),
             audio_format,
+            original_metadata: None, // New tracks don't have original metadata
         };
         
         self.tracks.push(track);
@@ -188,6 +189,8 @@ pub struct AudioTrack {
     pub audio_data: Option<Vec<u8>>,
     /// Audio format type
     pub audio_format: AudioFormat,
+    /// Original complete metadata block from TONE section (preserves all data)
+    pub original_metadata: Option<Vec<u8>>,
 }
 
 impl AudioTrack {

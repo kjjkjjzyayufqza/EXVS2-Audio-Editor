@@ -269,12 +269,9 @@ impl Nus3bankWriter {
         None
     }
 
-    /// Rebuild TONE section from current tracks
-    /// Based on parser.rs analysis:
-    /// - TONE structure: [track_count][pointer_table][metadata_blocks]
-    /// - pointer_table: [relative_offset, meta_size] pairs
-    /// - relative_offset is relative to TONE magic + 8 bytes
-    /// - metadata_blocks contain the actual track information
+    /// Rebuild TONE section from current tracks, preserving original metadata when possible
+    /// Key improvement: Use original metadata blocks and only update pack_offset/size fields
+    /// This preserves all unknown/extra data that was in the original file
     fn build_tone_section(tracks: &[super::structures::AudioTrack]) -> Result<Vec<u8>, Nus3bankError> {
         let mut tone_data = Vec::new();
         let mut track_metadata_blocks = Vec::new();
@@ -290,48 +287,15 @@ impl Nus3bankWriter {
         
         println!("Building TONE section with {} valid tracks out of {} total", valid_tracks.len(), tracks.len());
         
-        // Build metadata blocks first to calculate their sizes
+        // Build metadata blocks - preserve original data when available
         for track in &valid_tracks {
-            let mut metadata = Vec::new();
-            
-            // 6 bytes initial padding (parser.rs line 321: seek +6)
-            metadata.extend_from_slice(&[0u8; 6]);
-            
-            // temp_byte logic (parser.rs line 323-328)
-            let temp_byte = if track.name.len() > 9 { 1u8 } else { 0u8 };
-            metadata.push(temp_byte);
-            
-            // Additional padding based on temp_byte (parser.rs line 324-328)
-            if temp_byte > 9 || temp_byte == 0 {
-                metadata.extend_from_slice(&[0u8; 5]);
+            let metadata = if let Some(ref original_metadata) = track.original_metadata {
+                // Use original metadata and update only pack_offset and size
+                Self::update_metadata_pack_fields(original_metadata, track.pack_offset, track.size)?
             } else {
-                metadata.push(0u8);
-            }
-            
-            // String size (includes null terminator) (parser.rs line 330)
-            let string_size = (track.name.len() + 1) as u8;
-            metadata.push(string_size);
-            
-            // Track name bytes (parser.rs line 333-334)
-            metadata.extend_from_slice(track.name.as_bytes());
-            
-            // Null terminator (parser.rs line 337)
-            metadata.push(0u8);
-            
-            // Padding calculation (parser.rs line 343-349)
-            let padding = (string_size as usize + 1) % 4;
-            if padding == 0 {
-                metadata.extend_from_slice(&[0u8; 4]);
-            } else {
-                metadata.extend_from_slice(&vec![0u8; 4 - padding + 4]);
-            }
-            
-            // Unknown value (usually 8) (parser.rs line 353)
-            metadata.extend_from_slice(&BinaryReader::write_u32_le(8));
-            
-            // pack_offset and size (parser.rs line 356-357)
-            metadata.extend_from_slice(&BinaryReader::write_u32_le(track.pack_offset));
-            metadata.extend_from_slice(&BinaryReader::write_u32_le(track.size));
+                // Generate new metadata for new tracks (no original data available)
+                Self::generate_new_metadata(track)?
+            };
             
             track_metadata_blocks.push(metadata);
         }
@@ -371,5 +335,122 @@ impl Nus3bankWriter {
         }
         
         Ok(tone_data)
+    }
+
+    /// Update pack_offset and size fields in original metadata while preserving all other data
+    /// This is the key function that solves the data loss issue
+    fn update_metadata_pack_fields(original_metadata: &[u8], new_pack_offset: u32, new_size: u32) -> Result<Vec<u8>, Nus3bankError> {
+        let mut updated_metadata = original_metadata.to_vec();
+        
+        // Find the pack_offset and size fields using the same logic as parser
+        let mut pos = 6; // Initial 6-byte offset
+        
+        if pos >= updated_metadata.len() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "Metadata too short for temp_byte".to_string()
+            });
+        }
+        
+        let temp_byte = updated_metadata[pos];
+        pos += 1;
+        
+        // Handle temp_byte logic
+        if temp_byte > 9 || temp_byte == 0 {
+            pos += 5;
+        } else {
+            pos += 1;
+        }
+        
+        if pos >= updated_metadata.len() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "Metadata too short for string_size".to_string()
+            });
+        }
+        
+        let string_size = updated_metadata[pos] as usize;
+        pos += 1;
+        
+        // Skip name and null terminator
+        pos += string_size;
+        
+        // Handle padding
+        let padding = (string_size + 1) % 4;
+        if padding == 0 {
+            pos += 4;
+        } else {
+            pos += 4 - padding + 4;
+        }
+        
+        // Skip unknown value (4 bytes)
+        pos += 4;
+        
+        // Now pos should point to pack_offset field
+        if pos + 8 > updated_metadata.len() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "Metadata too short for pack_offset/size fields".to_string()
+            });
+        }
+        
+        // Update pack_offset (4 bytes little-endian)
+        let pack_offset_bytes = BinaryReader::write_u32_le(new_pack_offset);
+        updated_metadata[pos..pos+4].copy_from_slice(&pack_offset_bytes);
+        pos += 4;
+        
+        // Update size (4 bytes little-endian)  
+        let size_bytes = BinaryReader::write_u32_le(new_size);
+        updated_metadata[pos..pos+4].copy_from_slice(&size_bytes);
+        
+        println!("Updated metadata pack_offset={}, size={} while preserving {} bytes of original data", 
+                 new_pack_offset, new_size, updated_metadata.len());
+        
+        Ok(updated_metadata)
+    }
+
+    /// Generate new metadata for newly added tracks (fallback when no original metadata exists)
+    fn generate_new_metadata(track: &super::structures::AudioTrack) -> Result<Vec<u8>, Nus3bankError> {
+        let mut metadata = Vec::new();
+        
+        // 6 bytes initial padding (parser.rs line 321: seek +6)
+        metadata.extend_from_slice(&[0u8; 6]);
+        
+        // temp_byte logic (parser.rs line 323-328)
+        let temp_byte = if track.name.len() > 9 { 1u8 } else { 0u8 };
+        metadata.push(temp_byte);
+        
+        // Additional padding based on temp_byte (parser.rs line 324-328)
+        if temp_byte > 9 || temp_byte == 0 {
+            metadata.extend_from_slice(&[0u8; 5]);
+        } else {
+            metadata.push(0u8);
+        }
+        
+        // String size (includes null terminator) (parser.rs line 330)
+        let string_size = (track.name.len() + 1) as u8;
+        metadata.push(string_size);
+        
+        // Track name bytes (parser.rs line 333-334)
+        metadata.extend_from_slice(track.name.as_bytes());
+        
+        // Null terminator (parser.rs line 337)
+        metadata.push(0u8);
+        
+        // Padding calculation (parser.rs line 343-349)
+        let padding = (string_size as usize + 1) % 4;
+        if padding == 0 {
+            metadata.extend_from_slice(&[0u8; 4]);
+        } else {
+            metadata.extend_from_slice(&vec![0u8; 4 - padding + 4]);
+        }
+        
+        // Unknown value (usually 8) (parser.rs line 353)
+        metadata.extend_from_slice(&BinaryReader::write_u32_le(8));
+        
+        // pack_offset and size (parser.rs line 356-357)
+        metadata.extend_from_slice(&BinaryReader::write_u32_le(track.pack_offset));
+        metadata.extend_from_slice(&BinaryReader::write_u32_le(track.size));
+        
+        println!("Generated new metadata for track '{}' with {} bytes", track.name, metadata.len());
+        
+        Ok(metadata)
     }
 }
