@@ -84,24 +84,48 @@ impl Nus3bankWriter {
         let mut sorted_tracks = file.tracks.clone();
         sorted_tracks.sort_by_key(|t| t.numeric_id);
 
+        // Rebuild PACK and update track pack_offsets
         let mut new_pack: Vec<u8> = Vec::new();
-        let mut new_pack_mapping: Vec<(u32, u32, u32)> = Vec::with_capacity(sorted_tracks.len());
-        for t in &sorted_tracks {
-            if t.metadata_size <= 0x0c { continue; }
-            let data: Vec<u8> = if let Some(ref audio) = t.audio_data {
+        let mut updated_tracks = Vec::new();
+        
+        for track in &sorted_tracks {
+            // Skip tracks with very small metadata (indicates removal or corruption)
+            if track.metadata_size <= 0x0c { 
+                println!("Skipping track {} with metadata_size <= 0x0c", track.hex_id);
+                continue; 
+            }
+            
+            // Get audio data from memory or original file
+            let data: Vec<u8> = if let Some(ref audio) = track.audio_data {
                 audio.clone()
-            } else if t.pack_offset < 0xffff_ffff && (t.pack_offset as usize + t.size as usize) <= original_pack_slice.len() {
-                let start = t.pack_offset as usize;
-                let end = start + t.size as usize;
+            } else if track.pack_offset < 0xffff_ffff && (track.pack_offset as usize + track.size as usize) <= original_pack_slice.len() {
+                let start = track.pack_offset as usize;
+                let end = start + track.size as usize;
                 original_pack_slice[start..end].to_vec()
             } else {
                 Vec::new()
             };
-            let current_off = new_pack.len() as u32;
+            
+            // Skip tracks with no valid data
+            if data.is_empty() {
+                println!("Skipping track {} with empty data", track.hex_id);
+                continue;
+            }
+            
+            // Create updated track
+            let mut updated_track = track.clone();
+            updated_track.pack_offset = new_pack.len() as u32;
+            updated_track.size = data.len() as u32;
+            
+            // Add data to new PACK
             new_pack.extend_from_slice(&data);
             let pad = BinaryReader::calculate_padding(data.len());
-            if pad > 0 { new_pack.extend(std::iter::repeat(0u8).take(pad)); }
-            new_pack_mapping.push((t.numeric_id, current_off, data.len() as u32));
+            if pad > 0 { 
+                new_pack.extend(std::iter::repeat(0u8).take(pad)); 
+            }
+            
+            // Add to updated tracks list
+            updated_tracks.push(updated_track);
         }
         let new_pack_size = new_pack.len() as u32;
 
@@ -122,6 +146,21 @@ impl Nus3bankWriter {
             new_file[size_pos..size_pos+4].copy_from_slice(&BinaryReader::write_u32_le(new_pack_size));
         }
 
+        // Update TONE size inside TOC in the new buffer (if present)
+        let mut tone_entry_index: Option<usize> = None;
+        for (i, (magic, _)) in entries.iter().enumerate() {
+            if magic == b"TONE" { tone_entry_index = Some(i); }
+        }
+
+        if let Some(i) = tone_entry_index {
+            let new_tone_data = Self::build_tone_section(&updated_tracks)?;
+            let new_tone_size = new_tone_data.len() as u32;
+            let size_pos = 8 /*NUS3+size*/ + 16 /*'BANKTOC '+toc_size+entry_count*/ + i*8 + 4;
+            if size_pos + 4 <= new_file.len() {
+                new_file[size_pos..size_pos+4].copy_from_slice(&BinaryReader::write_u32_le(new_tone_size));
+            }
+        }
+
         // Now iterate sections in order according to TOC and reconstruct stream
         let mut cursor = sections_start;
         for (magic, size) in entries.iter() {
@@ -136,32 +175,20 @@ impl Nus3bankWriter {
                     cursor += 8 + *size as usize;
                 }
                 b"TONE" => { /* "TONE": stream info */
-                    // Copy TONE section as-is from original
+                    // For remove operations, rebuild TONE section completely
+                    new_file.extend_from_slice(b"TONE");
+                    
+                    // Build new TONE section with updated track offsets
+                    let new_tone_data = Self::build_tone_section(&updated_tracks)?;
+                    let new_tone_size = new_tone_data.len() as u32;
+                    
+                    new_file.extend_from_slice(&BinaryReader::write_u32_le(new_tone_size));
+                    new_file.extend_from_slice(&new_tone_data);
+                    
+                    // Skip original TONE section
                     if cursor + 8 > original.len() { return Err(Nus3bankError::InvalidFormat { reason: format!("TONE header out of bounds at 0x{:X}", cursor) }); }
-                    let tone_size = read_u32_le(&original, cursor + 4)? as usize;
-                    if cursor + 8 + tone_size > original.len() { return Err(Nus3bankError::InvalidFormat { reason: "TONE body out of bounds".to_string() }); }
-                    // Record where TONE will start in the new buffer before copying
-                    let tone_new_start = new_file.len();
-                    // Copy header+body
-                    new_file.extend_from_slice(&original[cursor..cursor + 8 + tone_size]);
-
-                    // Patch each track's packOffset/size inside TONE in-place in new buffer
-                    for t in &sorted_tracks {
-                        if t.metadata_size <= 0x0c { continue; }
-                        if let Some((_, new_off, new_sz)) = new_pack_mapping.iter().find(|(id, _, _)| *id == t.numeric_id) {
-                            // Find pack fields absolute position in ORIGINAL file
-                            if let Some(pos_orig) = Self::pack_fields_position(&original, t.metadata_offset as usize) {
-                                // Map to NEW file using the delta between new TONE start and original TONE start
-                                let delta = tone_new_start as isize - cursor as isize;
-                                let pos_new = (pos_orig as isize + delta) as usize;
-                                if pos_new + 8 <= new_file.len() {
-                                    new_file[pos_new..pos_new+4].copy_from_slice(&BinaryReader::write_u32_le(*new_off));
-                                    new_file[pos_new+4..pos_new+8].copy_from_slice(&BinaryReader::write_u32_le(*new_sz));
-                                }
-                            }
-                        }
-                    }
-                    cursor += 8 + tone_size;
+                    let original_tone_size = read_u32_le(&original, cursor + 4)? as usize;
+                    cursor += 8 + original_tone_size;
                 }
                 _ => {
                     // Copy unknown/other section as-is
@@ -238,5 +265,105 @@ impl Nus3bankWriter {
             off += 8;
         }
         None
+    }
+
+    /// Rebuild TONE section from current tracks
+    /// Based on parser.rs analysis:
+    /// - TONE structure: [track_count][pointer_table][metadata_blocks]
+    /// - pointer_table: [relative_offset, meta_size] pairs
+    /// - relative_offset is relative to TONE magic + 8 bytes
+    /// - metadata_blocks contain the actual track information
+    fn build_tone_section(tracks: &[super::structures::AudioTrack]) -> Result<Vec<u8>, Nus3bankError> {
+        let mut tone_data = Vec::new();
+        let mut track_metadata_blocks = Vec::new();
+        
+        // Filter out tracks with invalid metadata_size (indicates removed tracks)
+        let valid_tracks: Vec<&super::structures::AudioTrack> = tracks.iter()
+            .filter(|track| track.metadata_size > 0x0c)
+            .collect();
+        
+        println!("Building TONE section with {} valid tracks out of {} total", valid_tracks.len(), tracks.len());
+        
+        // Build metadata blocks first to calculate their sizes
+        for track in &valid_tracks {
+            let mut metadata = Vec::new();
+            
+            // 6 bytes initial padding (parser.rs line 321: seek +6)
+            metadata.extend_from_slice(&[0u8; 6]);
+            
+            // temp_byte logic (parser.rs line 323-328)
+            let temp_byte = if track.name.len() > 9 { 1u8 } else { 0u8 };
+            metadata.push(temp_byte);
+            
+            // Additional padding based on temp_byte (parser.rs line 324-328)
+            if temp_byte > 9 || temp_byte == 0 {
+                metadata.extend_from_slice(&[0u8; 5]);
+            } else {
+                metadata.push(0u8);
+            }
+            
+            // String size (includes null terminator) (parser.rs line 330)
+            let string_size = (track.name.len() + 1) as u8;
+            metadata.push(string_size);
+            
+            // Track name bytes (parser.rs line 333-334)
+            metadata.extend_from_slice(track.name.as_bytes());
+            
+            // Null terminator (parser.rs line 337)
+            metadata.push(0u8);
+            
+            // Padding calculation (parser.rs line 343-349)
+            let padding = (string_size as usize + 1) % 4;
+            if padding == 0 {
+                metadata.extend_from_slice(&[0u8; 4]);
+            } else {
+                metadata.extend_from_slice(&vec![0u8; 4 - padding + 4]);
+            }
+            
+            // Unknown value (usually 8) (parser.rs line 353)
+            metadata.extend_from_slice(&BinaryReader::write_u32_le(8));
+            
+            // pack_offset and size (parser.rs line 356-357)
+            metadata.extend_from_slice(&BinaryReader::write_u32_le(track.pack_offset));
+            metadata.extend_from_slice(&BinaryReader::write_u32_le(track.size));
+            
+            track_metadata_blocks.push(metadata);
+        }
+        
+        // Calculate the starting offset for metadata blocks
+        // Based on parser.rs line 299: absolute_offset = relative_offset + tone_magic_offset + 8
+        // This means relative_offset is relative to the position AFTER "TONE" magic + 8 bytes
+        // 
+        // File structure:
+        // [TONE(4)][section_size(4)][track_count(4)][pointer_table][metadata_blocks]
+        //  ^-- tone_magic_offset    ^-- tone_magic_offset + 8 (relative_offset base)
+        //
+        // So relative_offset = 0 points to track_count
+        // metadata_blocks start after: track_count(4) + pointer_table_size
+        let pointer_table_size = valid_tracks.len() * 8; // 8 bytes per track (offset + size)
+        let metadata_start_offset = 4 + pointer_table_size; // After track_count + pointer_table
+        
+        // Write track count (4 bytes) - use valid_tracks count, not total tracks count
+        tone_data.extend_from_slice(&BinaryReader::write_u32_le(valid_tracks.len() as u32));
+        
+        // Write pointer table (relative_offset + meta_size pairs)
+        let mut current_metadata_offset = metadata_start_offset;
+        for metadata_block in &track_metadata_blocks {
+            let relative_offset = current_metadata_offset as u32;
+            let meta_size = metadata_block.len() as u32;
+            
+            // Write pointer entry (parser.rs line 296-297)
+            tone_data.extend_from_slice(&BinaryReader::write_u32_le(relative_offset));
+            tone_data.extend_from_slice(&BinaryReader::write_u32_le(meta_size));
+            
+            current_metadata_offset += metadata_block.len();
+        }
+        
+        // Append all metadata blocks
+        for metadata_block in track_metadata_blocks {
+            tone_data.extend_from_slice(&metadata_block);
+        }
+        
+        Ok(tone_data)
     }
 }

@@ -638,8 +638,14 @@ impl ReplaceUtils {
 
         let replacement_data = EMPTY_WAV_HEADER.to_vec();
 
-        // Store into in-memory replacement map under key name:id
-        let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
+        // Store into in-memory replacement map using consistent key format
+        let key = if audio_file_info.is_nus3bank {
+            // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
+            format!("{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
+        } else {
+            // For NUS3AUDIO, use original name:id format
+            format!("{}:{}", audio_file_info.name, audio_file_info.id)
+        };
         if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {
             map.insert(key, replacement_data.clone());
         }
@@ -808,24 +814,46 @@ impl ReplaceUtils {
     ) -> Result<(), String> {
         if original_file_path.to_lowercase().ends_with(".nus3bank") {
             // Handle NUS3BANK files
-            // Bridge UI in-memory replacements (hex_id:name) into Nus3bankReplacer cache (hex_id:file_path)
-            // so saving picks up the pending replacements correctly.
+            // Bridge UI in-memory replacements into Nus3bankReplacer cache
+            // Handle both "hex_id:name" and "name:hex_id" key formats
             if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
                 for (key, replacement_data) in map.iter() {
                     let parts: Vec<&str> = key.split(':').collect();
                     if parts.len() != 2 { continue; }
                     let left = parts[0];
-                    // Heuristic: NUS3BANK keys are stored as "hex_id:name"
-                    if left.starts_with("0x") {
-                        let hex_id = left;
-                        // Feed into Nus3bankReplacer using the current file path scope
-                        let _ = Nus3bankReplacer::replace_track_in_memory(
-                            original_file_path,
-                            hex_id,
-                            replacement_data.clone(),
-                        );
-                    }
+                    let right = parts[1];
+                    
+                    // Check both possible hex_id positions
+                    let hex_id = if left.starts_with("0x") {
+                        left
+                    } else if right.starts_with("0x") {
+                        right
+                    } else {
+                        continue; // Skip if no hex_id found
+                    };
+                    
+                    // Feed into Nus3bankReplacer using the current file path scope
+                    let _ = Nus3bankReplacer::replace_track_in_memory(
+                        original_file_path,
+                        hex_id,
+                        replacement_data.clone(),
+                    );
                 }
+            }
+
+            // Apply NUS3BANK operations if any
+            if crate::nus3bank::replace::Nus3bankReplacer::has_replacement_data() {
+                let mut nus3bank_file = crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
+                    .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
+                
+                crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(&mut nus3bank_file)
+                    .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
+                
+                nus3bank_file.save(save_path)
+                    .map_err(|e| format!("Failed to save NUS3BANK file: {}", e))?;
+                
+                crate::nus3bank::replace::Nus3bankReplacer::clear();
+                return Ok(());
             }
 
             Nus3bankReplacer::apply_replacements_and_save(original_file_path, save_path)

@@ -88,18 +88,21 @@ impl Nus3bankFile {
     
     /// Remove track by hex ID
     pub fn remove_track(&mut self, hex_id: &str) -> Result<(), Nus3bankError> {
-        let index = self.tracks.iter()
-            .position(|t| t.hex_id == hex_id)
+        let track = self.tracks.iter_mut()
+            .find(|t| t.hex_id == hex_id)
             .ok_or_else(|| Nus3bankError::TrackNotFound { hex_id: hex_id.to_string() })?;
         
-        self.tracks.remove(index);
+        // Mark track for removal by setting metadata_size to 0
+        // This approach preserves track order and allows writer to filter correctly
+        track.metadata_size = 0;
+        track.size = 0;
+        track.audio_data = None; // Clear audio data to save memory
         
-        // Update indices
-        for (i, track) in self.tracks.iter_mut().enumerate() {
-            track.index = i;
-        }
+        println!("Marked track {} for removal (metadata_size=0)", hex_id);
         
-        self.bank_info.track_count = self.tracks.len() as u32;
+        // Update bank info to reflect new count (excluding removed tracks)
+        let active_count = self.tracks.iter().filter(|t| t.metadata_size > 0).count();
+        self.bank_info.track_count = active_count as u32;
         
         Ok(())
     }

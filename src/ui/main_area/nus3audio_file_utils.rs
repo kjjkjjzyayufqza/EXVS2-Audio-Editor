@@ -36,7 +36,21 @@ impl Nus3audioFileUtils {
 
     /// Register a file removal (in memory only)
     pub fn register_remove(audio_info: &AudioFileInfo) -> Result<(), String> {
-        let key = format!("{}:{}", audio_info.name, audio_info.id);
+        // Use consistent key format based on file type to match replace_in_memory
+        let key = if audio_info.is_nus3bank {
+            // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
+            format!("{}:{}", audio_info.hex_id.as_ref().unwrap_or(&audio_info.id), audio_info.name)
+        } else {
+            // For NUS3AUDIO, use original name:id format
+            format!("{}:{}", audio_info.name, audio_info.id)
+        };
+
+        // Check if this is a NUS3BANK file (hex ID format)
+        if audio_info.is_nus3bank || audio_info.id.starts_with("0x") {
+            // Register with NUS3BANK replacer for proper removal (TONE update)
+            let hex_id = audio_info.hex_id.as_ref().unwrap_or(&audio_info.id);
+            crate::nus3bank::replace::Nus3bankReplacer::register_remove(hex_id)?;
+        }
 
         if let Ok(mut changes) = FILE_CHANGES.lock() {
             changes.insert(
