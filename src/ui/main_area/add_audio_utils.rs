@@ -111,7 +111,8 @@ impl AddAudioUtils {
     }
 
     /// Process the new audio file after the modal is confirmed
-    pub fn process_new_audio(add_audio_modal: &AddAudioModal) -> Result<AudioFileInfo, String> {
+    /// The is_nus3bank flag will be determined by the caller based on the current file type
+    pub fn process_new_audio(add_audio_modal: &AddAudioModal, is_nus3bank: bool) -> Result<AudioFileInfo, String> {
         // Check if file path exists
         let file_path = match &add_audio_modal.settings.file_path {
             Some(path) => path,
@@ -154,6 +155,15 @@ impl AddAudioUtils {
             .to_string();
 
         // Create a new AudioFileInfo for the UI
+        let hex_id = if is_nus3bank {
+            // Generate a temporary hex_id for NUS3BANK files
+            Some(format!("0x{:x}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap().as_secs() & 0xFFFF))
+        } else {
+            None
+        };
+        
         let new_audio_info = AudioFileInfo {
             name,
             id: id_val.to_string(),
@@ -166,8 +176,8 @@ impl AddAudioUtils {
                     .to_string_lossy()
             ),
             file_type: "WAV Audio".to_string(),
-            hex_id: None,  // Not a NUS3BANK file
-            is_nus3bank: false,  // This is for NUS3AUDIO files
+            hex_id,
+            is_nus3bank,  // Determined by caller
         };
 
         // Return the new AudioFileInfo and the converted WAV data

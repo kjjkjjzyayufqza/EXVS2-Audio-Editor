@@ -89,9 +89,11 @@ impl Nus3bankWriter {
         let mut updated_tracks = Vec::new();
         
         for track in &sorted_tracks {
-            // Skip tracks with very small metadata (indicates removal or corruption)
-            if track.metadata_size <= 0x0c { 
-                println!("Skipping track {} with metadata_size <= 0x0c", track.hex_id);
+            // Skip removed tracks but include new tracks
+            // New tracks have metadata_size = 0 but have audio_data
+            // Removed tracks have metadata_size = 0 and no audio_data
+            if track.metadata_size <= 0x0c && track.audio_data.is_none() { 
+                println!("Skipping removed track {} with metadata_size <= 0x0c and no audio_data", track.hex_id);
                 continue; 
             }
             
@@ -277,9 +279,13 @@ impl Nus3bankWriter {
         let mut tone_data = Vec::new();
         let mut track_metadata_blocks = Vec::new();
         
-        // Filter out tracks with invalid metadata_size (indicates removed tracks)
+        // Filter out removed tracks and include new tracks
         let valid_tracks: Vec<&super::structures::AudioTrack> = tracks.iter()
-            .filter(|track| track.metadata_size > 0x0c)
+            .filter(|track| {
+                // Include new tracks (metadata_size = 0 but has audio_data)
+                // Include existing tracks (metadata_size > 0x0c)
+                track.audio_data.is_some() || track.metadata_size > 0x0c
+            })
             .collect();
         
         println!("Building TONE section with {} valid tracks out of {} total", valid_tracks.len(), tracks.len());

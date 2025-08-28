@@ -52,6 +52,26 @@ impl Nus3bankFile {
     
     /// Add new track to the bank
     pub fn add_track(&mut self, name: String, audio_data: Vec<u8>) -> Result<String, Nus3bankError> {
+        // Validate input data
+        if audio_data.is_empty() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "Audio data cannot be empty".to_string()
+            });
+        }
+        
+        if name.is_empty() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "Track name cannot be empty".to_string()
+            });
+        }
+        
+        // Check for existing track with same name
+        if self.tracks.iter().any(|t| t.name == name) {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!("Track with name '{}' already exists", name)
+            });
+        }
+        
         // Generate new ID (find highest ID and add 1)
         let new_id = self.tracks.iter()
             .map(|t| t.numeric_id)
@@ -60,10 +80,11 @@ impl Nus3bankFile {
         
         let hex_id = format!("0x{:x}", new_id);
         
-        // Detect format
+        // Detect format (prefer WAV for compatibility)
         let audio_format = if audio_data.starts_with(b"RIFF") {
             AudioFormat::Wav
         } else {
+            println!("Warning: Non-WAV format detected for track '{}'", name);
             AudioFormat::Unknown
         };
         

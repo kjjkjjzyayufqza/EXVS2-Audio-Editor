@@ -478,10 +478,40 @@ impl ReplaceUtils {
             format!("{}:{}", audio_file_info.name, audio_file_info.id)
         };
         
-        if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
-            map.get(&key).cloned()
+        // Also try with ADD_ prefix for NUS3BANK files (for newly added audio)
+        let add_key = if audio_file_info.is_nus3bank {
+            format!("ADD_{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
         } else {
+            key.clone()
+        };
+        
+        println!("Looking for replacement data with key: {} or {}", key, add_key);
+        if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
+            // Try regular key first, then ADD_ prefixed key
+            let result = map.get(&key).cloned().or_else(|| map.get(&add_key).cloned());
+            if result.is_some() {
+                println!("Found replacement data for audio: {}", audio_file_info.name);
+            } else {
+                println!("No replacement data found for keys: {} or {}", key, add_key);
+                println!("Available keys in replacement data:");
+                for stored_key in map.keys() {
+                    println!("  - {}", stored_key);
+                }
+            }
+            result
+        } else {
+            println!("Failed to access replacement data map");
             None
+        }
+    }
+
+    /// Store audio data for playback (used by NUS3BANK add operations)
+    pub fn store_audio_data_for_playback(key: String, audio_data: Vec<u8>) -> Result<(), String> {
+        if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {
+            map.insert(key, audio_data);
+            Ok(())
+        } else {
+            Err("Failed to store audio data for playback".to_string())
         }
     }
 
@@ -816,8 +846,15 @@ impl ReplaceUtils {
             // Handle NUS3BANK files
             // Bridge UI in-memory replacements into Nus3bankReplacer cache
             // Handle both "hex_id:name" and "name:hex_id" key formats
+            // Skip ADD_ prefixed keys (handled by Add operations)
             if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
                 for (key, replacement_data) in map.iter() {
+                    // Skip ADD_ prefixed keys (these are handled by Add operations)
+                    if key.starts_with("ADD_") {
+                        println!("Skipping ADD_ prefixed key: {}", key);
+                        continue;
+                    }
+                    
                     let parts: Vec<&str> = key.split(':').collect();
                     if parts.len() != 2 { continue; }
                     let left = parts[0];

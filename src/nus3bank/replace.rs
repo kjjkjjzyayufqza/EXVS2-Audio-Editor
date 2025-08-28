@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 // Store NUS3BANK replacement data
-static REPLACEMENT_DATA: Lazy<Mutex<HashMap<String, ReplaceOperation>>> = 
+pub static REPLACEMENT_DATA: Lazy<Mutex<HashMap<String, ReplaceOperation>>> = 
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone)]
@@ -26,6 +26,34 @@ impl Nus3bankReplacer {
             Ok(())
         } else {
             Err("Failed to register remove operation".to_string())
+        }
+    }
+    
+    /// Register an add operation for a track
+    pub fn register_add(name: &str, audio_data: Vec<u8>) -> Result<String, String> {
+        // Validate input data
+        if audio_data.is_empty() {
+            return Err("Audio data cannot be empty".to_string());
+        }
+        
+        if name.is_empty() {
+            return Err("Track name cannot be empty".to_string());
+        }
+        
+        // Generate temporary hex_id for tracking (will be replaced with proper ID during add_track)
+        let temp_hex_id = format!("0x{:x}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap().as_secs() & 0xFFFF);
+        
+        if let Ok(mut data) = REPLACEMENT_DATA.lock() {
+            data.insert(
+                temp_hex_id.clone(), 
+                ReplaceOperation::Add(name.to_string(), temp_hex_id.clone(), audio_data)
+            );
+            println!("Registered add operation for track '{}' with temp_id {}", name, temp_hex_id);
+            Ok(temp_hex_id)
+        } else {
+            Err("Failed to register add operation".to_string())
         }
     }
     
@@ -68,13 +96,17 @@ impl Nus3bankReplacer {
             for (_, operation) in data.iter() {
                 match operation {
                     ReplaceOperation::Remove(hex_id) => {
+                        println!("Applying remove operation for track: {}", hex_id);
                         file.remove_track(hex_id)?;
                     }
                     ReplaceOperation::Replace(hex_id, new_data) => {
+                        println!("Applying replace operation for track: {}", hex_id);
                         file.replace_track_data(hex_id, new_data.clone())?;
                     }
-                    ReplaceOperation::Add(name, _hex_id, data) => {
-                        file.add_track(name.clone(), data.clone())?;
+                    ReplaceOperation::Add(name, _temp_hex_id, audio_data) => {
+                        println!("Applying add operation for track: {}", name);
+                        let new_hex_id = file.add_track(name.clone(), audio_data.clone())?;
+                        println!("Successfully added track '{}' with ID: {}", name, new_hex_id);
                     }
                 }
             }

@@ -157,6 +157,32 @@ impl Nus3audioFileUtils {
         }
     }
 
+    /// Register an audio file to be added to the NUS3BANK file
+    pub fn register_add_nus3bank(
+        audio_info: &AudioFileInfo,
+        audio_data: Vec<u8>,
+    ) -> Result<(), String> {
+        // For NUS3BANK files, register with Nus3bankReplacer
+        if audio_info.is_nus3bank {
+            // Register with Nus3bankReplacer for file operations
+            let _temp_hex_id = crate::nus3bank::replace::Nus3bankReplacer::register_add(
+                &audio_info.name,
+                audio_data.clone()
+            )?;
+            
+            // Also store in ReplaceUtils for audio playback
+            // Use special prefix for Add operations to avoid conflict with Replace operations
+            let key = format!("ADD_{}:{}", audio_info.hex_id.as_ref().unwrap_or(&audio_info.id), audio_info.name);
+            super::replace_utils::ReplaceUtils::store_audio_data_for_playback(key, audio_data)?;
+            println!("Stored audio data for playback: {} (NUS3BANK)", audio_info.name);
+            
+            return Ok(());
+        }
+        
+        // Fallback to existing NUS3AUDIO logic
+        Self::register_add_audio(audio_info, audio_data)
+    }
+
     /// Get pending added audio data for a specific audio file
     pub fn get_pending_added_data(audio_name: &str, audio_id: &str) -> Option<Vec<u8>> {
         let key = format!("{}:{}", audio_name, audio_id);

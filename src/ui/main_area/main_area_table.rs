@@ -526,14 +526,24 @@ impl MainArea {
                     }
                 };
                 
-                // 2. 处理新音频文件
-                match AddAudioUtils::process_new_audio(&self.add_audio_modal) {
+                // 2. 确定文件类型 - 检查当前选择的文件是否为NUS3BANK
+                let selected_file_path = self.selected_file.as_ref().unwrap();
+                let is_nus3bank = selected_file_path.to_lowercase().ends_with(".nus3bank");
+                
+                // 处理新音频文件
+                match AddAudioUtils::process_new_audio(&self.add_audio_modal, is_nus3bank) {
                     Ok(new_audio_info) => {
                         // 3. 尝试将音频转换为WAV格式
                         match AddAudioUtils::convert_to_wav(original_file_path) {
                             Ok(wav_data) => {
                                 // 4. 使用转换后的WAV数据注册添加操作
-                                match Nus3audioFileUtils::register_add_audio(&new_audio_info, wav_data) {
+                                let register_result = if new_audio_info.is_nus3bank {
+                                    Nus3audioFileUtils::register_add_nus3bank(&new_audio_info, wav_data)
+                                } else {
+                                    Nus3audioFileUtils::register_add_audio(&new_audio_info, wav_data)
+                                };
+                                
+                                match register_result {
                                     Ok(_) => {
                                         // 5. 更新内存中的音频文件列表
                                         if let Some(ref mut audio_files) = self.audio_files {
@@ -556,7 +566,13 @@ impl MainArea {
                                 println!("Falling back to original file data");
                                 
                                 if let Some(data) = &self.add_audio_modal.file_data {
-                                    match Nus3audioFileUtils::register_add(&new_audio_info, data.clone()) {
+                                    let fallback_result = if new_audio_info.is_nus3bank {
+                                        Nus3audioFileUtils::register_add_nus3bank(&new_audio_info, data.clone())
+                                    } else {
+                                        Nus3audioFileUtils::register_add_audio(&new_audio_info, data.clone())
+                                    };
+                                    
+                                    match fallback_result {
                                         Ok(_) => {
                                             if let Some(ref mut audio_files) = self.audio_files {
                                                 audio_files.push(new_audio_info.clone());
