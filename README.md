@@ -101,7 +101,7 @@ This application uses the following tools to process audio files:
 ### Building from Source
 
 Prerequisites:
-- Rust 1.81 or newer
+- Rust 1.88 or newer
 - Cargo package manager
 
 ```bash
