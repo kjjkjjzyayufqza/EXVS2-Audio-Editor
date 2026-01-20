@@ -95,7 +95,7 @@ impl TopPanel {
         }
         
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
                 // Don't show Quit button in web environment
                 let is_web = cfg!(target_arch = "wasm32");
                 if !is_web {

@@ -233,7 +233,7 @@ impl Nus3bankWriter {
 
         // padding alignment branch from Python implementation
         let padding = (string_size + 1) % 4;
-        if padding == 0 { pos = pos.checked_add(4)?; } else { pos = pos.checked_add((4 - padding + 4) as usize)?; }
+        if padding == 0 { pos = pos.checked_add(4)?; } else { pos = pos.checked_add(4 - padding + 4)?; }
 
         // unknown 4 bytes before packOffset
         pos = pos.checked_add(4)?;

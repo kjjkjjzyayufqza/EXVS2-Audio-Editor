@@ -1,6 +1,6 @@
 use super::audio_file_info::AudioFileInfo;
 use super::loop_settings_modal::LoopSettingsModal;
-use crate::nus3bank::{replace::Nus3bankReplacer};
+use crate::nus3bank::replace::Nus3bankReplacer;
 use hound;
 use nus3audio::{AudioFile, Nus3audioFile};
 use once_cell::sync::Lazy;
@@ -13,18 +13,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
-// 使用静态HashMap存储替换后的音频数据
-// 键是"文件路径:音频名称"，值是替换后的音频数据
+// Store replaced audio data in a static HashMap.
+// Key format: "file_path:audio_name"; value: replaced audio bytes.
 static REPLACED_AUDIO_DATA: Lazy<Mutex<HashMap<String, Vec<u8>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-// 使用静态HashMap存储循环设置
-// 键是"文件路径:音频名称"，值是(loop_start, loop_end, use_custom_loop)
+// Store loop settings in a static HashMap.
+// Key format: "file_path:audio_name"; value: (loop_start, loop_end, use_custom_loop).
 static LOOP_SETTINGS: Lazy<Mutex<HashMap<String, (Option<f32>, Option<f32>, bool)>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-// 使用静态HashMap存储用户选择的替换文件路径
-// 键是"文件路径:音频名称"，值是用户选择的替换文件路径
+// Store user-selected replacement file paths in a static HashMap.
+// Key format: "file_path:audio_name"; value: replacement file path.
 static REPLACEMENT_FILE_PATHS: Lazy<Mutex<HashMap<String, PathBuf>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 

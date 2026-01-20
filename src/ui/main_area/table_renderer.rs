@@ -560,19 +560,19 @@ impl TableRenderer {
                                             if overflow_export {
                                                 if ui.button("Export").clicked() {
                                                     on_export_clicked(row_index);
-                                                    ui.close_menu();
+                                                    ui.close();
                                                 }
                                             }
                                             if overflow_replace {
                                                 if ui.button("Replace").clicked() {
                                                     on_replace_clicked(row_index);
-                                                    ui.close_menu();
+                                                    ui.close();
                                                 }
                                             }
                                             if overflow_remove {
                                                 if ui.button("Remove").clicked() {
                                                     on_remove_clicked(row_index);
-                                                    ui.close_menu();
+                                                    ui.close();
                                                 }
                                             }
                                         });

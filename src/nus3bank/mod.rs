@@ -12,7 +12,7 @@ pub mod export;
 pub mod replace;
 
 // Re-export main types
-pub use structures::{Nus3bankFile};
+pub use structures::Nus3bankFile;
 pub use export::Nus3bankExporter;
 
 
