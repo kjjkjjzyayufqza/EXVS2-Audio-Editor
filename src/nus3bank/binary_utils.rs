@@ -12,73 +12,104 @@ impl BinaryReader {
         Ok(buf[0])
     }
 
+    /// Read 16-bit little-endian unsigned integer
+    pub fn read_u16_le<R: Read>(reader: &mut R) -> IoResult<u16> {
+        let mut buf = [0u8; 2];
+        reader.read_exact(&mut buf)?;
+        Ok(u16::from_le_bytes(buf))
+    }
+
     /// Read 32-bit little-endian unsigned integer
     pub fn read_u32_le<R: Read>(reader: &mut R) -> IoResult<u32> {
         let mut buf = [0u8; 4];
-        match reader.read_exact(&mut buf) {
-            Ok(_) => {
-                let value = u32::from_le_bytes(buf);
-                // Debug: print hex representation for unusual values
-                if value > 1_000_000 {
-                    println!("DEBUG: Read large u32 value: {} (0x{:08X}) from bytes [{:02X} {:02X} {:02X} {:02X}]", 
-                        value, value, buf[0], buf[1], buf[2], buf[3]);
-                }
-                Ok(value)
-            }
-            Err(e) => {
-                eprintln!("Error reading u32: {}", e);
-                Err(e)
-            }
+        reader.read_exact(&mut buf)?;
+        Ok(u32::from_le_bytes(buf))
+    }
+
+    /// Read 32-bit little-endian signed integer
+    pub fn read_i32_le<R: Read>(reader: &mut R) -> IoResult<i32> {
+        let raw = Self::read_u32_le(reader)?;
+        Ok(raw as i32)
+    }
+
+    /// Read 32-bit little-endian float
+    pub fn read_f32_le<R: Read>(reader: &mut R) -> IoResult<f32> {
+        let mut buf = [0u8; 4];
+        reader.read_exact(&mut buf)?;
+        Ok(f32::from_le_bytes(buf))
+    }
+
+    /// Read fixed-length bytes into a Vec
+    pub fn read_bytes<R: Read>(reader: &mut R, len: usize) -> IoResult<Vec<u8>> {
+        let mut buf = vec![0u8; len];
+        reader.read_exact(&mut buf)?;
+        Ok(buf)
+    }
+
+    /// Skip bytes forward
+    pub fn skip<R: Read + Seek>(reader: &mut R, len: i64) -> IoResult<()> {
+        reader.seek(SeekFrom::Current(len))?;
+        Ok(())
+    }
+
+    /// Align current position to a 4-byte boundary
+    pub fn align4<R: Read + Seek>(reader: &mut R) -> IoResult<()> {
+        let pos = reader.stream_position()? as usize;
+        let pad = Self::calculate_padding(pos);
+        if pad > 0 {
+            reader.seek(SeekFrom::Current(pad as i64))?;
         }
+        Ok(())
+    }
+
+    /// Read an ASCII/UTF-8 string of exactly `len` bytes (no null trimming)
+    pub fn read_string_exact<R: Read>(reader: &mut R, len: usize) -> IoResult<String> {
+        let bytes = Self::read_bytes(reader, len)?;
+        Ok(String::from_utf8_lossy(&bytes).to_string())
+    }
+
+    /// Read a length-prefixed string where the prefix includes the null terminator.
+    ///
+    /// This matches the C# pattern:
+    /// - read `len_with_null` as u8
+    /// - read `len_with_null - 1` bytes as content
+    /// - skip the null terminator
+    pub fn read_len_u8_string<R: Read>(reader: &mut R) -> IoResult<String> {
+        let len_with_null = Self::read_u8(reader)? as usize;
+        if len_with_null == 0 {
+            return Ok(String::new());
+        }
+        let content_len = len_with_null.saturating_sub(1);
+        let content = Self::read_string_exact(reader, content_len)?;
+        // Consume null terminator if present
+        let mut nul = [0u8; 1];
+        reader.read_exact(&mut nul)?;
+        Ok(content)
     }
 
     /// Validate magic number
     pub fn assert_magic<R: Read>(reader: &mut R, expected: &[u8]) -> Result<(), Nus3bankError> {
         let mut buffer = vec![0u8; expected.len()];
-        match reader.read_exact(&mut buffer) {
-            Ok(_) => {
-                if buffer != expected {
-                    let expected_str = String::from_utf8_lossy(expected).to_string();
-                    let found_str = String::from_utf8_lossy(&buffer).to_string();
-                    eprintln!(
-                        "Magic mismatch: expected '{}', found '{}'",
-                        expected_str, found_str
-                    );
-                    return Err(Nus3bankError::InvalidMagic {
-                        expected: expected_str,
-                        found: found_str,
-                    });
-                }
-                println!(
-                    "Magic number '{}' validated successfully",
-                    String::from_utf8_lossy(expected)
-                );
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!("Failed to read magic number: {}", e);
-                Err(Nus3bankError::Io(e))
-            }
+        reader.read_exact(&mut buffer)?;
+        if buffer != expected {
+            return Err(Nus3bankError::InvalidMagic {
+                expected: String::from_utf8_lossy(expected).to_string(),
+                found: String::from_utf8_lossy(&buffer).to_string(),
+            });
         }
+        Ok(())
     }
 
     /// Calculate 4-byte alignment padding
     pub fn calculate_padding(size: usize) -> usize {
         (4 - (size % 4)) % 4
     }
+
     /// Read section magic bytes
     pub fn read_section_magic<R: Read>(reader: &mut R) -> Result<[u8; 4], Nus3bankError> {
         let mut magic = [0u8; 4];
-        match reader.read_exact(&mut magic) {
-            Ok(_) => {
-                println!("Read section magic: {:?}", String::from_utf8_lossy(&magic));
-                Ok(magic)
-            }
-            Err(e) => {
-                println!("Failed to read section magic: {}", e);
-                Err(Nus3bankError::Io(e))
-            }
-        }
+        reader.read_exact(&mut magic)?;
+        Ok(magic)
     }
 
     /// Get current position (helper for readers with Seek)
@@ -88,6 +119,21 @@ impl BinaryReader {
 
     /// Write 32-bit little-endian unsigned integer
     pub fn write_u32_le(value: u32) -> [u8; 4] {
+        value.to_le_bytes()
+    }
+
+    /// Write 16-bit little-endian unsigned integer
+    pub fn write_u16_le(value: u16) -> [u8; 2] {
+        value.to_le_bytes()
+    }
+
+    /// Write 32-bit little-endian signed integer
+    pub fn write_i32_le(value: i32) -> [u8; 4] {
+        value.to_le_bytes()
+    }
+
+    /// Write 32-bit little-endian float
+    pub fn write_f32_le(value: f32) -> [u8; 4] {
         value.to_le_bytes()
     }
 

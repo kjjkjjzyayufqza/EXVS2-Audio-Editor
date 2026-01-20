@@ -10,9 +10,13 @@ pub mod binary_utils;
 pub mod error;
 pub mod export;
 pub mod replace;
+pub mod debug_json;
 
 // Re-export main types
 pub use structures::Nus3bankFile;
+
 pub use export::Nus3bankExporter;
 
 
+#[cfg(test)]
+mod tests;

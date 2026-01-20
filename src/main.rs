@@ -4,6 +4,37 @@
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
+    // Debug utility: export NUS3BANK as JSON and exit.
+    // Usage:
+    //   exvs2_audio_editor --debug-json <input.nus3bank> [output.json]
+    {
+        let mut args = std::env::args().skip(1);
+        while let Some(a) = args.next() {
+            if a == "--debug-json" {
+                let input = args.next().expect("Missing input path for --debug-json");
+                let output = args
+                    .next()
+                    .unwrap_or_else(|| format!("{input}.json"));
+
+                let file = match exvs2_audio_editor::nus3bank::structures::Nus3bankFile::open(&input) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("Error loading NUS3BANK file: {e:?}");
+                        std::process::exit(1);
+                    }
+                };
+                let opt = exvs2_audio_editor::nus3bank::debug_json::DebugJsonOptions::default();
+                if let Err(e) =
+                    exvs2_audio_editor::nus3bank::debug_json::write_debug_json_file(&file, &opt, &output)
+                {
+                    eprintln!("Error writing debug JSON: {e:?}");
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
+        }
+    }
+
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {

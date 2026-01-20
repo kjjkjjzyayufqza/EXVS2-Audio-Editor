@@ -1330,6 +1330,7 @@ dependencies = [
 name = "exvs2_audio_editor"
 version = "0.6.0"
 dependencies = [
+ "base64 0.22.1",
  "eframe",
  "egui",
  "egui-phosphor",
