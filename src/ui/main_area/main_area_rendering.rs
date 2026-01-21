@@ -18,6 +18,12 @@ impl MainArea {
 
         // Show the GRP list modal if open
         self.grp_list_modal.show(ctx);
+
+        // Show the DTON tones modal if open
+        self.dton_tones_modal.show(ctx);
+
+        // Show the PROP edit modal if open
+        self.prop_edit_modal.show(ctx);
         
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render(ui);

@@ -25,6 +25,8 @@ impl MainArea {
             export_all_confirm: bool,
             add_audio: bool,
             edit_grp_list: bool,
+            edit_dton_tones: bool,
+            edit_prop: bool,
         }
 
         let mut action_data = ActionData {
@@ -35,6 +37,8 @@ impl MainArea {
             export_all_confirm: false,
             add_audio: false,
             edit_grp_list: false,
+            edit_dton_tones: false,
+            edit_prop: false,
         };
 
         // First, render the UI
@@ -61,6 +65,14 @@ impl MainArea {
 
                             if ui.button("Edit GRP List").clicked() {
                                 action_data.edit_grp_list = true;
+                            }
+
+                            if ui.button("Edit DTON Tones").clicked() {
+                                action_data.edit_dton_tones = true;
+                            }
+
+                            if ui.button("Edit PROP").clicked() {
+                                action_data.edit_prop = true;
                             }
 
                             // New: Replace with New Audio button (batch)
@@ -119,6 +131,45 @@ impl MainArea {
                                             selected_count
                                         ),
                                     );
+                                }
+                            }
+
+                            // New: Remove Selected button with confirmation
+                            if ui.button("Remove Selected").clicked() {
+                                let selected_count = self.selected_items.len();
+                                if selected_count == 0 {
+                                    self.add_toast("No items selected".to_string(), Color32::GOLD);
+                                } else if self.selected_file.is_none() {
+                                    self.add_toast("No file selected".to_string(), Color32::GOLD);
+                                } else {
+                                    self.pending_remove_selected = true;
+                                    self.confirm_modal.open(
+                                        "Confirm Remove Selected",
+                                        &format!(
+                                            "This will mark {} selected item(s) for deletion (in memory only) and they will be removed on save/export. Continue?",
+                                            selected_count
+                                        ),
+                                    );
+                                }
+                            }
+
+                            // Debug: Convert all NUS3BANK tracks to standard PCM WAV (in memory)
+                            if ui.button("Debug: Convert All to WAV").clicked() {
+                                if let Some(path) = self.selected_file.as_deref() {
+                                    if path.to_lowercase().ends_with(".nus3bank") {
+                                        self.pending_debug_convert_all_wav = true;
+                                        self.confirm_modal.open(
+                                            "Debug: Convert All to WAV",
+                                            "This will normalize all tracks in the currently opened .nus3bank to standard PCM16 WAV in memory (skips tracks that are already PCM16 WAV). This may take some time. Continue?",
+                                        );
+                                    } else {
+                                        self.add_toast(
+                                            "This debug action is only available for .nus3bank files".to_string(),
+                                            Color32::GOLD,
+                                        );
+                                    }
+                                } else {
+                                    self.add_toast("No file selected".to_string(), Color32::GOLD);
                                 }
                             }
                         });
@@ -219,6 +270,38 @@ impl MainArea {
                 } else {
                     toasts_to_add.push((
                         "GRP editing is only available for .nus3bank files".to_string(),
+                        Color32::GOLD,
+                    ));
+                }
+            } else {
+                toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+            }
+        }
+
+        // Handle "Edit DTON Tones" action if clicked
+        if action_data.edit_dton_tones {
+            if let Some(file_path) = self.selected_file.clone() {
+                if file_path.to_lowercase().ends_with(".nus3bank") {
+                    self.dton_tones_modal.open_for_file(&file_path);
+                } else {
+                    toasts_to_add.push((
+                        "DTON editing is only available for .nus3bank files".to_string(),
+                        Color32::GOLD,
+                    ));
+                }
+            } else {
+                toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+            }
+        }
+
+        // Handle "Edit PROP" action if clicked
+        if action_data.edit_prop {
+            if let Some(file_path) = self.selected_file.clone() {
+                if file_path.to_lowercase().ends_with(".nus3bank") {
+                    self.prop_edit_modal.open_for_file(&file_path);
+                } else {
+                    toasts_to_add.push((
+                        "PROP editing is only available for .nus3bank files".to_string(),
                         Color32::GOLD,
                     ));
                 }
@@ -476,6 +559,172 @@ impl MainArea {
                     }
                 }
             }
+            // Debug: Convert all tracks to WAV (in memory)
+            else if self.pending_debug_convert_all_wav {
+                self.pending_debug_convert_all_wav = false;
+
+                let selected_file_path = match self.selected_file.as_deref() {
+                    Some(p) => p,
+                    None => {
+                        toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                        return;
+                    }
+                };
+
+                if !selected_file_path.to_lowercase().ends_with(".nus3bank") {
+                    toasts_to_add.push((
+                        "Debug convert is only available for .nus3bank files".to_string(),
+                        Color32::GOLD,
+                    ));
+                    return;
+                }
+
+                // Load current bank to read original payloads.
+                let bank = match crate::nus3bank::structures::Nus3bankFile::open(selected_file_path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        toasts_to_add.push((format!("Failed to open .nus3bank: {}", e), Color32::RED));
+                        return;
+                    }
+                };
+
+                use std::collections::HashMap;
+                let mut payload_by_hex: HashMap<String, Vec<u8>> = HashMap::new();
+                for (i, tone) in bank.tone.tones.iter().enumerate() {
+                    if tone.removed {
+                        continue;
+                    }
+                    let hex_id = format!("0x{:x}", i as u32);
+                    payload_by_hex.insert(hex_id, tone.payload.clone());
+                }
+
+                let mut converted = 0usize;
+                let mut skipped = 0usize;
+                let mut failed = 0usize;
+
+                if let Some(ref mut audio_files) = self.audio_files {
+                    for info in audio_files.iter_mut() {
+                        if !info.is_nus3bank {
+                            continue;
+                        }
+                        let hex_id = match info.hex_id.as_deref() {
+                            Some(h) => h,
+                            None => {
+                                failed += 1;
+                                continue;
+                            }
+                        };
+
+                        let source = super::replace_utils::ReplaceUtils::get_replacement_data_unified(info)
+                            .or_else(|| payload_by_hex.get(hex_id).cloned());
+
+                        let Some(source_bytes) = source else {
+                            failed += 1;
+                            continue;
+                        };
+
+                        if super::replace_utils::ReplaceUtils::is_standard_pcm16_wav(&source_bytes) {
+                            skipped += 1;
+                            continue;
+                        }
+
+                        match super::replace_utils::ReplaceUtils::convert_audio_bytes_to_pcm_wav(&source_bytes) {
+                            Ok(wav_bytes) => {
+                                // Stage replacement for export/save.
+                                let _ = crate::nus3bank::replace::Nus3bankReplacer::replace_track_in_memory(
+                                    selected_file_path,
+                                    hex_id,
+                                    wav_bytes.clone(),
+                                );
+                                // Update playback replacement cache.
+                                let key = format!("{}:{}", hex_id, info.name);
+                                let _ = super::replace_utils::ReplaceUtils::store_audio_data_for_playback(
+                                    key,
+                                    wav_bytes.clone(),
+                                );
+
+                                info.size = wav_bytes.len();
+                                info.file_type = "WAV".to_string();
+                                converted += 1;
+                            }
+                            Err(e) => {
+                                failed += 1;
+                                toasts_to_add.push((format!("Convert failed for {}: {}", info.name, e), Color32::RED));
+                            }
+                        }
+                    }
+                }
+
+                toasts_to_add.push((
+                    format!(
+                        "Debug convert done: converted={}, skipped={}, failed={}",
+                        converted, skipped, failed
+                    ),
+                    if failed == 0 { Color32::GREEN } else { Color32::GOLD },
+                ));
+            }
+            // If there is a pending remove-selected action, perform it
+            else if self.pending_remove_selected {
+                self.pending_remove_selected = false;
+
+                let selected_file_path = match self.selected_file.as_deref() {
+                    Some(p) => p,
+                    None => {
+                        toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                        return;
+                    }
+                };
+
+                if let Some(ref mut audio_files) = self.audio_files {
+                    use std::collections::HashSet;
+
+                    // Work on a stable snapshot of selected keys.
+                    let selected_keys: Vec<String> = self.selected_items.iter().cloned().collect();
+                    let mut removed_keys: HashSet<String> = HashSet::new();
+                    let mut removed_count = 0usize;
+
+                    for key in selected_keys {
+                        let Some((name, id)) = key.split_once(':') else {
+                            continue;
+                        };
+
+                        let Some(info) = audio_files.iter().find(|f| f.name == name && f.id == id).cloned() else {
+                            continue;
+                        };
+
+                        match Nus3audioFileUtils::register_remove(&info, Some(selected_file_path)) {
+                            Ok(_) => {
+                                // Remove from the in-memory list
+                                if let Some(pos) = audio_files.iter().position(|f| f.name == info.name && f.id == info.id) {
+                                    audio_files.remove(pos);
+                                    removed_count += 1;
+                                    removed_keys.insert(format!("{}:{}", info.name, info.id));
+                                }
+                            }
+                            Err(e) => {
+                                toasts_to_add.push((format!("Failed to mark for deletion: {}", e), Color32::RED));
+                            }
+                        }
+                    }
+
+                    // Update selection and file count
+                    for k in removed_keys {
+                        self.selected_items.remove(&k);
+                    }
+                    self.file_count = Some(audio_files.len());
+
+                    if removed_count > 0 {
+                        toasts_to_add.push((
+                            format!("Successfully marked {} item(s) for deletion", removed_count),
+                            Color32::GREEN,
+                        ));
+                    } else {
+                        toasts_to_add.push(("No matching selected items found in list".to_string(), Color32::GOLD));
+                    }
+                } else {
+                    toasts_to_add.push(("No audio list loaded".to_string(), Color32::GOLD));
+                }
+            }
             // If there is an audio to be removed, perform the removal
             else if let Some(audio_info) = &self.pending_remove_audio {
                 if let Some(_file_path) = &self.selected_file {
@@ -485,7 +734,7 @@ impl MainArea {
                     );
                     
                     // Register the removal in memory only
-                    match Nus3audioFileUtils::register_remove(audio_info) {
+                    match Nus3audioFileUtils::register_remove(audio_info, self.selected_file.as_deref()) {
                         Ok(_) => {
                             // Remove the audio from memory
                             if let Some(ref mut audio_files) = self.audio_files {
@@ -526,6 +775,10 @@ impl MainArea {
                 self.pending_export_all = false;
             } else if self.pending_replace_empty {
                 self.pending_replace_empty = false;
+            } else if self.pending_debug_convert_all_wav {
+                self.pending_debug_convert_all_wav = false;
+            } else if self.pending_remove_selected {
+                self.pending_remove_selected = false;
             } else if let Some(_audio_info) = &self.pending_remove_audio {
                 // Clear the audio info to be removed
                 self.pending_remove_audio = None;
@@ -560,7 +813,8 @@ impl MainArea {
                             Ok(wav_data) => {
                                 // 4. 使用转换后的WAV数据注册添加操作
                                 let register_result = if new_audio_info.is_nus3bank {
-                                    Nus3audioFileUtils::register_add_nus3bank(&new_audio_info, wav_data)
+                                    let selected_file_path = self.selected_file.as_ref().unwrap();
+                                    Nus3audioFileUtils::register_add_nus3bank(selected_file_path, &new_audio_info, wav_data)
                                 } else {
                                     Nus3audioFileUtils::register_add_audio(&new_audio_info, wav_data)
                                 };
@@ -589,7 +843,8 @@ impl MainArea {
                                 
                                 if let Some(data) = &self.add_audio_modal.file_data {
                                     let fallback_result = if new_audio_info.is_nus3bank {
-                                        Nus3audioFileUtils::register_add_nus3bank(&new_audio_info, data.clone())
+                                        let selected_file_path = self.selected_file.as_ref().unwrap();
+                                        Nus3audioFileUtils::register_add_nus3bank(selected_file_path, &new_audio_info, data.clone())
                                     } else {
                                         Nus3audioFileUtils::register_add_audio(&new_audio_info, data.clone())
                                     };

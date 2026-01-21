@@ -418,7 +418,7 @@ impl Nus3bankParser {
         let count = BinaryReader::read_u32_le(&mut r)? as usize;
         let start = r.position();
 
-        let mut entries = Vec::with_capacity(count);
+        let mut entries: Vec<(u32, u32)> = Vec::with_capacity(count);
         for _ in 0..count {
             let offset = BinaryReader::read_u32_le(&mut r)?;
             let size = BinaryReader::read_u32_le(&mut r)?;
@@ -426,24 +426,39 @@ impl Nus3bankParser {
         }
 
         let mut tones = Vec::with_capacity(count);
-        for (tone_idx, (offset, meta_size)) in entries.into_iter().enumerate() {
+        let section_end = section.len() as u64;
+        for tone_idx in 0..count {
+            let (offset, reported_meta_size) = entries[tone_idx];
             let meta_start = start + offset as u64;
-            let section_end = section.len() as u64;
             if meta_start >= section_end {
                 return Err(Nus3bankError::InvalidFormat {
                     reason: format!("TONE meta offset out of bounds (index={})", tone_idx),
                 });
             }
-            // Some files may report a `meta_size` that slightly exceeds the remaining section bytes
-            // (e.g. last entry). Clamp to section end to avoid hard failure; C# readers ignore this size.
-            let meta_end = (meta_start + meta_size as u64).min(section_end);
+
+            // Some files have unreliable `meta_size` in the pointer table (too small), which can
+            // truncate the meta block and later cause exports to lose required fields (e.g. `end[]`).
+            // Prefer using the next entry's offset as the boundary when possible.
+            let next_meta_end = if tone_idx + 1 < count {
+                start + entries[tone_idx + 1].0 as u64
+            } else {
+                section_end
+            };
+            let mut meta_end = next_meta_end;
+            if meta_end <= meta_start {
+                // Fallback to reported size if offsets are not monotonic.
+                meta_end = meta_start.saturating_add(reported_meta_size as u64);
+            }
+            meta_end = meta_end.min(section_end);
+
+            let actual_len = meta_end.saturating_sub(meta_start) as u32;
             r.seek(SeekFrom::Start(meta_start))?;
 
-            // Some BANKTOC files contain placeholder/stub TONE entries (very small `meta_size`),
+            // Some BANKTOC files contain placeholder/stub TONE entries (very small meta blocks),
             // which do not include the full ToneMeta structure. Treat them as removed/ignored.
             // Minimum full header up to `param` is ~100 bytes (depends on name length), so we use a
             // conservative cutoff and fall back to a minimal parse.
-            if meta_size < 104 {
+            if actual_len < 104 {
                 let hash = BinaryReader::read_i32_le(&mut r)?;
                 let unk1 = BinaryReader::read_i32_le(&mut r)?;
                 let mut name_bytes = Vec::new();
@@ -472,7 +487,7 @@ impl Nus3bankParser {
                     unkending: vec![-1],
                     end: Vec::new(),
                     payload: Vec::new(),
-                    meta_size,
+                    meta_size: actual_len,
                     removed: true,
                 });
                 continue;
@@ -480,7 +495,7 @@ impl Nus3bankParser {
 
             let meta_slice = &section[meta_start as usize..meta_end as usize];
             let mut meta = Self::parse_tone_meta_block(meta_slice, tone_idx)?;
-            meta.meta_size = meta_size;
+            meta.meta_size = actual_len;
             tones.push(meta);
         }
 

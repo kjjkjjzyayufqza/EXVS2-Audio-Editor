@@ -12,6 +12,10 @@ mod nus3audio_file_utils;
 mod grp_pending;
 mod grp_template;
 mod grp_list_modal;
+mod dton_pending;
+mod dton_tones_modal;
+mod prop_pending;
+mod prop_edit_modal;
 
 // New modular components
 mod sort_column;

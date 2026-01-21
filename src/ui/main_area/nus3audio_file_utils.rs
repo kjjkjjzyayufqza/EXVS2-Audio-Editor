@@ -35,7 +35,7 @@ impl Nus3audioFileUtils {
     }
 
     /// Register a file removal (in memory only)
-    pub fn register_remove(audio_info: &AudioFileInfo) -> Result<(), String> {
+    pub fn register_remove(audio_info: &AudioFileInfo, selected_file_path: Option<&str>) -> Result<(), String> {
         // Use consistent key format based on file type to match replace_in_memory
         let key = if audio_info.is_nus3bank {
             // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
@@ -49,7 +49,8 @@ impl Nus3audioFileUtils {
         if audio_info.is_nus3bank || audio_info.id.starts_with("0x") {
             // Register with NUS3BANK replacer for proper removal (TONE update)
             let hex_id = audio_info.hex_id.as_ref().unwrap_or(&audio_info.id);
-            crate::nus3bank::replace::Nus3bankReplacer::register_remove(hex_id)?;
+            let file_path = selected_file_path.ok_or_else(|| "No .nus3bank file is selected".to_string())?;
+            crate::nus3bank::replace::Nus3bankReplacer::register_remove(file_path, hex_id)?;
         }
 
         if let Ok(mut changes) = FILE_CHANGES.lock() {
@@ -159,6 +160,7 @@ impl Nus3audioFileUtils {
 
     /// Register an audio file to be added to the NUS3BANK file
     pub fn register_add_nus3bank(
+        selected_file_path: &str,
         audio_info: &AudioFileInfo,
         audio_data: Vec<u8>,
     ) -> Result<(), String> {
@@ -166,6 +168,7 @@ impl Nus3audioFileUtils {
         if audio_info.is_nus3bank {
             // Register with Nus3bankReplacer for file operations
             let _temp_hex_id = crate::nus3bank::replace::Nus3bankReplacer::register_add(
+                selected_file_path,
                 &audio_info.name,
                 audio_data.clone()
             )?;

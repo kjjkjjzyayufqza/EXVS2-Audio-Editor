@@ -3,8 +3,11 @@ use std::collections::HashSet;
 
 use super::{
     add_audio_modal::AddAudioModal, audio_file_info::AudioFileInfo, confirm_modal::ConfirmModal,
+    dton_tones_modal::DtonTonesModal,
     grp_list_modal::GrpListModal,
-    loop_settings_modal::LoopSettingsModal, search_column::SearchColumn, sort_column::SortColumn,
+    loop_settings_modal::LoopSettingsModal, 
+    prop_edit_modal::PropEditModal,
+    search_column::SearchColumn, sort_column::SortColumn,
     toast_message::ToastMessage,
 };
 use crate::ui::audio_player::AudioPlayer;
@@ -64,6 +67,14 @@ pub struct MainArea {
     #[serde(skip)]
     pub grp_list_modal: GrpListModal,
 
+    // DTON tones modal window
+    #[serde(skip)]
+    pub dton_tones_modal: DtonTonesModal,
+
+    // PROP edit modal window
+    #[serde(skip)]
+    pub prop_edit_modal: PropEditModal,
+
     // Pending remove action data
     #[serde(skip)]
     pub pending_remove_audio: Option<AudioFileInfo>,
@@ -83,6 +94,14 @@ pub struct MainArea {
     // Stored file path for batch replace-with-new-audio
     #[serde(skip)]
     pub pending_replace_new_file_path: Option<String>,
+
+    // Pending remove-selected action flag (batch)
+    #[serde(skip)]
+    pub pending_remove_selected: bool,
+
+    // Pending debug: convert all NUS3BANK tracks to PCM WAV (in memory)
+    #[serde(skip)]
+    pub pending_debug_convert_all_wav: bool,
 }
 
 impl Default for MainArea {
@@ -134,6 +153,12 @@ impl MainArea {
             // Initialize GRP list modal
             grp_list_modal: GrpListModal::new(),
 
+            // Initialize DTON tones modal
+            dton_tones_modal: DtonTonesModal::new(),
+
+            // Initialize PROP edit modal
+            prop_edit_modal: PropEditModal::new(),
+
             // Initialize pending remove audio
             pending_remove_audio: None,
 
@@ -146,6 +171,12 @@ impl MainArea {
             // Initialize pending replace with new audio
             pending_replace_new: false,
             pending_replace_new_file_path: None,
+
+            // Initialize pending remove selected
+            pending_remove_selected: false,
+
+            // Initialize pending debug convert all wav
+            pending_debug_convert_all_wav: false,
         }
     }
 

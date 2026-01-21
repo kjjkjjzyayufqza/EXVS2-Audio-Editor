@@ -15,6 +15,10 @@ use std::sync::Mutex;
 
 use super::grp_list_modal::apply_grp_names_to_file;
 use super::grp_pending;
+use super::dton_pending;
+use super::dton_tones_modal::apply_dton_tones_to_file;
+use super::prop_pending;
+use super::prop_edit_modal::apply_prop_to_file;
 
 // Store replaced audio data in a static HashMap.
 // Key format: "file_path:audio_name"; value: replaced audio bytes.
@@ -35,6 +39,105 @@ static REPLACEMENT_FILE_PATHS: Lazy<Mutex<HashMap<String, PathBuf>>> =
 pub struct ReplaceUtils;
 
 impl ReplaceUtils {
+    pub(crate) fn is_standard_pcm16_wav(data: &[u8]) -> bool {
+        // Minimal WAV header check:
+        // - RIFF/WAVE container
+        // - fmt chunk exists
+        // - wFormatTag == 1 (PCM)
+        // - fmt chunk size == 16
+        // - bits_per_sample == 16
+        if data.len() < 12 {
+            return false;
+        }
+        if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
+            return false;
+        }
+
+        let mut p = 12usize;
+        while p + 8 <= data.len() {
+            let cid = &data[p..p + 4];
+            p += 4;
+            let clen = u32::from_le_bytes([data[p], data[p + 1], data[p + 2], data[p + 3]]) as usize;
+            p += 4;
+
+            if p + clen > data.len() {
+                return false;
+            }
+
+            if cid == b"fmt " {
+                if clen != 16 || clen < 16 {
+                    return false;
+                }
+                if p + 16 > data.len() {
+                    return false;
+                }
+                let w_format_tag = u16::from_le_bytes([data[p], data[p + 1]]);
+                let bits_per_sample = u16::from_le_bytes([data[p + 14], data[p + 15]]);
+                return w_format_tag == 1 && bits_per_sample == 16;
+            }
+
+            p += clen;
+            if clen % 2 != 0 {
+                p += 1;
+            }
+        }
+
+        false
+    }
+
+    pub(crate) fn convert_audio_bytes_to_pcm_wav(data: &[u8]) -> Result<Vec<u8>, String> {
+        // Convert arbitrary audio bytes (including non-standard WAV) to a standard PCM WAV
+        // using vgmstream-cli. This is used to normalize legacy WAV payloads that the game
+        // cannot decode (e.g. WAVEFORMATEXTENSIBLE with a custom SubFormat GUID).
+
+        let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
+        if !vgmstream_path.exists() {
+            return Err(format!("vgmstream-cli not found at {:?}", vgmstream_path));
+        }
+
+        let temp_dir = std::env::temp_dir();
+        let input_path = temp_dir.join("nus3bank_in.wav");
+        let output_path = temp_dir.join("nus3bank_out_pcm.wav");
+
+        std::fs::write(&input_path, data)
+            .map_err(|e| format!("Failed to write temp input audio: {}", e))?;
+
+        let mut command = Command::new(&vgmstream_path);
+
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        // -i: ignore any looping information (decode once)
+        // -o: output WAV path
+        let result = command
+            .args([
+                "-i",
+                "-o",
+                &output_path.to_string_lossy(),
+                &input_path.to_string_lossy(),
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run vgmstream-cli: {}", e))?;
+
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            let _ = std::fs::remove_file(&input_path);
+            let _ = std::fs::remove_file(&output_path);
+            return Err(format!("vgmstream-cli error: {}", stderr));
+        }
+
+        let wav_data = std::fs::read(&output_path)
+            .map_err(|e| format!("Failed to read converted WAV data: {}", e))?;
+
+        let _ = std::fs::remove_file(&input_path);
+        let _ = std::fs::remove_file(&output_path);
+
+        Ok(wav_data)
+    }
+
     /// Replace audio data in memory only (does not modify the actual file on disk)
     /// Supports both NUS3AUDIO and NUS3BANK files
     pub fn replace_in_memory(
@@ -884,21 +987,33 @@ impl ReplaceUtils {
             let mut nus3bank_file = crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
                 .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
 
-            crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(&mut nus3bank_file)
+            crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(original_file_path, &mut nus3bank_file)
                 .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
 
             if let Some(names) = grp_pending::get(original_file_path) {
                 apply_grp_names_to_file(&mut nus3bank_file, names);
             }
 
+            if let Some(tones) = dton_pending::get(original_file_path) {
+                apply_dton_tones_to_file(&mut nus3bank_file, tones);
+            }
+
+            if let Some(prop) = prop_pending::get(original_file_path) {
+                apply_prop_to_file(&mut nus3bank_file, Some(prop));
+            }
+
             nus3bank_file
                 .save(save_path)
                 .map_err(|e| format!("Failed to save NUS3BANK file: {}", e))?;
 
-            crate::nus3bank::replace::Nus3bankReplacer::clear();
+            crate::nus3bank::replace::Nus3bankReplacer::clear_for_file(original_file_path);
 
             if grp_pending::has(original_file_path) {
                 let _ = grp_pending::clear(original_file_path);
+            }
+
+            if dton_pending::has(original_file_path) {
+                let _ = dton_pending::clear(original_file_path);
             }
 
             Ok(())
