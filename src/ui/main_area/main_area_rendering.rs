@@ -15,6 +15,9 @@ impl MainArea {
         
         // Show the confirm modal if open
         self.confirm_modal.show(ctx);
+
+        // Show the GRP list modal if open
+        self.grp_list_modal.show(ctx);
         
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render(ui);

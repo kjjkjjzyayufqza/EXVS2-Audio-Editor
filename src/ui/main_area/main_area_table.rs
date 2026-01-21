@@ -24,6 +24,7 @@ impl MainArea {
             remove_index: Option<usize>,
             export_all_confirm: bool,
             add_audio: bool,
+            edit_grp_list: bool,
         }
 
         let mut action_data = ActionData {
@@ -33,6 +34,7 @@ impl MainArea {
             remove_index: None,
             export_all_confirm: false,
             add_audio: false,
+            edit_grp_list: false,
         };
 
         // First, render the UI
@@ -55,6 +57,10 @@ impl MainArea {
                             if ui.button("Add Audio").clicked() {
                                 println!("Add Audio button clicked");
                                 action_data.add_audio = true;
+                            }
+
+                            if ui.button("Edit GRP List").clicked() {
+                                action_data.edit_grp_list = true;
                             }
 
                             // New: Replace with New Audio button (batch)
@@ -202,6 +208,22 @@ impl MainArea {
                         toasts_to_add.push((format!("Add audio failed: {}", e), Color32::RED));
                     }
                 }
+            }
+        }
+
+        // Handle "Edit GRP List" action if clicked
+        if action_data.edit_grp_list {
+            if let Some(file_path) = self.selected_file.clone() {
+                if file_path.to_lowercase().ends_with(".nus3bank") {
+                    self.grp_list_modal.open_for_file(&file_path);
+                } else {
+                    toasts_to_add.push((
+                        "GRP editing is only available for .nus3bank files".to_string(),
+                        Color32::GOLD,
+                    ));
+                }
+            } else {
+                toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
             }
         }
 

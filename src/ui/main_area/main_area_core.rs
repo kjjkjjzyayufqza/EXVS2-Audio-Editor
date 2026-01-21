@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use super::{
     add_audio_modal::AddAudioModal, audio_file_info::AudioFileInfo, confirm_modal::ConfirmModal,
+    grp_list_modal::GrpListModal,
     loop_settings_modal::LoopSettingsModal, search_column::SearchColumn, sort_column::SortColumn,
     toast_message::ToastMessage,
 };
@@ -58,6 +59,10 @@ pub struct MainArea {
     // Confirm dialog modal window
     #[serde(skip)]
     pub confirm_modal: ConfirmModal,
+
+    // GRP list modal window
+    #[serde(skip)]
+    pub grp_list_modal: GrpListModal,
 
     // Pending remove action data
     #[serde(skip)]
@@ -125,6 +130,9 @@ impl MainArea {
 
             // Initialize confirm modal
             confirm_modal: ConfirmModal::new(),
+
+            // Initialize GRP list modal
+            grp_list_modal: GrpListModal::new(),
 
             // Initialize pending remove audio
             pending_remove_audio: None,

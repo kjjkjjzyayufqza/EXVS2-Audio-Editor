@@ -13,6 +13,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
+use super::grp_list_modal::apply_grp_names_to_file;
+use super::grp_pending;
+
 // Store replaced audio data in a static HashMap.
 // Key format: "file_path:audio_name"; value: replaced audio bytes.
 static REPLACED_AUDIO_DATA: Lazy<Mutex<HashMap<String, Vec<u8>>>> =
@@ -878,22 +881,27 @@ impl ReplaceUtils {
                 }
             }
 
-            // Apply NUS3BANK operations if any
-            if crate::nus3bank::replace::Nus3bankReplacer::has_replacement_data() {
-                let mut nus3bank_file = crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
-                    .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
-                
-                crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(&mut nus3bank_file)
-                    .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
-                
-                nus3bank_file.save(save_path)
-                    .map_err(|e| format!("Failed to save NUS3BANK file: {}", e))?;
-                
-                crate::nus3bank::replace::Nus3bankReplacer::clear();
-                return Ok(());
+            let mut nus3bank_file = crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
+                .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
+
+            crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(&mut nus3bank_file)
+                .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
+
+            if let Some(names) = grp_pending::get(original_file_path) {
+                apply_grp_names_to_file(&mut nus3bank_file, names);
             }
 
-            Nus3bankReplacer::apply_replacements_and_save(original_file_path, save_path)
+            nus3bank_file
+                .save(save_path)
+                .map_err(|e| format!("Failed to save NUS3BANK file: {}", e))?;
+
+            crate::nus3bank::replace::Nus3bankReplacer::clear();
+
+            if grp_pending::has(original_file_path) {
+                let _ = grp_pending::clear(original_file_path);
+            }
+
+            Ok(())
         } else {
             // Handle NUS3AUDIO files (original implementation)
             Self::apply_replacements_and_save(original_file_path, save_path)

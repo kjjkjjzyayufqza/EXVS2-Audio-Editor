@@ -9,6 +9,9 @@ mod add_audio_modal;
 mod add_audio_utils;
 mod confirm_modal;
 mod nus3audio_file_utils;
+mod grp_pending;
+mod grp_template;
+mod grp_list_modal;
 
 // New modular components
 mod sort_column;
@@ -27,3 +30,4 @@ pub use audio_file_info::AudioFileInfo;
 pub use replace_utils::ReplaceUtils;
 pub use export_utils::ExportUtils;
 pub use nus3audio_file_utils::Nus3audioFileUtils;
+pub use grp_list_modal::GrpListModal;
