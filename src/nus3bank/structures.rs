@@ -62,7 +62,7 @@ pub struct ToneDes {
     pub hash: i32,
     pub unk1: i32,
     pub name: String,
-    pub data: Vec<f32>, // Expected length: 0x2c
+    pub data: Vec<f32>, // Length varies; bounded by DTON entry size
 }
 
 /// TONE section (C# `NUS_TONE`)

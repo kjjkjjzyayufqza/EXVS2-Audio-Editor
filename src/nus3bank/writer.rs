@@ -246,8 +246,6 @@ impl Nus3bankWriter {
             for f in &tone.data {
                 entry.extend_from_slice(&BinaryReader::write_f32_le(*f));
             }
-            // Follow C# behavior: ensure there's always 4 bytes after each entry.
-            entry.extend_from_slice(&BinaryReader::write_u32_le(0));
 
             let entry_size = entry.len() as u32;
             offsets_and_sizes.push((entry_offset, entry_size));

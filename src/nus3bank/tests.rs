@@ -126,6 +126,36 @@ fn make_sample_file() -> Nus3bankFile {
     }
 }
 
+fn declared_section_total_len(section: &[u8]) -> usize {
+    assert!(section.len() >= 8);
+    let declared_size = u32::from_le_bytes([section[4], section[5], section[6], section[7]]) as usize;
+    8 + declared_size
+}
+
+fn dton_expected_float_counts(bytes: &[u8]) -> Vec<usize> {
+    assert!(bytes.len() >= 12);
+    let count = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) as usize;
+    let start = 12;
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let base = 12 + i * 8;
+        let off = u32::from_le_bytes([bytes[base], bytes[base + 1], bytes[base + 2], bytes[base + 3]]) as usize;
+        let sz = u32::from_le_bytes([bytes[base + 4], bytes[base + 5], bytes[base + 6], bytes[base + 7]]) as usize;
+        let entry_start = start + off;
+        let entry_end = (entry_start + sz).min(bytes.len());
+        assert!(entry_start + 9 <= entry_end);
+
+        let name_len_with_null = bytes[entry_start + 8] as usize;
+        let after_name = entry_start + 9 + name_len_with_null.saturating_sub(1) + 1;
+        let aligned = (after_name + 3) & !3;
+        let header_len = aligned.saturating_sub(entry_start);
+
+        let available = entry_end.saturating_sub(entry_start + header_len);
+        out.push(available / 4);
+    }
+    out
+}
+
 #[test]
 fn parse_real_file_smoke_if_present() {
     let p = std::path::Path::new("se_chr_001gundam_001gundam_001.nus3bank");
@@ -135,6 +165,52 @@ fn parse_real_file_smoke_if_present() {
 
     let parsed = Nus3bankFile::open(p).unwrap();
     assert!(parsed.tone.tones.len() > 0);
+}
+
+#[test]
+fn parse_dton_1_bin_extract() {
+    let bytes: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/dton_1.bin"));
+    assert_eq!(&bytes[0..4], b"DTON");
+    assert_eq!(declared_section_total_len(bytes), bytes.len());
+
+    let dton = super::parser::Nus3bankParser::parse_dton(bytes).unwrap();
+    assert_eq!(dton.tones.len(), 1);
+    assert_eq!(dton.tones[0].name, "Default");
+    assert_eq!(dton.tones[0].unk1, 123456);
+    let expected = dton_expected_float_counts(bytes);
+    assert_eq!(dton.tones[0].data.len(), expected[0]);
+}
+
+#[test]
+fn parse_dton_2_bin_extract() {
+    let bytes: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/dton_2.bin"));
+    assert_eq!(&bytes[0..4], b"DTON");
+    assert_eq!(declared_section_total_len(bytes), bytes.len());
+
+    let dton = super::parser::Nus3bankParser::parse_dton(bytes).unwrap();
+    assert!(!dton.tones.is_empty());
+    assert!(dton.tones.iter().any(|t| t.name == "Default"));
+    let expected = dton_expected_float_counts(bytes);
+    assert_eq!(dton.tones.len(), expected.len());
+    for (i, t) in dton.tones.iter().enumerate() {
+        assert_eq!(t.data.len(), expected[i]);
+    }
+}
+
+#[test]
+fn parse_dton_3_bin_extract() {
+    let bytes: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/dton_3.bin"));
+    assert_eq!(&bytes[0..4], b"DTON");
+    assert_eq!(declared_section_total_len(bytes), bytes.len());
+
+    let dton = super::parser::Nus3bankParser::parse_dton(bytes).unwrap();
+    assert!(!dton.tones.is_empty());
+    assert!(dton.tones.iter().any(|t| t.name == "Default"));
+    let expected = dton_expected_float_counts(bytes);
+    assert_eq!(dton.tones.len(), expected.len());
+    for (i, t) in dton.tones.iter().enumerate() {
+        assert_eq!(t.data.len(), expected[i]);
+    }
 }
 
 #[test]

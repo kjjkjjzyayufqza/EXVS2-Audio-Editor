@@ -54,11 +54,9 @@
             0.0,
             0.0,
             0.0,
-            0.0,
-            null,
             0.0
           ],
-          "data_len": 47,
+          "data_len": 45,
           "hash": -540675,
           "name": "Default",
           "unk1": 123456
@@ -2570,13 +2568,13 @@
         "",
         "",
         "",
+        "BGM_ORC_2ch",
+        "BGM_SONG_2ch",
         "",
-        "",
-        "",
-        "",
-        "",
+        "SE_MAIN_SHOT",
+        "SE_HIT_LIMIT_Group",
         "OUT_51ch",
-        "OUT2ch",
+        "BGM_OUT_2ch",
         "VOL_BGM_STEM5",
         "VOL_BGM_STEM4",
         "VOL_BGM_STEM3",
@@ -2663,7 +2661,7 @@
       }
     },
     "pack": {
-      "data_len": 392500
+      "data_len": 413416
     },
     "prop": {
       "layout": "Extended",
@@ -2675,7 +2673,7 @@
       "unk3": 0
     },
     "tone": {
-      "count": 22,
+      "count": 17,
       "tones": [
         {
           "end": [
@@ -2755,7 +2753,7 @@
           "meta_prefix_len": 0,
           "meta_size": 244,
           "name": "SE_CHR_GUND_01RX78_LASTSHOT",
-          "offset": 40816,
+          "offset": 40804,
           "offsets": [
             2151,
             2579,
@@ -2817,7 +2815,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_01",
-          "offset": 61152,
+          "offset": 61128,
           "offsets": [
             2151,
             2579,
@@ -2879,7 +2877,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_02",
-          "offset": 84048,
+          "offset": 84012,
           "offsets": [
             2151,
             2579,
@@ -2941,7 +2939,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_03",
-          "offset": 98496,
+          "offset": 98448,
           "offsets": [
             2151,
             2579,
@@ -3003,7 +3001,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_04",
-          "offset": 110128,
+          "offset": 110068,
           "offsets": [
             2151,
             2579,
@@ -3065,7 +3063,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_05",
-          "offset": 140192,
+          "offset": 140120,
           "offsets": [
             2151,
             2579,
@@ -3127,7 +3125,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_06",
-          "offset": 161808,
+          "offset": 161724,
           "offsets": [
             2151,
             2579,
@@ -3189,7 +3187,7 @@
           "meta_prefix_len": 0,
           "meta_size": 236,
           "name": "SE_CHR_GUND_01RX78_07",
-          "offset": 196480,
+          "offset": 196384,
           "offsets": [
             2151,
             2579,
@@ -3252,7 +3250,7 @@
           "meta_prefix_len": 0,
           "meta_size": 240,
           "name": "SE_CHR_GUND_01RX78_08",
-          "offset": 240112,
+          "offset": 240004,
           "offsets": [
             2151,
             2579,
@@ -3299,176 +3297,6 @@
           "unkvalues_pair_order": "IndexThenValue"
         },
         {
-          "end": [],
-          "hash": 1,
-          "meta_prefix_len": 0,
-          "meta_size": 12,
-          "name": "",
-          "offset": 0,
-          "offsets": [],
-          "param": [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          "payload_len": 0,
-          "removed": true,
-          "reserved0": 0,
-          "reserved8": 8,
-          "size": 0,
-          "unk1": 255,
-          "unkending": [
-            -1
-          ],
-          "unkvalues": [],
-          "unkvalues_pair_order": "IndexThenValue"
-        },
-        {
-          "end": [],
-          "hash": 1,
-          "meta_prefix_len": 0,
-          "meta_size": 12,
-          "name": "",
-          "offset": 0,
-          "offsets": [],
-          "param": [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          "payload_len": 0,
-          "removed": true,
-          "reserved0": 0,
-          "reserved8": 8,
-          "size": 0,
-          "unk1": 255,
-          "unkending": [
-            -1
-          ],
-          "unkvalues": [],
-          "unkvalues_pair_order": "IndexThenValue"
-        },
-        {
-          "end": [],
-          "hash": 1,
-          "meta_prefix_len": 0,
-          "meta_size": 12,
-          "name": "",
-          "offset": 0,
-          "offsets": [],
-          "param": [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          "payload_len": 0,
-          "removed": true,
-          "reserved0": 0,
-          "reserved8": 8,
-          "size": 0,
-          "unk1": 255,
-          "unkending": [
-            -1
-          ],
-          "unkvalues": [],
-          "unkvalues_pair_order": "IndexThenValue"
-        },
-        {
-          "end": [],
-          "hash": 1,
-          "meta_prefix_len": 0,
-          "meta_size": 12,
-          "name": "",
-          "offset": 0,
-          "offsets": [],
-          "param": [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          "payload_len": 0,
-          "removed": true,
-          "reserved0": 0,
-          "reserved8": 8,
-          "size": 0,
-          "unk1": 255,
-          "unkending": [
-            -1
-          ],
-          "unkvalues": [],
-          "unkvalues_pair_order": "IndexThenValue"
-        },
-        {
-          "end": [],
-          "hash": 1,
-          "meta_prefix_len": 0,
-          "meta_size": 12,
-          "name": "",
-          "offset": 0,
-          "offsets": [],
-          "param": [
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          "payload_len": 0,
-          "removed": true,
-          "reserved0": 0,
-          "reserved8": 8,
-          "size": 0,
-          "unk1": 255,
-          "unkending": [
-            -1
-          ],
-          "unkvalues": [],
-          "unkvalues_pair_order": "IndexThenValue"
-        },
-        {
           "end": [
             48000,
             1,
@@ -3484,7 +3312,7 @@
           "meta_prefix_len": 0,
           "meta_size": 248,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_01",
-          "offset": 290976,
+          "offset": 290860,
           "offsets": [
             2151,
             2579,
@@ -3546,7 +3374,7 @@
           "meta_prefix_len": 0,
           "meta_size": 248,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_02",
-          "offset": 308496,
+          "offset": 308368,
           "offsets": [
             2151,
             2579,
@@ -3608,7 +3436,7 @@
           "meta_prefix_len": 0,
           "meta_size": 248,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_03",
-          "offset": 308496,
+          "offset": 329460,
           "offsets": [
             2151,
             2579,
@@ -3670,7 +3498,7 @@
           "meta_prefix_len": 0,
           "meta_size": 248,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_06",
-          "offset": 329600,
+          "offset": 350552,
           "offsets": [
             2151,
             2579,
@@ -3732,7 +3560,7 @@
           "meta_prefix_len": 0,
           "meta_size": 248,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_05",
-          "offset": 341744,
+          "offset": 362684,
           "offsets": [
             2151,
             2579,
@@ -3794,7 +3622,7 @@
           "meta_prefix_len": 0,
           "meta_size": 248,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_04",
-          "offset": 359264,
+          "offset": 380192,
           "offsets": [
             2151,
             2579,
@@ -3853,9 +3681,9 @@
           ],
           "hash": -2073559041,
           "meta_prefix_len": 0,
-          "meta_size": 248,
+          "meta_size": 244,
           "name": "SE_CHR_001GUNDAM_001GUNDAM_001_07",
-          "offset": 371920,
+          "offset": 392836,
           "offsets": [
             2151,
             2579,
@@ -3908,7 +3736,7 @@
   "toc": [
     {
       "magic": "PROP",
-      "size": 60
+      "size": 36
     },
     {
       "magic": "BINF",
@@ -3916,15 +3744,15 @@
     },
     {
       "magic": "GRP ",
-      "size": 54996
+      "size": 55056
     },
     {
       "magic": "DTON",
-      "size": 224
+      "size": 216
     },
     {
       "magic": "TONE",
-      "size": 4352
+      "size": 4252
     },
     {
       "magic": "JUNK",
@@ -3932,7 +3760,7 @@
     },
     {
       "magic": "PACK",
-      "size": 392500
+      "size": 413416
     }
   ],
   "tracks": [
@@ -3956,7 +3784,7 @@
       "metadata_size": 244,
       "name": "SE_CHR_GUND_01RX78_LASTSHOT",
       "numeric_id": 1,
-      "pack_offset": 40816,
+      "pack_offset": 40804,
       "size": 20324,
       "tone_index": 1
     },
@@ -3968,7 +3796,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_01",
       "numeric_id": 2,
-      "pack_offset": 61152,
+      "pack_offset": 61128,
       "size": 22884,
       "tone_index": 2
     },
@@ -3980,7 +3808,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_02",
       "numeric_id": 3,
-      "pack_offset": 84048,
+      "pack_offset": 84012,
       "size": 14436,
       "tone_index": 3
     },
@@ -3992,7 +3820,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_03",
       "numeric_id": 4,
-      "pack_offset": 98496,
+      "pack_offset": 98448,
       "size": 11620,
       "tone_index": 4
     },
@@ -4004,7 +3832,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_04",
       "numeric_id": 5,
-      "pack_offset": 110128,
+      "pack_offset": 110068,
       "size": 30052,
       "tone_index": 5
     },
@@ -4016,7 +3844,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_05",
       "numeric_id": 6,
-      "pack_offset": 140192,
+      "pack_offset": 140120,
       "size": 21604,
       "tone_index": 6
     },
@@ -4028,7 +3856,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_06",
       "numeric_id": 7,
-      "pack_offset": 161808,
+      "pack_offset": 161724,
       "size": 34660,
       "tone_index": 7
     },
@@ -4040,7 +3868,7 @@
       "metadata_size": 236,
       "name": "SE_CHR_GUND_01RX78_07",
       "numeric_id": 8,
-      "pack_offset": 196480,
+      "pack_offset": 196384,
       "size": 43620,
       "tone_index": 8
     },
@@ -4052,93 +3880,93 @@
       "metadata_size": 240,
       "name": "SE_CHR_GUND_01RX78_08",
       "numeric_id": 9,
-      "pack_offset": 240112,
+      "pack_offset": 240004,
       "size": 50856,
       "tone_index": 9
     },
     {
       "audio_data_len": 17508,
       "audio_format": "Wav",
-      "hex_id": "0xf",
+      "hex_id": "0xa",
       "index": 10,
       "metadata_size": 248,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_01",
-      "numeric_id": 15,
-      "pack_offset": 290976,
+      "numeric_id": 10,
+      "pack_offset": 290860,
       "size": 17508,
-      "tone_index": 15
+      "tone_index": 10
     },
     {
       "audio_data_len": 21092,
       "audio_format": "Wav",
-      "hex_id": "0x10",
+      "hex_id": "0xb",
       "index": 11,
       "metadata_size": 248,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_02",
-      "numeric_id": 16,
-      "pack_offset": 308496,
+      "numeric_id": 11,
+      "pack_offset": 308368,
       "size": 21092,
-      "tone_index": 16
+      "tone_index": 11
     },
     {
       "audio_data_len": 21092,
       "audio_format": "Wav",
-      "hex_id": "0x11",
+      "hex_id": "0xc",
       "index": 12,
       "metadata_size": 248,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_03",
-      "numeric_id": 17,
-      "pack_offset": 308496,
+      "numeric_id": 12,
+      "pack_offset": 329460,
       "size": 21092,
-      "tone_index": 17
+      "tone_index": 12
     },
     {
       "audio_data_len": 12132,
       "audio_format": "Wav",
-      "hex_id": "0x12",
+      "hex_id": "0xd",
       "index": 13,
       "metadata_size": 248,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_06",
-      "numeric_id": 18,
-      "pack_offset": 329600,
+      "numeric_id": 13,
+      "pack_offset": 350552,
       "size": 12132,
-      "tone_index": 18
+      "tone_index": 13
     },
     {
       "audio_data_len": 17508,
       "audio_format": "Wav",
-      "hex_id": "0x13",
+      "hex_id": "0xe",
       "index": 14,
       "metadata_size": 248,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_05",
-      "numeric_id": 19,
-      "pack_offset": 341744,
+      "numeric_id": 14,
+      "pack_offset": 362684,
       "size": 17508,
-      "tone_index": 19
+      "tone_index": 14
     },
     {
       "audio_data_len": 12644,
       "audio_format": "Wav",
-      "hex_id": "0x14",
+      "hex_id": "0xf",
       "index": 15,
       "metadata_size": 248,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_04",
-      "numeric_id": 20,
-      "pack_offset": 359264,
+      "numeric_id": 15,
+      "pack_offset": 380192,
       "size": 12644,
-      "tone_index": 20
+      "tone_index": 15
     },
     {
       "audio_data_len": 20580,
       "audio_format": "Wav",
-      "hex_id": "0x15",
+      "hex_id": "0x10",
       "index": 16,
-      "metadata_size": 248,
+      "metadata_size": 244,
       "name": "SE_CHR_001GUNDAM_001GUNDAM_001_07",
-      "numeric_id": 21,
-      "pack_offset": 371920,
+      "numeric_id": 16,
+      "pack_offset": 392836,
       "size": 20580,
-      "tone_index": 21
+      "tone_index": 16
     }
   ]
 }

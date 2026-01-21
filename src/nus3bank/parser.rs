@@ -323,7 +323,29 @@ impl Nus3bankParser {
         Ok(GrpSection { names })
     }
 
-    fn parse_dton(section: &[u8]) -> Result<DtonSection, Nus3bankError> {
+    pub(crate) fn parse_dton(section: &[u8]) -> Result<DtonSection, Nus3bankError> {
+        if section.len() < 12 {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "DTON section too small".to_string(),
+            });
+        }
+
+        // The section carries its own declared size (excluding the 8-byte header).
+        // Use it to bound parsing, so trailing bytes do not affect offsets.
+        let declared_size =
+            u32::from_le_bytes([section[4], section[5], section[6], section[7]]) as usize;
+        let declared_total = 8usize + declared_size;
+        if declared_total > section.len() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!(
+                    "DTON section truncated: declared_total={} actual={}",
+                    declared_total,
+                    section.len()
+                ),
+            });
+        }
+
+        let section = &section[..declared_total];
         let mut r = Cursor::new(section);
         BinaryReader::assert_magic(&mut r, b"DTON")?;
         let _section_size = BinaryReader::read_u32_le(&mut r)?;
@@ -339,11 +361,13 @@ impl Nus3bankParser {
         }
 
         let mut tones = Vec::with_capacity(count);
-        for (offset, _size) in entries {
+        for (offset, size) in entries {
             let entry_start = start + offset as u64;
+            let entry_end = entry_start
+                .saturating_add(size as u64)
+                .min(section.len() as u64);
             // NOTE:
-            // C# `NusDton.Read` also ignores the pointer-table `size` for parsing. Real files may
-            // contain sizes that don't exactly match the fixed structure length (padding, etc.).
+            // Use the pointer-table `size` to bound parsing for this entry.
             if entry_start >= section.len() as u64 {
                 return Err(Nus3bankError::InvalidFormat {
                     reason: "DTON entry offset out of bounds".to_string(),
@@ -356,8 +380,22 @@ impl Nus3bankParser {
             let name = BinaryReader::read_len_u8_string(&mut r)?;
             BinaryReader::align4(&mut r)?;
 
-            let mut data = Vec::with_capacity(0x2c);
-            for _ in 0..0x2c {
+            let data_start = r.position();
+            if data_start > entry_end {
+                return Err(Nus3bankError::InvalidFormat {
+                    reason: "DTON entry size too small for header".to_string(),
+                });
+            }
+
+            let available = (entry_end - data_start) as usize;
+            let float_bytes = available - (available % 4);
+            let float_count = float_bytes / 4;
+
+            let mut data = Vec::with_capacity(float_count);
+            for _ in 0..float_count {
+                if r.position() + 4 > entry_end {
+                    break;
+                }
                 data.push(BinaryReader::read_f32_le(&mut r)?);
             }
 

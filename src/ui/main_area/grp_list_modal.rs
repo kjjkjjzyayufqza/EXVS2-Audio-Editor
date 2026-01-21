@@ -12,6 +12,7 @@ pub struct GrpListModal {
     find_text: String,
     replace_text: String,
     error: Option<String>,
+    dirty: bool,
 }
 
 impl Default for GrpListModal {
@@ -30,12 +31,14 @@ impl GrpListModal {
             find_text: String::new(),
             replace_text: String::new(),
             error: None,
+            dirty: false,
         }
     }
 
     pub fn open_for_file(&mut self, file_path: &str) {
         self.file_path = Some(file_path.to_string());
         self.error = None;
+        self.dirty = false;
 
         match self.load_names_for_file(file_path) {
             Ok(names) => self.names = names,
@@ -49,11 +52,11 @@ impl GrpListModal {
     }
 
     pub fn show(&mut self, ctx: &Context) {
-        if !self.open {
-            return;
-        }
+        let mut open = self.open;
+        let was_open = open;
 
         Window::new("Edit GRP List")
+            .open(&mut open)
             .min_width(760.0)
             .min_height(520.0)
             .resizable(true)
@@ -61,6 +64,13 @@ impl GrpListModal {
             .show(ctx, |ui| {
                 self.render(ui);
             });
+
+        self.open = open;
+
+        if was_open && !self.open {
+            // If the user closed the window via the X button, persist any pending changes.
+            self.flush_pending();
+        }
     }
 
     fn render(&mut self, ui: &mut Ui) {
@@ -104,6 +114,7 @@ impl GrpListModal {
 
             if ui.button("Replace in Visible").clicked() {
                 self.replace_in_visible();
+                self.dirty = true;
             }
         });
 
@@ -111,24 +122,21 @@ impl GrpListModal {
         ui.horizontal(|ui| {
             if ui.button("Add Row").clicked() {
                 self.names.push(String::new());
+                self.dirty = true;
             }
             if ui.button("Replace with Template").clicked() {
                 self.replace_with_template();
+                self.dirty = true;
             }
             if ui.button("Reload from File").clicked() {
                 self.reload_from_file();
-            }
-            if ui.button("Apply (Pending)").clicked() {
-                if let Err(e) = self.apply_pending() {
-                    self.error = Some(e);
-                } else {
-                    self.error = None;
-                }
-            }
-            if ui.button("Close").clicked() {
-                self.open = false;
+                // Reload means discard staged changes.
+                self.dirty = false;
             }
         });
+
+        // Persist changes automatically, without requiring an "Apply" button.
+        self.flush_pending();
 
         ui.add_space(8.0);
         ui.separator();
@@ -143,10 +151,17 @@ impl GrpListModal {
                 for &i in &visible {
                     ui.horizontal(|ui| {
                         ui.label(format!("{:4}", i));
-                        ui.add_sized([480.0, 22.0], egui::TextEdit::singleline(&mut self.names[i]));
+                        let resp = ui.add_sized(
+                            [480.0, 22.0],
+                            egui::TextEdit::singleline(&mut self.names[i]),
+                        );
+                        if resp.changed() {
+                            self.dirty = true;
+                        }
 
                         if ui.button("Clear").clicked() {
                             self.names[i].clear();
+                            self.dirty = true;
                         }
                         if ui.button("Remove").clicked() {
                             remove_index = Some(i);
@@ -158,6 +173,7 @@ impl GrpListModal {
         if let Some(idx) = remove_index {
             if idx < self.names.len() {
                 self.names.remove(idx);
+                self.dirty = true;
             }
         }
     }
@@ -198,12 +214,23 @@ impl GrpListModal {
         self.error = None;
     }
 
-    fn apply_pending(&mut self) -> Result<(), String> {
-        let path = self
-            .file_path
-            .as_deref()
-            .ok_or_else(|| "No file selected for GRP edit".to_string())?;
-        grp_pending::set(path, self.names.clone())
+    fn flush_pending(&mut self) {
+        if !self.dirty {
+            return;
+        }
+
+        let Some(path) = self.file_path.as_deref() else {
+            self.error = Some("No file selected for GRP edit".to_string());
+            return;
+        };
+
+        if let Err(e) = grp_pending::set(path, self.names.clone()) {
+            self.error = Some(e);
+            return;
+        }
+
+        self.error = None;
+        self.dirty = false;
     }
 
     fn load_names_for_file(&self, file_path: &str) -> Result<Vec<String>, String> {
@@ -222,6 +249,7 @@ impl GrpListModal {
             return;
         };
         self.error = None;
+        let _ = grp_pending::clear(path);
         match Nus3bankFile::open(path) {
             Ok(file) => self.names = file.grp.map(|g| g.names).unwrap_or_default(),
             Err(e) => self.error = Some(format!("Failed to open NUS3BANK file: {}", e)),
