@@ -140,13 +140,17 @@ impl AudioControls {
                     ui.add_space(vertical_gap);
 
                     let mut progress = state_copy.progress();
-                    let slider_width = ui.available_width();
-                    let slider_response = ui.add_sized(
-                        [slider_width, slider_height],
-                        Slider::new(&mut progress, 0.0..=1.0)
-                            .show_value(false)
-                            .text(""),
-                    );
+                    let slider_response = ui
+                        .scope(|ui| {
+                            ui.spacing_mut().slider_width = ui.available_width();
+                            ui.add_sized(
+                                [ui.spacing().slider_width, slider_height],
+                                Slider::new(&mut progress, 0.0..=1.0)
+                                    .show_value(false)
+                                    .text(""),
+                            )
+                        })
+                        .inner;
 
                     if slider_response.drag_stopped() && has_audio {
                         let mut state: std::sync::MutexGuard<'_, AudioState> =
@@ -258,13 +262,17 @@ impl AudioControls {
                         ui.add_space(horizontal_gap);
 
                         let mut progress = state_copy.progress();
-                        let slider_width = ui.available_width() * 0.6;
-                        let slider_response = ui.add_sized(
-                            [slider_width, slider_height],
-                            Slider::new(&mut progress, 0.0..=1.0)
-                                .show_value(false)
-                                .text(""),
-                        );
+                        let slider_response = ui
+                            .scope(|ui| {
+                                ui.spacing_mut().slider_width = ui.available_width() * 0.6;
+                                ui.add_sized(
+                                    [ui.spacing().slider_width, slider_height],
+                                    Slider::new(&mut progress, 0.0..=1.0)
+                                        .show_value(false)
+                                        .text(""),
+                                )
+                            })
+                            .inner;
 
                         if slider_response.drag_stopped() && has_audio {
                             let mut state: std::sync::MutexGuard<'_, AudioState> =
