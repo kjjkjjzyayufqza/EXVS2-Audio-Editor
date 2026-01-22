@@ -200,10 +200,13 @@ impl AddAudioModal {
         if !self.open {
             return;
         }
+        let available_rect = ctx.available_rect();
+        let min_width = available_rect.width() * 0.5;
+        let min_height = available_rect.height() * 0.5;
 
         Window::new("Add New Audio File")
-            .min_width(400.0)
-            .min_height(300.0)
+            .min_width(min_width)
+            .min_height(min_height)
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {

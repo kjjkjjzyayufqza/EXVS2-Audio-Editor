@@ -67,11 +67,15 @@ impl eframe::App for TemplateApp {
         // Display top menu panel
         TopPanel::show(ctx, Some(self));
 
+        let available_rect = ctx.available_rect();
+        let side_panel_width = available_rect.width() * 0.28;
+        let side_panel_min_width = available_rect.width() * 0.2;
+
         // First create the side panel with file list
         egui::SidePanel::left("file_list_panel")
             .resizable(true)
-            .min_width(200.0)
-            .default_width(350.0)
+            .min_width(side_panel_min_width)
+            .default_width(side_panel_width)
             .show(ctx, |ui| {
                 // Display file list component
                 if self.file_list.show(ui) {

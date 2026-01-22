@@ -182,10 +182,13 @@ impl LoopSettingsModal {
 
         if let Some(audio_info) = &self.audio_info {
             let title = format!("Loop Settings - {}", audio_info.name);
+            let available_rect = ctx.available_rect();
+            let min_width = available_rect.width() * 0.5;
+            let min_height = available_rect.height() * 0.5;
 
             Window::new(&title)
-                .min_width(400.0)
-                .min_height(300.0)
+                .min_width(min_width)
+                .min_height(min_height)
                 .resizable(true)
                 .collapsible(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))

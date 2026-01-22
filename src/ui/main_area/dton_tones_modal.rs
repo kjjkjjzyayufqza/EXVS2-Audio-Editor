@@ -74,10 +74,14 @@ impl DtonTonesModal {
     pub fn show(&mut self, ctx: &Context) {
         let mut open = self.open;
         let was_open = open;
+        let available_rect = ctx.available_rect();
+        let min_width = available_rect.width() * 0.8;
+        let min_height = available_rect.height() * 0.7;
 
         Window::new("Edit DTON Tones")
             .open(&mut open)
-            .min_width(980.0)
+            .min_width(min_width)
+            .min_height(min_height)
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {
@@ -231,9 +235,10 @@ impl DtonTonesModal {
         ui.add_space(4.0);
         
         ui.push_id(format!("dton_data_text_{}", idx), |ui| {
+            let data_area_height = ui.available_height() * 0.4;
             ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .max_height(300.0)
+                .max_height(data_area_height)
                 .show(ui, |ui| {
                     let resp = ui.add(
                         egui::TextEdit::multiline(&mut self.data_text)

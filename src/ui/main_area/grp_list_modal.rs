@@ -54,11 +54,14 @@ impl GrpListModal {
     pub fn show(&mut self, ctx: &Context) {
         let mut open = self.open;
         let was_open = open;
+        let available_rect = ctx.available_rect();
+        let min_width = available_rect.width() * 0.7;
+        let min_height = available_rect.height() * 0.7;
 
         Window::new("Edit GRP List")
             .open(&mut open)
-            .min_width(760.0)
-            .min_height(520.0)
+            .min_width(min_width)
+            .min_height(min_height)
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {

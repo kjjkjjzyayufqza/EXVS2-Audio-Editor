@@ -40,10 +40,13 @@ impl AudioPlayer {
     pub fn show(&mut self, ctx: &Context) {
         // Update playback position
         self.update_playback_position();
-        
+
+        let available_rect = ctx.available_rect();
+        let panel_min_height = available_rect.height() * 0.2;
+
         // Display audio player in a bottom panel
         egui::TopBottomPanel::bottom("audio_player_panel")
-            .min_height(120.0)  // Increased height for better UX
+            .min_height(panel_min_height)
             .frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill))
             .resizable(false)
             .show(ctx, |ui| {
@@ -85,7 +88,7 @@ impl AudioPlayer {
         // Check if there's a replacement audio data in memory first (unified method for both file types)
         let replacement_audio_data = ReplaceUtils::get_replacement_data_unified(file_info);
         
-        // 检查是否有添加但尚未保存的音频数据
+        // Check if there is pending added audio data not saved yet
         let pending_added_data = Nus3audioFileUtils::get_pending_added_data(&file_info.name, &file_info.id);
         
         // Determine which audio data to use (replacement or original)
@@ -96,7 +99,7 @@ impl AudioPlayer {
             // The replacement data has already been processed to add loop points during replacement
             replacement_data
         } else if let Some(added_data) = pending_added_data {
-            // 使用待添加的音频数据
+            // Use pending added audio data
             log::info!("Using pending added audio data for: {}", file_info.name);
             added_data
         } else {
@@ -162,10 +165,10 @@ impl AudioPlayer {
         let mut state = self.audio_state.lock().unwrap();
         state.set_audio(audio);
         
-        // 重置循环设置为默认值
+        // Reset loop settings to defaults
         state.set_loop_points(None, None, false);
         
-        // 获取音频特定的循环设置（如果存在）
+        // Apply audio-specific loop settings if present
         let key = format!("{}:{}", file_info.name, file_info.id);
         if let Ok(settings_map) = crate::ui::main_area::ReplaceUtils::get_loop_settings() {
             if let Some(&(start, end, use_custom)) = settings_map.get(&key) {

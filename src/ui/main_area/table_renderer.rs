@@ -28,28 +28,18 @@ impl TableRenderer {
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
     ) {
-        // Set row height and text style
-        let text_height = egui::TextStyle::Body
-            .resolve(ui.style())
-            .size
-            .max(ui.spacing().interact_size.y);
+        // Set row and header height based on available space
+        let header_height = available_height * 0.06;
+        let row_height = available_height * 0.055;
 
-        // ui.set_height(text_height * 2.0); // Set height to twice the text height
-
-        // Define column width with minimum sizes
-        let col_width_checkbox = 18.0; // Narrower checkbox column
-        let remaining_width = (available_width - col_width_checkbox).max(100.0);
-        let col_width_name = remaining_width / 5.0; // Adjusted for better fit
-        let col_width_id = remaining_width / 9.0; // Increased for long IDs
-        let col_width_size = remaining_width / 9.0;
-        let col_width_filename = remaining_width / 5.0;
-        let col_width_type = remaining_width / 10.0;
-        let col_action = remaining_width
-            - col_width_name
-            - col_width_id
-            - col_width_size
-            - col_width_filename
-            - col_width_type;
+        // Define column widths as proportions of the available width
+        let col_width_checkbox = available_width * 0.04;
+        let col_width_name = available_width * 0.22;
+        let col_width_id = available_width * 0.12;
+        let col_width_size = available_width * 0.1;
+        let col_width_filename = available_width * 0.22;
+        let col_width_type = available_width * 0.1;
+        let col_action = available_width * 0.2;
 
         // Header text size
         let heading_size = 17.0;
@@ -63,7 +53,7 @@ impl TableRenderer {
 
         let header_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(
-            Rect::from_min_size(header_rect.min, Vec2::new(header_rect.width(), 35.0)),
+            Rect::from_min_size(header_rect.min, Vec2::new(header_rect.width(), header_height)),
             0.0,
             header_bg_color,
         );
@@ -80,7 +70,7 @@ impl TableRenderer {
                         persistent_selected.contains(&key)
                     });
                     let mut header_checked = all_selected;
-                    let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_width_checkbox, 35.0));
+                    let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_width_checkbox, header_height));
                     ui.scope_builder(egui::UiBuilder::new().max_rect(cell_rect).layout(Layout::centered_and_justified(Direction::LeftToRight)), |ui| {
                         let resp = ui.add(egui::Checkbox::new(&mut header_checked, ""));
                         if resp.changed() {
@@ -111,7 +101,7 @@ impl TableRenderer {
                 let name_text = RichText::new(format!("Name{}", name_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
-                    [col_width_name, 35.0],
+                    [col_width_name, header_height],
                     Button::new(name_text).fill(header_bg_color)
                 ).clicked() {
                     if *sort_column == SortColumn::Name {
@@ -135,7 +125,7 @@ impl TableRenderer {
                 let id_text = RichText::new(format!("ID{}", id_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
-                    [col_width_id, 35.0],
+                    [col_width_id, header_height],
                     Button::new(id_text).fill(header_bg_color)
                 ).clicked() {
                     if *sort_column == SortColumn::Id {
@@ -159,7 +149,7 @@ impl TableRenderer {
                 let size_text = RichText::new(format!("Size{}", size_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
-                    [col_width_size, 35.0],
+                    [col_width_size, header_height],
                     Button::new(size_text).fill(header_bg_color)
                 ).clicked() {
                     if *sort_column == SortColumn::Size {
@@ -183,7 +173,7 @@ impl TableRenderer {
                 let filename_text = RichText::new(format!("Filename{}", filename_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
-                    [col_width_filename, 35.0],
+                    [col_width_filename, header_height],
                     Button::new(filename_text).fill(header_bg_color)
                 ).clicked() {
                     if *sort_column == SortColumn::Filename {
@@ -207,7 +197,7 @@ impl TableRenderer {
                 let type_text = RichText::new(format!("Type{}", type_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
-                    [col_width_type, 35.0],
+                    [col_width_type, header_height],
                     Button::new(type_text).fill(header_bg_color)
                 ).clicked() {
                     if *sort_column == SortColumn::Type {
@@ -220,7 +210,7 @@ impl TableRenderer {
 
                 // Action column header - not sortable
                 ui.add_sized(
-                    [col_action, 35.0],
+                    [col_action, header_height],
                     egui::Label::new(RichText::new("Action").size(heading_size).strong()),
                 )
                 .on_hover_text("Action");
@@ -228,7 +218,6 @@ impl TableRenderer {
             });
 
         // Create table content
-        let row_height = text_height * 2.0;
         let text_size = 16.0;
         // let row_height = ui.spacing().interact_size.y; // if you are adding buttons instead of labels.
         ui.set_min_height(available_height / 3.0); // Adjusted for header and spacing

@@ -10,7 +10,7 @@ impl MainArea {
             .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
             .corner_radius(CornerRadius::same(5))
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.heading("Search");
                     
                     // Toggle advanced search
@@ -21,7 +21,7 @@ impl MainArea {
                 ui.add_space(5.0);
                 
                 // Basic search - always visible
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Search:");
                     if ui.text_edit_singleline(&mut self.search_query).changed() {
                         // Search query changed - will be applied automatically
@@ -36,7 +36,7 @@ impl MainArea {
                     ui.add_space(5.0);
                     
                     // Column selection
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Search in:");
                         egui::ComboBox::from_id_salt("search_column")
                             .selected_text(self.search_column.display_name())

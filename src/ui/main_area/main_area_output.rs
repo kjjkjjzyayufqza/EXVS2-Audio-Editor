@@ -9,13 +9,13 @@ impl MainArea {
             .stroke(Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
             .corner_radius(CornerRadius::same(5))
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.heading("Output Path");
                 });
                 ui.add_space(5.0);
                 
                 // Current output path display
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Path:");
                     let path_text = match &self.output_path {
                         Some(path) => {

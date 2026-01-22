@@ -219,14 +219,11 @@ fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1000.0, 600.0])
-            .with_min_inner_size([1000.0, 600.0])
-            .with_icon(
-                // NOTE: Adding an icon is optional
-                eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
-                    .expect("Failed to load icon"),
-            ),
+        viewport: egui::ViewportBuilder::default().with_icon(
+            // NOTE: Adding an icon is optional
+            eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
+                .expect("Failed to load icon"),
+        ),
         ..Default::default()
     };
     eframe::run_native(

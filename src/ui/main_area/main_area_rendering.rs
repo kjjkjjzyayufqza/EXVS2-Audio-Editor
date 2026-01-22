@@ -98,13 +98,14 @@ impl MainArea {
                     ui.colored_label(Color32::RED, error);
                 } else {
                     println!("aaaa {}", selected);
+                    let placeholder_height = available_height * 0.3;
                     let rect = Rect::from_min_size(
                         ui.cursor().min,
-                        Vec2::new(ui.available_width(), 200.0),
+                        Vec2::new(ui.available_width(), placeholder_height),
                     );
                     ui.painter()
                         .rect_filled(rect, 4.0, Color32::from_rgb(80, 80, 80));
-                    ui.add_space(200.0); // Add space to account for the rect
+                    ui.add_space(placeholder_height); // Add space to account for the rect
 
                     if selected.to_lowercase().ends_with(".nus3audio")
                         || selected.to_lowercase().ends_with(".nus3bank")
@@ -127,13 +128,15 @@ impl MainArea {
         }
         
         // Calculate spacing from top
-        let spacing = 50.0;
+        let available_rect = ui.ctx().available_rect();
+        let spacing = available_rect.height() * 0.08;
+        let toast_offset = available_rect.height() * 0.06;
         
         // Show toast messages
         for (i, toast) in self.toast_messages.iter().enumerate() {
             // Create a toast window at the top center of the screen
             let window_id = egui::Id::new("toast_message").with(i);
-            let pos = [0.0, spacing + (i as f32 * 60.0)];
+            let pos = [0.0, spacing + (i as f32 * toast_offset)];
             
             egui::containers::Window::new("Toast")
                 .id(window_id)
@@ -141,7 +144,10 @@ impl MainArea {
                 .resizable(false)
                 .movable(false)
                 .anchor(Align2::CENTER_TOP, pos)
-                .default_size([300.0, 40.0])
+                .default_size([
+                    available_rect.width() * 0.4,
+                    available_rect.height() * 0.06,
+                ])
                 .show(ui.ctx(), |ui| {
                     ui.vertical_centered(|ui| {
                         ui.colored_label(toast.color, &toast.message);

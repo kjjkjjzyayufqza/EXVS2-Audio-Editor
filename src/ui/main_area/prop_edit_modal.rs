@@ -104,10 +104,14 @@ impl PropEditModal {
     pub fn show(&mut self, ctx: &Context) {
         let mut open = self.open;
         let was_open = open;
+        let available_rect = ctx.available_rect();
+        let min_width = available_rect.width() * 0.7;
+        let min_height = available_rect.height() * 0.7;
 
         Window::new("Edit PROP Section")
             .open(&mut open)
-            .min_width(680.0)
+            .min_width(min_width)
+            .min_height(min_height)
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {
@@ -174,9 +178,10 @@ impl PropEditModal {
             ui.heading("Debug Presets");
             ui.add_space(6.0);
 
+            let preset_list_height = ui.available_height() * 0.3;
             ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .max_height(180.0)
+                .max_height(preset_list_height)
                 .show(ui, |ui| {
                     for (idx, preset) in self.debug_presets.iter().enumerate() {
                         let selected = self.selected_preset == Some(idx);
@@ -208,9 +213,10 @@ impl PropEditModal {
         };
 
         ui.push_id("prop_editor_fields", |ui| {
+            let editor_height = ui.available_height() * 0.6;
             ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .max_height(400.0)
+                .max_height(editor_height)
                 .show(ui, |ui| {
                     ui.group(|ui| {
                         ui.heading("Basic Fields");

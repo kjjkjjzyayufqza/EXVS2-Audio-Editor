@@ -52,7 +52,7 @@ impl MainArea {
                         // Table header
                         ui.heading("Audio File List");
 
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             // Capture Export All button click, show confirm dialog
                             if ui.button("Export All").clicked() {
                                 action_data.export_all_confirm = true;

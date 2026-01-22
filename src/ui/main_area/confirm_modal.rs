@@ -50,10 +50,14 @@ impl ConfirmModal {
         if !self.open {
             return;
         }
-        
+
+        let available_rect = ctx.available_rect();
+        let min_width = available_rect.width() * 0.3;
+        let min_height = available_rect.height() * 0.2;
+
         Window::new(&self.title)
-            .min_width(300.0)
-            .min_height(150.0)
+            .min_width(min_width)
+            .min_height(min_height)
             .resizable(false)
             .collapsible(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))

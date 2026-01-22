@@ -103,7 +103,7 @@ impl FileList {
         ui.add_space(8.0);
         
         // Add search box
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Search:");
             if ui.text_edit_singleline(&mut self.search_query).changed() {
                 // When search query changes, no need to do anything special
@@ -124,8 +124,9 @@ impl FileList {
             if filtered.is_empty() {
                 ui.label("No matching files found.");
             } else {
+                let list_height = ui.available_height() * 0.7;
                 ScrollArea::vertical()
-                    .max_height(400.0)
+                    .max_height(list_height)
                     .show(ui, |ui| {
                         // Copy filtered files to avoid borrowing conflicts
                         let file_paths: Vec<(bool, String, String)> = filtered
