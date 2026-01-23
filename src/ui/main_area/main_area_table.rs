@@ -4,6 +4,7 @@ use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
     replace_utils::ReplaceUtils, table_renderer::TableRenderer, add_audio_utils::AddAudioUtils, nus3audio_file_utils::Nus3audioFileUtils,
 };
+use crate::ui::audio_player::{AudioPlayerAction, LoopMode};
 
 impl MainArea {
     /// Render the audio file table and handle export/play actions
@@ -376,11 +377,16 @@ impl MainArea {
                         log::info!("Loading audio from file: {}", path);
                         match audio_player.load_audio(audio_info, path) {
                             Ok(()) => {
-                                // Start playing
+                                // Update playlist in audio state
                                 let state = audio_player.get_audio_state();
-                                let mut state = state.lock().unwrap();
-                                if !state.is_playing {
-                                    state.toggle_play();
+                                {
+                                    let mut state = state.lock().unwrap();
+                                    state.update_playlist(filtered_audio_files.clone(), &audio_info.name, &audio_info.id);
+                                    
+                                    // Start playing
+                                    if !state.is_playing {
+                                        state.toggle_play();
+                                    }
                                 }
 
                                 toasts_to_add
@@ -1082,5 +1088,128 @@ impl MainArea {
             self.add_toast(message, color);
         }
     }
+
+    /// Handle actions from the audio player (next/previous track)
+    pub fn handle_audio_player_action(&mut self, action: AudioPlayerAction) {
+        match action {
+            AudioPlayerAction::None => {}
+            AudioPlayerAction::PlayNext => {
+                self.play_next_track();
+            }
+            AudioPlayerAction::PlayPrevious => {
+                self.play_previous_track();
+            }
+        }
+    }
+
+    fn play_next_track(&mut self) {
+        let (next_index, playlist) = {
+            let player = match self.audio_player.as_ref() {
+                Some(p) => p,
+                None => return,
+            };
+            let state = player.get_audio_state();
+            let state = state.lock().unwrap();
+            
+            if state.playlist.is_empty() {
+                return;
+            }
+
+            let current_index = state.current_track_index.unwrap_or(0);
+            let next_index = if state.shuffle {
+                // Simple random next track (excluding current if possible)
+                if state.playlist.len() > 1 {
+                    let mut idx = rand::random_range(0..state.playlist.len());
+                    while idx == current_index {
+                        idx = rand::random_range(0..state.playlist.len());
+                    }
+                    idx
+                } else {
+                    0
+                }
+            } else {
+                // Play tracks in order by ID (playlist is already sorted)
+                let next = current_index + 1;
+                if next >= state.playlist.len() {
+                    // At the end of playlist
+                    match state.loop_mode {
+                        LoopMode::All => 0, // Loop back to first track
+                        LoopMode::None => {
+                            // In None mode, stop at the end when manually clicking next
+                            return;
+                        }
+                        LoopMode::Single => {
+                            // In Single mode, stay on current track when manually clicking next
+                            return;
+                        }
+                    }
+                } else {
+                    next
+                }
+            };
+            
+            (next_index, state.playlist.clone())
+        };
+
+        let next_track = &playlist[next_index];
+        let file_path = self.selected_file.clone();
+        if let Some(path) = file_path {
+            if let Some(player) = &mut self.audio_player {
+                if let Ok(()) = player.load_audio(next_track, &path) {
+                    let state = player.get_audio_state();
+                    let mut state = state.lock().unwrap();
+                    state.current_track_index = Some(next_index);
+                    // load_audio already starts playback via set_audio, no need to toggle again
+                    self.add_toast(format!("Now playing: {}", next_track.name), Color32::GREEN);
+                }
+            }
+        }
+    }
+
+    fn play_previous_track(&mut self) {
+        let (prev_index, playlist) = {
+            let player = match self.audio_player.as_ref() {
+                Some(p) => p,
+                None => return,
+            };
+            let state = player.get_audio_state();
+            let state = state.lock().unwrap();
+            
+            if state.playlist.is_empty() {
+                return;
+            }
+
+            let current_index = state.current_track_index.unwrap_or(0);
+            let prev_index = if current_index == 0 {
+                // At the beginning of playlist
+                match state.loop_mode {
+                    LoopMode::All => state.playlist.len() - 1, // Loop to last track
+                    LoopMode::None | LoopMode::Single => {
+                        // Stay at first track
+                        0
+                    }
+                }
+            } else {
+                current_index - 1
+            };
+            
+            (prev_index, state.playlist.clone())
+        };
+
+        let prev_track = &playlist[prev_index];
+        let file_path = self.selected_file.clone();
+        if let Some(path) = file_path {
+            if let Some(player) = &mut self.audio_player {
+                if let Ok(()) = player.load_audio(prev_track, &path) {
+                    let state = player.get_audio_state();
+                    let mut state = state.lock().unwrap();
+                    state.current_track_index = Some(prev_index);
+                    // load_audio already starts playback via set_audio, no need to toggle again
+                    self.add_toast(format!("Now playing: {}", prev_track.name), Color32::GREEN);
+                }
+            }
+        }
+    }
 }
+
 

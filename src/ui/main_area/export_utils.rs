@@ -132,8 +132,8 @@ impl ExportUtils {
         // Get the correct vgmstream index using intelligent detection
         let vgmstream_index = Self::get_vgmstream_index(&audio_file_info.id, original_file_path)?;
         
-        println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
-        println!("Temp output path: {:?}", temp_output_path);
+        // println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
+        // println!("Temp output path: {:?}", temp_output_path);
         
         // Build args vector so we can print full command before execution
         let args_vec: Vec<String> = vec![
@@ -144,17 +144,17 @@ impl ExportUtils {
             vgmstream_index.clone(),
             original_file_path.to_string(),
         ];
-        println!(
-            "Running command: {:?} {}",
-            vgmstream_path,
-            args_vec.join(" ")
-        );
+        // println!(
+        //     "Running command: {:?} {}",
+        //     vgmstream_path,
+        //     args_vec.join(" ")
+        // );
 
         let result = command
             .args(&args_vec)
             .output();
 
-        println!("Exporting command result: {:?}", result);
+        // println!("Exporting command result: {:?}", result);
 
         match result {
             Ok(output) => {
@@ -208,7 +208,7 @@ impl ExportUtils {
         // Get the correct vgmstream index using intelligent detection
         let vgmstream_index = Self::get_vgmstream_index(&audio_file_info.id, original_file_path)?;
         
-        println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
+        // println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
 
         let args_vec: Vec<String> = vec![
             "-i".to_string(),
@@ -218,21 +218,21 @@ impl ExportUtils {
             vgmstream_index.clone(),
             original_file_path.to_string(),
         ];
-        println!(
-            "Running command: {:?} {}",
-            vgmstream_path,
-            args_vec.join(" ")
-        );
+        // println!(
+        //     "Running command: {:?} {}",
+        //     vgmstream_path,
+        //     args_vec.join(" ")
+        // );
 
         let result = command
             .args(&args_vec)
             .output();
 
-        println!("Exporting command result: {:?}", result);
+        // println!("Exporting command result: {:?}", result);
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    println!("Successfully exported WAV file to: {:?}", output_path);
+                    // println!("Successfully exported WAV file to: {:?}", output_path);
                     Ok(output_path_str)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
@@ -257,10 +257,10 @@ impl ExportUtils {
             Err(e) => return Err(format!("Failed to load nus3audio file: {}", e)),
         };
 
-        println!(
-            "Loaded nus3audio file with {} audio files",
-            nus3audio_file.files.len()
-        );
+        // println!(
+        //     "Loaded nus3audio file with {} audio files",
+        //     nus3audio_file.files.len()
+        // );
 
         let mut exported_paths = Vec::new();
         let output_dir_path = Path::new(output_dir);
@@ -296,7 +296,7 @@ impl ExportUtils {
                 }
             };
             
-            println!("Original ID: {}, Detected vgmstream index: {}", audio_file.id, vgmstream_index);
+            // println!("Original ID: {}, Detected vgmstream index: {}", audio_file.id, vgmstream_index);
 
             let args_vec: Vec<String> = vec![
                 "-o".to_string(),
@@ -305,11 +305,11 @@ impl ExportUtils {
                 vgmstream_index.clone(),
                 original_file_path.to_string(),
             ];
-            println!(
-                "Running command: {:?} {}",
-                vgmstream_path,
-                args_vec.join(" ")
-            );
+            // println!(
+            //     "Running command: {:?} {}",
+            //     vgmstream_path,
+            //     args_vec.join(" ")
+            // );
 
             let result = command
                 .args(&args_vec)
@@ -318,7 +318,7 @@ impl ExportUtils {
             match result {
                 Ok(output) => {
                     if output.status.success() {
-                        println!("Successfully exported WAV file to: {:?}", output_path);
+                        // println!("Successfully exported WAV file to: {:?}", output_path);
                         exported_paths.push(output_path_str);
                     } else {
                         let error = String::from_utf8_lossy(&output.stderr);
@@ -376,17 +376,17 @@ impl ExportUtils {
             vgmstream_index.to_string(),
             original_file_path.to_string(),
         ];
-        println!(
-            "Running command: {:?} {}",
-            vgmstream_path,
-            args_vec.join(" ")
-        );
+        // println!(
+        //     "Running command: {:?} {}",
+        //     vgmstream_path,
+        //     args_vec.join(" ")
+        // );
 
         let result = command
             .args(&args_vec)
             .output();
 
-        println!("Exporting command (NUS3BANK) result: {:?}", result);
+        // println!("Exporting command (NUS3BANK) result: {:?}", result);
 
         match result {
             Ok(output) => {
@@ -446,21 +446,21 @@ impl ExportUtils {
             vgmstream_index.to_string(),
             original_file_path.to_string(),
         ];
-        println!(
-            "Running command: {:?} {}",
-            vgmstream_path,
-            args_vec.join(" ")
-        );
+        // println!(
+        //     "Running command: {:?} {}",
+        //     vgmstream_path,
+        //     args_vec.join(" ")
+        // );
 
         let result = command
             .args(&args_vec)
             .output();
 
-        println!("Exporting command (NUS3BANK) result: {:?}", result);
+        // println!("Exporting command (NUS3BANK) result: {:?}", result);
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    println!("Successfully exported WAV file to: {:?}", output_path);
+                    // println!("Successfully exported WAV file to: {:?}", output_path);
                     Ok(output_path_str)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);

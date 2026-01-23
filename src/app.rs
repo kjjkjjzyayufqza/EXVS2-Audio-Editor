@@ -93,7 +93,8 @@ impl eframe::App for TemplateApp {
 
         // Display audio player (if initialized)
         if let Some(audio_player) = &mut self.main_area.audio_player {
-            audio_player.show(ctx);
+            let action = audio_player.show(ctx);
+            self.main_area.handle_audio_player_action(action);
         }
     }
 }

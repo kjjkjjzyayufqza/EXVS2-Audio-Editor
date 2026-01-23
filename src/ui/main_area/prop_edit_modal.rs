@@ -10,10 +10,9 @@ pub struct PropEditModal {
     prop: Option<PropSection>,
     error: Option<String>,
     dirty: bool,
-    debug_mode: bool,
     
-    // Debug preset values
-    debug_presets: Vec<DebugPreset>,
+    // Preset values
+    presets: Vec<DebugPreset>,
     selected_preset: Option<usize>,
 }
 
@@ -37,7 +36,7 @@ impl Default for PropEditModal {
 
 impl PropEditModal {
     pub fn new() -> Self {
-        let debug_presets = vec![
+        let presets = vec![
             DebugPreset {
                 name: "Preset 1: Test (Minimal)".to_string(),
                 project: "Test".to_string(),
@@ -76,8 +75,7 @@ impl PropEditModal {
             prop: None,
             error: None,
             dirty: false,
-            debug_mode: false,
-            debug_presets,
+            presets,
             selected_preset: None,
         }
     }
@@ -144,12 +142,9 @@ impl PropEditModal {
         ui.separator();
         ui.add_space(8.0);
 
-        ui.horizontal(|ui| {
-            if ui.button("Reload from File").clicked() {
-                self.reload_from_file();
-            }
-            ui.checkbox(&mut self.debug_mode, "Debug Mode");
-        });
+        if ui.button("Reload from File").clicked() {
+            self.reload_from_file();
+        }
 
         ui.add_space(8.0);
         ui.separator();
@@ -164,18 +159,16 @@ impl PropEditModal {
             return;
         }
 
-        // Debug preset selector
-        if self.debug_mode {
-            self.render_debug_presets(ui);
-        }
+        // Preset selector
+        self.render_presets(ui);
 
         // Main editor
         self.render_prop_editor(ui);
     }
 
-    fn render_debug_presets(&mut self, ui: &mut Ui) {
+    fn render_presets(&mut self, ui: &mut Ui) {
         ui.group(|ui| {
-            ui.heading("Debug Presets");
+            ui.heading("Presets");
             ui.add_space(6.0);
 
             let preset_list_height = ui.available_height() * 0.3;
@@ -183,7 +176,7 @@ impl PropEditModal {
                 .auto_shrink([false, false])
                 .max_height(preset_list_height)
                 .show(ui, |ui| {
-                    for (idx, preset) in self.debug_presets.iter().enumerate() {
+                    for (idx, preset) in self.presets.iter().enumerate() {
                         let selected = self.selected_preset == Some(idx);
                         if ui.selectable_label(selected, &preset.name).clicked() {
                             self.selected_preset = Some(idx);
@@ -320,11 +313,11 @@ impl PropEditModal {
         let Some(idx) = self.selected_preset else {
             return;
         };
-        if idx >= self.debug_presets.len() {
+        if idx >= self.presets.len() {
             return;
         }
 
-        let preset = &self.debug_presets[idx];
+        let preset = &self.presets[idx];
         self.prop = Some(PropSection {
             project: preset.project.clone(),
             timestamp: preset.timestamp.clone(),
@@ -363,8 +356,8 @@ impl PropEditModal {
             layout: prop.layout,
         };
 
-        self.debug_presets.push(new_preset);
-        self.selected_preset = Some(self.debug_presets.len() - 1);
+        self.presets.push(new_preset);
+        self.selected_preset = Some(self.presets.len() - 1);
     }
 
     fn create_default_prop(&mut self) {

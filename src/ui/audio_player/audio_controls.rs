@@ -1,5 +1,5 @@
-use super::audio_state::AudioState;
-use egui::{widgets::Slider, Color32, Frame, RichText, CornerRadius, Ui};
+use super::audio_state::{AudioState, LoopMode};
+use egui::{Align, Color32, CornerRadius, Frame, Layout, RichText, Ui, Vec2, widgets::Slider};
 use egui_phosphor::regular;
 use std::sync::{Arc, Mutex};
 
@@ -33,336 +33,293 @@ impl AudioControls {
         let has_audio = state_copy.current_audio.is_some();
 
         let available_width = ui.available_width();
-        let available_height = ui.available_height();
-        let is_narrow = available_width <= available_height * 1.2;
-        let horizontal_gap = available_width * 0.02;
-        let vertical_gap = available_height * 0.04;
 
-        // Frame around the controls
+        // Music player style frame
         Frame::new()
-            .inner_margin(8.0)
+            .inner_margin(12.0)
             .fill(ui.visuals().window_fill)
-            .corner_radius(CornerRadius::same(6))
+            .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+            .corner_radius(CornerRadius::same(12))
             .show(ui, |ui| {
-                let render_volume_controls = |ui: &mut Ui, slider_width: f32, slider_height: f32| {
-                    // Volume slider (render first for right-to-left layout)
-                    let mut volume = state_copy.volume * 100.0; // Convert 0-1 to 0-100 for display
-                    let slider_response = ui
-                        .scope(|ui| {
-                            ui.spacing_mut().slider_width = slider_width;
-                            ui.add_sized(
-                                [ui.spacing().slider_width, slider_height],
-                                Slider::new(&mut volume, 0.0..=100.0)
-                                    .text("")
-                                    .show_value(false),
-                            )
-                        })
-                        .inner;
+                ui.vertical(|ui| {
+                    // Top Row: Info and Volume
+                    ui.horizontal(|ui| {
+                        // Info Section (Left)
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(available_width * 0.5, 45.0),
+                            Layout::left_to_right(Align::Center),
+                            |ui| {
+                                if let Some(audio) = &state_copy.current_audio {
+                                    ui.horizontal(|ui| {
+                                        // Track Icon
+                                        let icon = match audio.file_type.as_str() {
+                                            "OPUS Audio" => regular::MUSIC_NOTE,
+                                            "IDSP Audio" => regular::HEADPHONES,
+                                            _ => regular::FILE_AUDIO,
+                                        };
 
-                    if slider_response.changed() {
-                        let mut state = self.audio_state.lock().unwrap();
-                        state.set_volume(volume / 100.0); // Convert back to 0-1 for storage
-                    }
+                                        let type_color = match audio.file_type.as_str() {
+                                            "OPUS Audio" => Color32::from_rgb(100, 200, 100),
+                                            "IDSP Audio" => Color32::from_rgb(100, 150, 255),
+                                            _ => Color32::from_rgb(200, 150, 100),
+                                        };
 
-                    // Volume button with phosphor icon (render second for right-to-left layout)
-                    let (volume_icon, _icon_name) =
-                        if state_copy.is_muted || state_copy.volume <= 0.0 {
-                            (regular::SPEAKER_NONE, "SPEAKER_NONE")
-                        } else if state_copy.volume < 0.33 {
-                            (regular::SPEAKER_LOW, "SPEAKER_LOW")
-                        } else if state_copy.volume < 0.66 {
-                            (regular::SPEAKER_HIGH, "SPEAKER_HIGH")
-                        } else {
-                            (regular::SPEAKER_HIGH, "SPEAKER_HIGH")
-                        };
+                                        ui.label(
+                                            RichText::new(icon.to_string())
+                                                .size(24.0)
+                                                .color(type_color),
+                                        );
 
-                    let volume_button_response = ui.scope(|ui| {
-                        let volume_color = if state_copy.is_muted || state_copy.volume <= 0.0 {
-                            Color32::from_gray(150)
-                        } else {
-                            Color32::from_rgb(100, 150, 255)
-                        };
+                                        ui.vertical(|ui| {
+                                            ui.label(
+                                                RichText::new(&audio.name)
+                                                    .color(ui.visuals().strong_text_color())
+                                                    .size(15.0)
+                                                    .strong(),
+                                            );
 
-                        ui.add(egui::Button::new(
-                            egui::RichText::new(volume_icon.to_string())
-                                .size(16.0)
-                                .color(volume_color),
-                        ))
-                    }).inner;
+                                            ui.label(
+                                                RichText::new(&audio.file_type)
+                                                    .color(type_color)
+                                                    .size(11.0),
+                                            );
+                                        });
+                                    });
+                                } else {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(regular::MUSIC_NOTES_PLUS.to_string())
+                                                .size(24.0)
+                                                .color(ui.visuals().weak_text_color()),
+                                        );
+                                        ui.label(
+                                            RichText::new("No track selected")
+                                                .color(ui.visuals().weak_text_color())
+                                                .italics()
+                                                .size(14.0),
+                                        );
+                                    });
+                                }
+                            },
+                        );
 
-                    if volume_button_response.clicked() {
-                        let mut state = self.audio_state.lock().unwrap();
-                        state.toggle_mute();
-                    }
-                };
-
-                let slider_height = available_height * if is_narrow { 0.12 } else { 0.1 };
-                let volume_slider_width = available_width * 0.12;
-
-                ui.add_space(vertical_gap);
-
-                if is_narrow {
-                    ui.vertical(|ui| {
-                        // Audio file name display (if any)
-                        if let Some(audio) = &state_copy.current_audio {
-                            ui.label(
-                                RichText::new(&audio.name)
-                                    .color(ui.visuals().strong_text_color())
-                                    .size(16.0),
-                            );
-
-                            ui.add_space(vertical_gap);
-
-                            // Audio type label with color
-                            let type_color = match audio.file_type.as_str() {
-                                "OPUS Audio" => Color32::from_rgb(100, 200, 100),
-                                "IDSP Audio" => Color32::from_rgb(100, 150, 255),
-                                _ => Color32::from_rgb(200, 150, 100),
-                            };
-
-                            ui.label(RichText::new(&audio.file_type).color(type_color).size(14.0));
-                        } else {
-                            ui.label(
-                                RichText::new("No audio file loaded")
-                                    .color(ui.visuals().weak_text_color()),
-                            );
-                        }
+                        // Volume Section (Right)
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            self.render_volume_controls(ui, &state_copy);
+                        });
                     });
 
-                    ui.add_space(vertical_gap);
+                    ui.add_space(6.0);
 
-                    // Progress row (time + slider + duration)
+                    // Middle Row: Progress Slider
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(state_copy.format_position())
                                 .monospace()
-                                .size(14.0),
+                                .size(11.0)
+                                .color(ui.visuals().weak_text_color()),
                         );
-                        ui.add_space(horizontal_gap);
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(state_copy.format_duration())
-                                    .monospace()
-                                    .size(14.0),
-                            );
-                        });
-                    });
-
-                    ui.add_space(vertical_gap);
-
-                    let mut progress = state_copy.progress();
-                    let slider_response = ui
-                        .scope(|ui| {
-                            ui.spacing_mut().slider_width = ui.available_width();
-                            ui.add_sized(
-                                [ui.spacing().slider_width, slider_height],
-                                Slider::new(&mut progress, 0.0..=1.0)
-                                    .show_value(false)
-                                    .text(""),
-                            )
-                        })
-                        .inner;
-
-                    if slider_response.drag_stopped() && has_audio {
-                        let mut state: std::sync::MutexGuard<'_, AudioState> =
-                            self.audio_state.lock().unwrap();
-                        let new_position = progress * state.total_duration;
-                        state.set_position(new_position);
-                    }
-
-                    ui.add_space(vertical_gap);
-
-                    ui.horizontal_wrapped(|ui| {
-                        // Play/pause button with phosphor icons
-                        let (play_icon, _icon_name, play_color) = if state_copy.is_playing {
-                            (
-                                regular::PAUSE_CIRCLE,
-                                "PAUSE_CIRCLE",
-                                Color32::from_rgb(255, 200, 100),
-                            )
-                        } else {
-                            (
-                                regular::PLAY_CIRCLE,
-                                "PLAY_CIRCLE",
-                                Color32::from_rgb(100, 255, 150),
-                            )
-                        };
-
-                        let play_button_color = if has_audio {
-                            play_color
-                        } else {
-                            Color32::from_gray(150)
-                        };
-
-                        let rich_text = egui::RichText::new(play_icon.to_string())
-                            .size(24.0)
-                            .color(play_button_color);
-
-                        if ui.add(egui::Button::new(rich_text)).clicked() && has_audio {
-                            let mut state = self.audio_state.lock().unwrap();
-                            state.toggle_play();
-                        }
-
-                        ui.add_space(horizontal_gap);
-
-                        let stop_button_color = if has_audio
-                            && (state_copy.is_playing || state_copy.current_position > 0.0)
-                        {
-                            Color32::from_rgb(255, 100, 100)
-                        } else {
-                            Color32::from_gray(150)
-                        };
-
-                        let rich_text =
-                            egui::RichText::new(regular::STOP_CIRCLE.to_string())
-                                .size(24.0)
-                                .color(stop_button_color);
-
-                        if ui.add(egui::Button::new(rich_text)).clicked()
-                            && has_audio
-                            && (state_copy.is_playing || state_copy.current_position > 0.0)
-                        {
-                            let mut state = self.audio_state.lock().unwrap();
-                            state.stop();
-                        }
-
-                        ui.add_space(horizontal_gap);
-
-                        render_volume_controls(ui, volume_slider_width, slider_height);
-                    });
-                } else {
-                    ui.horizontal(|ui| {
-                        // Audio file name display (if any)
-                        if let Some(audio) = &state_copy.current_audio {
-                            ui.label(
-                                RichText::new(&audio.name)
-                                    .color(ui.visuals().strong_text_color())
-                                    .size(16.0),
-                            );
-
-                            ui.add_space(horizontal_gap);
-
-                            let type_color = match audio.file_type.as_str() {
-                                "OPUS Audio" => Color32::from_rgb(100, 200, 100),
-                                "IDSP Audio" => Color32::from_rgb(100, 150, 255),
-                                _ => Color32::from_rgb(200, 150, 100),
-                            };
-
-                            ui.label(RichText::new(&audio.file_type).color(type_color).size(14.0));
-                        } else {
-                            ui.label(
-                                RichText::new("No audio file loaded")
-                                    .color(ui.visuals().weak_text_color()),
-                            );
-                        }
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(volume_slider_width + 40.0, slider_height),
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    render_volume_controls(ui, volume_slider_width, slider_height);
-                                },
-                            );
-                        });
-                    });
-
-                    ui.add_space(vertical_gap);
-
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(state_copy.format_position())
-                                .monospace()
-                                .size(14.0),
-                        );
-
-                        ui.add_space(horizontal_gap);
 
                         let mut progress = state_copy.progress();
-                        let slider_response = ui
-                            .scope(|ui| {
-                                ui.spacing_mut().slider_width = ui.available_width() * 0.6;
-                                ui.add_sized(
-                                    [ui.spacing().slider_width, slider_height],
-                                    Slider::new(&mut progress, 0.0..=1.0)
-                                        .show_value(false)
-                                        .text(""),
-                                )
-                            })
-                            .inner;
+                        let slider_width = ui.available_width() - 50.0;
+
+                        // Custom styled slider
+                        ui.spacing_mut().slider_width = slider_width;
+                        let slider_response = ui.add(
+                            Slider::new(&mut progress, 0.0..=1.0)
+                                .show_value(false)
+                                .text(""),
+                        );
 
                         if slider_response.drag_stopped() && has_audio {
-                            let mut state: std::sync::MutexGuard<'_, AudioState> =
-                                self.audio_state.lock().unwrap();
+                            let mut state = self.audio_state.lock().unwrap();
                             let new_position = progress * state.total_duration;
                             state.set_position(new_position);
                         }
 
-                        ui.add_space(horizontal_gap);
-
                         ui.label(
                             RichText::new(state_copy.format_duration())
                                 .monospace()
-                                .size(14.0),
+                                .size(11.0)
+                                .color(ui.visuals().weak_text_color()),
                         );
+                    });
 
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let (play_icon, _icon_name, play_color) = if state_copy.is_playing {
-                                (
-                                    regular::PAUSE_CIRCLE,
-                                    "PAUSE_CIRCLE",
-                                    Color32::from_rgb(255, 200, 100),
-                                )
+                    ui.add_space(6.0);
+
+                    // Bottom Row: Playback Controls
+                    ui.vertical_centered(|ui| {
+                        ui.horizontal_centered(|ui| {
+                            let accent_color = Color32::from_rgb(100, 150, 255);
+                            ui.spacing_mut().item_spacing.x = 20.0;
+
+                            // Shuffle Button
+                            let shuffle_color = if state_copy.shuffle {
+                                accent_color
                             } else {
-                                (
-                                    regular::PLAY_CIRCLE,
-                                    "PLAY_CIRCLE",
-                                    Color32::from_rgb(100, 255, 150),
+                                ui.visuals().widgets.noninteractive.fg_stroke.color
+                            };
+                            let shuffle_btn = ui.add(
+                                egui::Button::new(
+                                    RichText::new(regular::SHUFFLE.to_string())
+                                        .size(18.0)
+                                        .color(shuffle_color),
                                 )
-                            };
-
-                            let play_button_color = if has_audio {
-                                play_color
-                            } else {
-                                Color32::from_gray(150)
-                            };
-
-                            let rich_text = egui::RichText::new(play_icon.to_string())
-                                .size(24.0)
-                                .color(play_button_color);
-
-                            if ui.add(egui::Button::new(rich_text)).clicked() && has_audio {
-                                let mut state = self.audio_state.lock().unwrap();
-                                state.toggle_play();
+                                .frame(false),
+                            );
+                            if shuffle_btn.on_hover_text("Shuffle").clicked() {
+                                self.audio_state.lock().unwrap().toggle_shuffle();
                             }
 
-                            ui.add_space(horizontal_gap);
+                            // Previous Button
+                            let prev_btn = ui.add(
+                                egui::Button::new(
+                                    RichText::new(regular::SKIP_BACK.to_string())
+                                        .size(22.0),
+                                )
+                                .frame(false),
+                            );
+                            if prev_btn.on_hover_text("Previous Track").clicked() {
+                                self.audio_state.lock().unwrap().previous_track();
+                            }
 
-                            let stop_button_color = if has_audio
-                                && (state_copy.is_playing || state_copy.current_position > 0.0)
-                            {
-                                Color32::from_rgb(255, 100, 100)
+                            // Play/Pause Button
+                            let play_icon = if state_copy.is_playing {
+                                regular::PAUSE_CIRCLE
                             } else {
-                                Color32::from_gray(150)
+                                regular::PLAY_CIRCLE
+                            };
+                            let play_color = if has_audio {
+                                if state_copy.is_playing {
+                                    Color32::from_rgb(255, 200, 100)
+                                } else {
+                                    Color32::from_rgb(100, 255, 150)
+                                }
+                            } else {
+                                ui.visuals()
+                                    .widgets
+                                    .noninteractive
+                                    .fg_stroke
+                                    .color
+                                    .gamma_multiply(0.5)
                             };
 
-                            let rich_text =
-                                egui::RichText::new(regular::STOP_CIRCLE.to_string())
-                                    .size(24.0)
-                                    .color(stop_button_color);
-
-                            if ui.add(egui::Button::new(rich_text)).clicked()
+                            let play_btn = ui.add(
+                                egui::Button::new(
+                                    RichText::new(play_icon.to_string())
+                                        .size(38.0)
+                                        .color(play_color),
+                                )
+                                .frame(false),
+                            );
+                            if play_btn
+                                .on_hover_text(if state_copy.is_playing {
+                                    "Pause"
+                                } else {
+                                    "Play"
+                                })
+                                .clicked()
                                 && has_audio
-                                && (state_copy.is_playing || state_copy.current_position > 0.0)
                             {
-                                let mut state = self.audio_state.lock().unwrap();
-                                state.stop();
+                                self.audio_state.lock().unwrap().toggle_play();
+                            }
+
+                            // Next Button
+                            let next_btn = ui.add(
+                                egui::Button::new(
+                                    RichText::new(regular::SKIP_FORWARD.to_string())
+                                        .size(22.0),
+                                )
+                                .frame(false),
+                            );
+                            if next_btn.on_hover_text("Next Track").clicked() {
+                                self.audio_state.lock().unwrap().next_track();
+                            }
+
+                            // Loop Button
+                            let (loop_icon, loop_color, loop_text) =
+                                match state_copy.loop_mode {
+                                    LoopMode::None => (
+                                        regular::REPEAT,
+                                        ui.visuals().widgets.noninteractive.fg_stroke.color,
+                                        "Loop: Off",
+                                    ),
+                                    LoopMode::All => {
+                                        (regular::REPEAT, accent_color, "Loop: All")
+                                    }
+                                    LoopMode::Single => {
+                                        (regular::REPEAT_ONCE, accent_color, "Loop: One")
+                                    }
+                                };
+
+                            let loop_btn = ui.add(
+                                egui::Button::new(
+                                    RichText::new(loop_icon.to_string())
+                                        .size(18.0)
+                                        .color(loop_color),
+                                )
+                                .frame(false),
+                            );
+                            if loop_btn.on_hover_text(loop_text).clicked() {
+                                self.audio_state.lock().unwrap().next_loop_mode();
+                            }
+
+                            // Stop Button
+                            let stop_btn = ui.add(
+                                egui::Button::new(
+                                    RichText::new(regular::STOP_CIRCLE.to_string())
+                                        .size(22.0)
+                                        .color(Color32::from_rgb(255, 100, 100)),
+                                )
+                                .frame(false),
+                            );
+                            if stop_btn.on_hover_text("Stop Playback").clicked()
+                                && has_audio
+                            {
+                                self.audio_state.lock().unwrap().stop();
                             }
                         });
                     });
-                }
-
-                ui.add_space(vertical_gap);
+                });
             });
+    }
+
+    fn render_volume_controls(&mut self, ui: &mut Ui, state_copy: &AudioState) {
+        let mut volume = state_copy.volume * 100.0;
+
+        ui.horizontal(|ui| {
+            let (volume_icon, volume_color) = if state_copy.is_muted || state_copy.volume <= 0.0 {
+                (regular::SPEAKER_X, Color32::from_gray(150))
+            } else if state_copy.volume < 0.33 {
+                (regular::SPEAKER_LOW, Color32::from_rgb(100, 150, 255))
+            } else if state_copy.volume < 0.66 {
+                (regular::SPEAKER_HIGH, Color32::from_rgb(100, 150, 255))
+            } else {
+                (regular::SPEAKER_HIGH, Color32::from_rgb(100, 150, 255))
+            };
+
+            let volume_btn = ui.add(
+                egui::Button::new(
+                    RichText::new(volume_icon.to_string())
+                        .size(18.0)
+                        .color(volume_color),
+                )
+                .frame(false),
+            );
+
+            if volume_btn.clicked() {
+                self.audio_state.lock().unwrap().toggle_mute();
+            }
+
+            let slider_response = ui.add(
+                Slider::new(&mut volume, 0.0..=100.0)
+                    .show_value(false)
+                    .text(""),
+            );
+
+            if slider_response.changed() {
+                self.audio_state.lock().unwrap().set_volume(volume / 100.0);
+            }
+        });
     }
 }

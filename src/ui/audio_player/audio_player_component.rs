@@ -7,6 +7,17 @@ use super::audio_controls::AudioControls;
 use super::audio_state::{AudioFile, AudioState};
 use crate::ui::main_area::{AudioFileInfo, Nus3audioFileUtils, ReplaceUtils};
 
+/// Action returned by the audio player to the parent component
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioPlayerAction {
+    /// No action needed
+    None,
+    /// Play the next track
+    PlayNext,
+    /// Play the previous track
+    PlayPrevious,
+}
+
 /// Main audio player component
 pub struct AudioPlayer {
     /// Audio player state
@@ -37,12 +48,16 @@ impl AudioPlayer {
     }
 
     /// Show the audio player at the bottom of the screen
-    pub fn show(&mut self, ctx: &Context) {
+    /// Returns an action if a track transition is requested
+    pub fn show(&mut self, ctx: &Context) -> AudioPlayerAction {
         // Update playback position
         self.update_playback_position();
 
+        // Handle track transitions (auto-play next, etc.)
+        let action = self.check_for_transitions();
+
         let available_rect = ctx.available_rect();
-        let panel_min_height = available_rect.height() * 0.12;
+        let panel_min_height = available_rect.height() * 0.15;
 
         // Display audio player in a bottom panel
         egui::TopBottomPanel::bottom("audio_player_panel")
@@ -52,13 +67,30 @@ impl AudioPlayer {
             .show(ctx, |ui| {
                 self.render(ui);
             });
+            
+        action
+    }
+
+    /// Check if a track transition is needed
+    fn check_for_transitions(&mut self) -> AudioPlayerAction {
+        let mut state = self.audio_state.lock().unwrap();
+        
+        if state.should_play_next {
+            state.should_play_next = false;
+            AudioPlayerAction::PlayNext
+        } else if state.should_play_previous {
+            state.should_play_previous = false;
+            AudioPlayerAction::PlayPrevious
+        } else {
+            AudioPlayerAction::None
+        }
     }
 
     /// Render the audio player UI
     pub fn render(&mut self, ui: &mut Ui) {
         // Use a frame with margin for spacing
         Frame::new()
-            .inner_margin(egui::Margin::same(12))
+            .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
                 // Render audio controls
                 self.audio_controls.render(ui);

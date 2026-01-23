@@ -538,7 +538,6 @@ impl TableRenderer {
                                         // Decide Remove placement (icon only)
                                         if remaining_width >= spacing + est_icon {
                                             show_remove = true;
-                                            remaining_width -= spacing + est_icon;
                                         } else {
                                             overflow_remove = true;
                                             ensure_more_reserved(&mut remaining_width);

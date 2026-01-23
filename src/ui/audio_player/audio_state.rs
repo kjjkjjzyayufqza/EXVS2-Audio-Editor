@@ -2,6 +2,18 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::audio_backend::{AudioBackend, PlatformAudioBackend};
+use crate::ui::main_area::AudioFileInfo;
+
+/// Audio loop mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LoopMode {
+    /// No looping, stop at the end of the playlist
+    None,
+    /// Loop the current track indefinitely
+    Single,
+    /// Loop the entire playlist
+    All,
+}
 
 /// Audio player state
 #[derive(Deserialize, Serialize)]
@@ -45,6 +57,28 @@ pub struct AudioState {
     #[serde(skip)]
     pub use_custom_loop: bool,
     
+    /// Current loop mode
+    pub loop_mode: LoopMode,
+    
+    /// Whether shuffle mode is enabled
+    pub shuffle: bool,
+    
+    /// Current playlist
+    #[serde(skip)]
+    pub playlist: Vec<AudioFileInfo>,
+    
+    /// Index of the current track in the playlist
+    #[serde(skip)]
+    pub current_track_index: Option<usize>,
+
+    /// Whether the current track has finished and we should play the next one
+    #[serde(skip)]
+    pub should_play_next: bool,
+
+    /// Whether the user requested the previous track
+    #[serde(skip)]
+    pub should_play_previous: bool,
+    
     /// Audio backend for playback
     #[serde(skip)]
     audio_backend: Option<Box<dyn AudioBackend>>,
@@ -81,6 +115,12 @@ impl Clone for AudioState {
             loop_start: self.loop_start,
             loop_end: self.loop_end,
             use_custom_loop: self.use_custom_loop,
+            loop_mode: self.loop_mode,
+            shuffle: self.shuffle,
+            playlist: self.playlist.clone(),
+            current_track_index: self.current_track_index,
+            should_play_next: self.should_play_next,
+            should_play_previous: self.should_play_previous,
             audio_backend: None, // Don't clone the audio backend
         }
     }
@@ -119,12 +159,18 @@ impl Default for AudioState {
             is_playing: false,
             current_position: 0.0,
             total_duration: 0.0,
-            volume: 0.25, // Default volume at 50%
+            volume: 0.25, // Default volume at 25%
             is_muted: false,
             previous_volume: 0.25,
             loop_start: None,
             loop_end: None,
             use_custom_loop: false,
+            loop_mode: LoopMode::None,
+            shuffle: false,
+            playlist: Vec::new(),
+            current_track_index: None,
+            should_play_next: false,
+            should_play_previous: false,
             audio_backend: None,
         };
         
@@ -196,7 +242,12 @@ impl AudioState {
                     }
                 }
             } else if let Err(e) = backend.pause() {
-                log::error!("Failed to pause audio: {}", e);
+                // Only log as debug if no audio is playing, as this is expected behavior
+                if e.contains("No audio playing") {
+                    log::debug!("Pause called but no audio is currently playing");
+                } else {
+                    log::error!("Failed to pause audio: {}", e);
+                }
             }
         }
     }
@@ -208,7 +259,12 @@ impl AudioState {
         
         if let Some(backend) = &mut self.audio_backend {
             if let Err(e) = backend.stop() {
-                log::error!("Failed to stop audio: {}", e);
+                // Only log as debug if no audio is playing, as this is expected behavior
+                if e.contains("No audio playing") {
+                    log::debug!("Stop called but no audio is currently playing");
+                } else {
+                    log::error!("Failed to stop audio: {}", e);
+                }
             }
         }
     }
@@ -249,10 +305,10 @@ impl AudioState {
             }
         }
         
-        // Play the new audio right away if needed
-        if self.is_playing {
-            self.toggle_play();
-        }
+        // Play the new audio right away
+        // Set is_playing to false first, so toggle_play will set it to true and start playback
+        self.is_playing = false;
+        self.toggle_play();
     }
     
     /// Clear the current audio
@@ -301,9 +357,29 @@ impl AudioState {
             if self.is_playing {
                 self.current_position = backend.get_position();
 
-                if self.current_position >= self.total_duration {
-                    self.is_playing = false;
-                    self.current_position = self.total_duration;
+                // Check if track has finished
+                if self.current_position >= self.total_duration - 0.1 && self.total_duration > 0.0 {
+                    match self.loop_mode {
+                        LoopMode::Single => {
+                            // Restart current track
+                            self.current_position = 0.0;
+                            if let Err(e) = backend.set_position(0.0) {
+                                log::error!("Failed to restart track: {}", e);
+                            }
+                        }
+                        LoopMode::All => {
+                            // Signal to play next track (will loop back to first track if at end)
+                            self.is_playing = false;
+                            self.current_position = 0.0;
+                            self.should_play_next = true;
+                        }
+                        LoopMode::None => {
+                            // Stop playback at the end of the track
+                            self.is_playing = false;
+                            self.current_position = 0.0;
+                            // In None mode, just stop playing, don't auto-play next track
+                        }
+                    }
                 }
             }
             
@@ -317,6 +393,47 @@ impl AudioState {
         self.loop_start = start;
         self.loop_end = end;
         self.use_custom_loop = use_custom;
+    }
+
+    /// Toggle loop mode
+    pub fn next_loop_mode(&mut self) {
+        self.loop_mode = match self.loop_mode {
+            LoopMode::None => LoopMode::Single,
+            LoopMode::Single => LoopMode::All,
+            LoopMode::All => LoopMode::None,
+        };
+    }
+
+    /// Toggle shuffle mode
+    pub fn toggle_shuffle(&mut self) {
+        self.shuffle = !self.shuffle;
+    }
+
+    /// Request next track
+    pub fn next_track(&mut self) {
+        self.should_play_next = true;
+    }
+
+    /// Request previous track
+    pub fn previous_track(&mut self) {
+        self.should_play_previous = true;
+    }
+
+    /// Update playlist and current index
+    pub fn update_playlist(&mut self, playlist: Vec<AudioFileInfo>, current_name: &str, current_id: &str) {
+        // Sort playlist by ID (from small to large)
+        let mut sorted_playlist = playlist;
+        sorted_playlist.sort_by(|a, b| {
+            // Try to parse as numbers first for proper numeric sorting
+            match (a.id.parse::<u32>(), b.id.parse::<u32>()) {
+                (Ok(a_num), Ok(b_num)) => a_num.cmp(&b_num),
+                // Fall back to string comparison if parsing fails
+                _ => a.id.cmp(&b.id),
+            }
+        });
+        
+        self.playlist = sorted_playlist;
+        self.current_track_index = self.playlist.iter().position(|f| f.name == current_name && f.id == current_id);
     }
     
     /// Get formatted current position (MM:SS)
