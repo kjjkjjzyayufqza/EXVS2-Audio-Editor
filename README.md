@@ -96,6 +96,14 @@ This application uses the following tools to process audio files:
 - **rodio**: For audio playback
 - **hound**: For WAV file processing and gain adjustment
 
+## Implementation Notes
+
+### NUS3BANK Format Support
+
+The NUS3BANK format implementation in this project is based on the reference code from [Smash-Forge's NUS3BANK.cs](https://github.com/jam1garner/Smash-Forge/blob/master/Smash%20Forge/Filetypes/Sounds/NUS3BANK.cs).
+
+**⚠️ Experimental Status**: The NUS3BANK format support is currently in an experimental stage. While basic functionality is working, some features may be incomplete or subject to change. Please report any issues you encounter.
+
 ## Development
 
 ### Building from Source
