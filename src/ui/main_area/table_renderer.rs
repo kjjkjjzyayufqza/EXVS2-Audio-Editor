@@ -28,18 +28,62 @@ impl TableRenderer {
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
     ) {
+        // Responsive design: detect narrow width
+        let is_narrow = available_width < 1100.0;
+        let is_ultra_narrow = available_width < 700.0;
+
         // Set row and header height based on available space
-        let header_height = available_height * 0.04;
-        let row_height = available_height * 0.050;
+        let header_height = (available_height * 0.04).max(35.0);
+        let mut row_height = (available_height * 0.050).max(40.0);
+
+        // Adjust row height for ultra narrow view to accommodate stacked buttons
+        if is_ultra_narrow {
+            row_height = row_height * 1.8;
+        } else if is_narrow {
+            row_height = row_height * 1.2;
+        }
 
         // Define column widths as proportions of the available width
-        let col_width_checkbox = available_width * 0.04;
-        let col_width_name = available_width * 0.22;
-        let col_width_id = available_width * 0.12;
-        let col_width_size = available_width * 0.1;
-        let col_width_filename = available_width * 0.22;
-        let col_width_type = available_width * 0.1;
-        let col_action = available_width * 0.2;
+        // We aggressively compress other columns to maximize the action area
+        let (
+            col_width_checkbox,
+            col_width_name,
+            col_width_id,
+            col_width_size,
+            col_width_filename,
+            col_width_type,
+            col_action,
+        ) = if is_ultra_narrow {
+            (
+                available_width * 0.014,
+                available_width * 0.15,
+                available_width * 0.08,
+                available_width * 0.08,
+                available_width * 0.15,
+                available_width * 0.07,
+                available_width * 0.42, // Maximum space for actions
+            )
+        } else if is_narrow {
+            (
+                available_width * 0.014,
+                available_width * 0.18,
+                available_width * 0.10,
+                available_width * 0.08,
+                available_width * 0.18,
+                available_width * 0.08,
+                available_width * 0.34,
+            )
+        } else {
+            (
+                available_width * 0.014,
+                available_width * 0.22,
+                available_width * 0.12,
+                available_width * 0.1,
+                available_width * 0.22,
+                available_width * 0.1,
+                available_width * 0.2,
+            )
+        };
 
         // Header text size
         let heading_size = 17.0;
@@ -208,12 +252,17 @@ impl TableRenderer {
                     }
                 };
 
-                // Action column header - not sortable
-                ui.add_sized(
-                    [col_action, header_height],
-                    egui::Label::new(RichText::new("Action").size(heading_size).strong()),
-                )
-                .on_hover_text("Action");
+                // Action column header - consistent button style
+                ui.allocate_ui_with_layout(
+                    Vec2::new(col_action, header_height),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.add(
+                            egui::Button::new(RichText::new("Action").size(heading_size).strong())
+                                .fill(header_bg_color)
+                        );
+                    }
+                );
                 ui.end_row();
             });
 
@@ -368,160 +417,207 @@ impl TableRenderer {
                         ui.scope_builder(
                             egui::UiBuilder::new()
                                 .max_rect(cell_rect)
-                                .layout(Layout::centered_and_justified(Direction::LeftToRight)),
+                                .layout(Layout::left_to_right(egui::Align::Center)),
                             |ui| {
-                                ui.horizontal(|button_ui| {
-                                    let available_button_width = cell_rect.width();
-                                    let spacing = 5.0;
-
-                                    // Spacing helper to keep consistent gaps
-                                    let mut is_first = true;
-                                    let mut add_spacing = |ui: &mut egui::Ui| {
-                                        if !is_first {
-                                            ui.add_space(spacing);
-                                        }
-                                        is_first = false;
-                                    };
-
-                                    // Always show Play as icon-only (highest priority)
-                                    add_spacing(button_ui);
-                                    let play_button = button_ui.add(
-                                        Button::new(
-                                            RichText::new(egui_phosphor::regular::PLAY.to_string())
-                                                .size(text_size)
-                                                .color(Color32::from_rgb(100, 255, 150)),
-                                        ),
-                                    );
-                                    if play_button.clicked() {
-                                        on_play_clicked(row_index);
-                                    }
-
-                                    // Track remaining width with simple estimates so we can reserve for overflow menu
-                                    let mut remaining_width = available_button_width - play_button.rect.width();
-
-                                    // Estimated widths (px) for planning only; actual draw uses real sizes
-                                    let est_icon = 30.0;
-                                    let est_more = 30.0; // More (⋯) button
-
-                                    // Planning flags
-                                    let mut show_export = false;
-                                    let mut show_replace = false;
-                                    let mut show_remove = false;
-                                    let mut overflow_export = false;
-                                    let mut overflow_replace = false;
-                                    let mut overflow_remove = false;
-                                    let mut reserved_more = false;
-
-                                    // Helper to reserve space for the overflow button once
-                                    let mut ensure_more_reserved = |remaining: &mut f32| {
-                                        if !reserved_more {
-                                            if *remaining >= spacing + est_more {
-                                                *remaining -= spacing + est_more;
+                                if is_ultra_narrow {
+                                    // 2x2 Grid for ultra-narrow screens
+                                    Grid::new(format!("actions_grid_{}", row_index))
+                                        .num_columns(2)
+                                        .spacing([4.0, 4.0])
+                                        .show(ui, |ui| {
+                                            // Row 1: Play and Export
+                                            let play_btn = Button::new(
+                                                RichText::new(egui_phosphor::regular::PLAY.to_string())
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(100, 255, 150)),
+                                            );
+                                            if ui.add(play_btn).on_hover_text("Play").clicked() {
+                                                on_play_clicked(row_index);
                                             }
-                                            reserved_more = true;
-                                        }
-                                    };
 
-                                    // Decide Export placement (icon only)
-                                    if remaining_width >= spacing + est_icon {
-                                        show_export = true;
-                                        remaining_width -= spacing + est_icon;
-                                    } else {
-                                        overflow_export = true;
-                                        ensure_more_reserved(&mut remaining_width);
-                                    }
-
-                                    // Decide Replace placement (icon only)
-                                    if remaining_width >= spacing + est_icon {
-                                        show_replace = true;
-                                        remaining_width -= spacing + est_icon;
-                                    } else {
-                                        overflow_replace = true;
-                                        ensure_more_reserved(&mut remaining_width);
-                                    }
-
-                                    // Decide Remove placement (icon only)
-                                    if remaining_width >= spacing + est_icon {
-                                        show_remove = true;
-                                        remaining_width -= spacing + est_icon;
-                                    } else {
-                                        overflow_remove = true;
-                                        ensure_more_reserved(&mut remaining_width);
-                                    }
-
-                                    // Draw Export (if inline)
-                                    if show_export {
-                                        add_spacing(button_ui);
-                                        let export_text = RichText::new(
-                                            egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string(),
-                                        )
-                                        .size(text_size);
-                                        let export_button = button_ui
-                                            .add(Button::new(export_text))
-                                            .on_hover_text("Export");
-                                        if export_button.clicked() {
-                                            on_export_clicked(row_index);
-                                        }
-                                    }
-
-                                    // Draw Replace (if inline)
-                                    if show_replace {
-                                        add_spacing(button_ui);
-                                        let replace_text = RichText::new(
-                                            egui_phosphor::regular::SWAP.to_string(),
-                                        )
-                                        .size(text_size)
-                                        .color(Color32::from_rgb(255, 180, 100));
-                                        let replace_button = button_ui
-                                            .add(Button::new(replace_text))
-                                            .on_hover_text("Replace");
-                                        if replace_button.clicked() {
-                                            on_replace_clicked(row_index);
-                                        }
-                                    }
-
-                                    // Draw Remove (if inline)
-                                    if show_remove {
-                                        add_spacing(button_ui);
-                                        let remove_text = RichText::new(
-                                            egui_phosphor::regular::TRASH.to_string(),
-                                        )
-                                        .size(text_size)
-                                        .color(Color32::from_rgb(255, 100, 100));
-                                        let remove_button = button_ui
-                                            .add(Button::new(remove_text))
-                                            .on_hover_text("Remove");
-                                        if remove_button.clicked() {
-                                            on_remove_clicked(row_index);
-                                        }
-                                    }
-
-                                    // Overflow menu for actions that did not fit
-                                    if overflow_export || overflow_replace || overflow_remove {
-                                        add_spacing(button_ui);
-                                        let more_label = RichText::new("⋯").size(text_size);
-                                        let _ = button_ui.menu_button(more_label, |ui| {
-                                            if overflow_export {
-                                                if ui.button("Export").clicked() {
-                                                    on_export_clicked(row_index);
-                                                    ui.close();
-                                                }
+                                            let export_btn = Button::new(
+                                                RichText::new(egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string())
+                                                    .size(text_size),
+                                            );
+                                            if ui.add(export_btn).on_hover_text("Export").clicked() {
+                                                on_export_clicked(row_index);
                                             }
-                                            if overflow_replace {
-                                                if ui.button("Replace").clicked() {
-                                                    on_replace_clicked(row_index);
-                                                    ui.close();
-                                                }
+                                            ui.end_row();
+
+                                            // Row 2: Replace and Remove
+                                            let replace_btn = Button::new(
+                                                RichText::new(egui_phosphor::regular::SWAP.to_string())
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(255, 180, 100)),
+                                            );
+                                            if ui.add(replace_btn).on_hover_text("Replace").clicked() {
+                                                on_replace_clicked(row_index);
                                             }
-                                            if overflow_remove {
-                                                if ui.button("Remove").clicked() {
-                                                    on_remove_clicked(row_index);
-                                                    ui.close();
-                                                }
+
+                                            let remove_btn = Button::new(
+                                                RichText::new(egui_phosphor::regular::TRASH.to_string())
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(255, 100, 100)),
+                                            );
+                                            if ui.add(remove_btn).on_hover_text("Remove").clicked() {
+                                                on_remove_clicked(row_index);
                                             }
+                                            ui.end_row();
                                         });
-                                    }
-                                });
+                                } else {
+                                    ui.horizontal(|button_ui| {
+                                        let available_button_width = cell_rect.width();
+                                        let spacing = 5.0;
+
+                                        // Spacing helper to keep consistent gaps
+                                        let mut is_first = true;
+                                        let mut add_spacing = |ui: &mut egui::Ui| {
+                                            if !is_first {
+                                                ui.add_space(spacing);
+                                            }
+                                            is_first = false;
+                                        };
+
+                                        // Always show Play as icon-only (highest priority)
+                                        add_spacing(button_ui);
+                                        let play_button = button_ui.add(
+                                            Button::new(
+                                                RichText::new(egui_phosphor::regular::PLAY.to_string())
+                                                    .size(text_size)
+                                                    .color(Color32::from_rgb(100, 255, 150)),
+                                            ),
+                                        );
+                                        if play_button.clicked() {
+                                            on_play_clicked(row_index);
+                                        }
+
+                                        // Track remaining width with simple estimates so we can reserve for overflow menu
+                                        let mut remaining_width = available_button_width - play_button.rect.width();
+
+                                        // Estimated widths (px) for planning only; actual draw uses real sizes
+                                        let est_icon = 30.0;
+                                        let est_more = 30.0; // More (⋯) button
+
+                                        // Planning flags
+                                        let mut show_export = false;
+                                        let mut show_replace = false;
+                                        let mut show_remove = false;
+                                        let mut overflow_export = false;
+                                        let mut overflow_replace = false;
+                                        let mut overflow_remove = false;
+                                        let mut reserved_more = false;
+
+                                        // Helper to reserve space for the overflow button once
+                                        let mut ensure_more_reserved = |remaining: &mut f32| {
+                                            if !reserved_more {
+                                                if *remaining >= spacing + est_more {
+                                                    *remaining -= spacing + est_more;
+                                                }
+                                                reserved_more = true;
+                                            }
+                                        };
+
+                                        // Decide Export placement (icon only)
+                                        if remaining_width >= spacing + est_icon {
+                                            show_export = true;
+                                            remaining_width -= spacing + est_icon;
+                                        } else {
+                                            overflow_export = true;
+                                            ensure_more_reserved(&mut remaining_width);
+                                        }
+
+                                        // Decide Replace placement (icon only)
+                                        if remaining_width >= spacing + est_icon {
+                                            show_replace = true;
+                                            remaining_width -= spacing + est_icon;
+                                        } else {
+                                            overflow_replace = true;
+                                            ensure_more_reserved(&mut remaining_width);
+                                        }
+
+                                        // Decide Remove placement (icon only)
+                                        if remaining_width >= spacing + est_icon {
+                                            show_remove = true;
+                                            remaining_width -= spacing + est_icon;
+                                        } else {
+                                            overflow_remove = true;
+                                            ensure_more_reserved(&mut remaining_width);
+                                        }
+
+                                        // Draw Export (if inline)
+                                        if show_export {
+                                            add_spacing(button_ui);
+                                            let export_text = RichText::new(
+                                                egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string(),
+                                            )
+                                            .size(text_size);
+                                            let export_button = button_ui
+                                                .add(Button::new(export_text))
+                                                .on_hover_text("Export");
+                                            if export_button.clicked() {
+                                                on_export_clicked(row_index);
+                                            }
+                                        }
+
+                                        // Draw Replace (if inline)
+                                        if show_replace {
+                                            add_spacing(button_ui);
+                                            let replace_text = RichText::new(
+                                                egui_phosphor::regular::SWAP.to_string(),
+                                            )
+                                            .size(text_size)
+                                            .color(Color32::from_rgb(255, 180, 100));
+                                            let replace_button = button_ui
+                                                .add(Button::new(replace_text))
+                                                .on_hover_text("Replace");
+                                            if replace_button.clicked() {
+                                                on_replace_clicked(row_index);
+                                            }
+                                        }
+
+                                        // Draw Remove (if inline)
+                                        if show_remove {
+                                            add_spacing(button_ui);
+                                            let remove_text = RichText::new(
+                                                egui_phosphor::regular::TRASH.to_string(),
+                                            )
+                                            .size(text_size)
+                                            .color(Color32::from_rgb(255, 100, 100));
+                                            let remove_button = button_ui
+                                                .add(Button::new(remove_text))
+                                                .on_hover_text("Remove");
+                                            if remove_button.clicked() {
+                                                on_remove_clicked(row_index);
+                                            }
+                                        }
+
+                                        // Overflow menu for actions that did not fit
+                                        if overflow_export || overflow_replace || overflow_remove {
+                                            add_spacing(button_ui);
+                                            let more_label = RichText::new("⋯").size(text_size);
+                                            let _ = button_ui.menu_button(more_label, |ui| {
+                                                if overflow_export {
+                                                    if ui.button("Export").clicked() {
+                                                        on_export_clicked(row_index);
+                                                        ui.close();
+                                                    }
+                                                }
+                                                if overflow_replace {
+                                                    if ui.button("Replace").clicked() {
+                                                        on_replace_clicked(row_index);
+                                                        ui.close();
+                                                    }
+                                                }
+                                                if overflow_remove {
+                                                    if ui.button("Remove").clicked() {
+                                                        on_remove_clicked(row_index);
+                                                        ui.close();
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
                             },
                         );
 

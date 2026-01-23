@@ -1,5 +1,5 @@
 use super::audio_state::AudioState;
-use egui::{widgets::Slider, Color32, Frame, RichText, CornerRadius, Stroke, Ui};
+use egui::{widgets::Slider, Color32, Frame, RichText, CornerRadius, Ui};
 use egui_phosphor::regular;
 use std::sync::{Arc, Mutex};
 
