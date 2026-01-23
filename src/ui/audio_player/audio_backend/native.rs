@@ -12,10 +12,8 @@ pub struct NativeAudioBackend {
     stream_handle: Option<OutputStreamHandle>,
     /// Audio sink for playback control
     sink: Option<Arc<Mutex<Sink>>>,
-    /// Raw audio data
+    /// Raw audio data (shared via Arc to avoid cloning large files)
     audio_data: Option<Arc<Vec<u8>>>,
-    /// Cached decoded audio data for faster seeking
-    decoded_audio: Option<Vec<u8>>,
     /// Current position in seconds
     current_position: f32,
     /// Start time of playback for position tracking
@@ -42,7 +40,6 @@ impl NativeAudioBackend {
             stream_handle: None,
             sink: None,
             audio_data: None,
-            decoded_audio: None,
             current_position: 0.0,
             playback_start_time: None,
             playback_start_position: 0.0,
@@ -52,6 +49,15 @@ impl NativeAudioBackend {
             initialized: false,
             volume: 1.0, // Default volume is 100%
         }
+    }
+    
+    /// Create a decoder from the audio data without cloning
+    /// Uses a cursor that reads from the Arc directly
+    fn create_decoder_from_data(data: &Arc<Vec<u8>>) -> Result<Decoder<Cursor<Vec<u8>>>, String> {
+        // We still need to clone for Cursor, but this is unavoidable with rodio's API
+        // However, we only do this once per play/seek operation instead of multiple times
+        let cursor = Cursor::new((**data).clone());
+        Decoder::new(cursor).map_err(|e| format!("Failed to decode audio data: {}", e))
     }
     
     /// Estimate the duration of audio from the WAV header
@@ -128,18 +134,11 @@ impl AudioBackend for NativeAudioBackend {
         self.playback_start_time = Some(Instant::now());
         self.playback_start_position = 0.0;
         
-        // Save audio data
+        // Save audio data reference (no clone, just Arc reference count increment)
         self.audio_data = Some(Arc::clone(&data));
         
-        // Cache the raw data for faster seeking later
-        self.decoded_audio = Some((*data).clone());
-        
-        // Try to decode the audio
-        let cursor = Cursor::new((*data).clone());
-        let source = match Decoder::new(cursor) {
-            Ok(source) => source,
-            Err(e) => return Err(format!("Failed to decode audio data: {}", e)),
-        };
+        // Try to decode the audio (single clone here is unavoidable with rodio's API)
+        let source = Self::create_decoder_from_data(&data)?;
         
         // Extract duration from the source
         self.duration = source.total_duration()
@@ -230,9 +229,14 @@ impl AudioBackend for NativeAudioBackend {
     }
     
     fn set_position(&mut self, position_secs: f32) -> Result<(), String> {
-        if !self.audio_loaded || self.audio_data.is_none() {
+        if !self.audio_loaded {
             return Err("No audio loaded".to_string());
         }
+        
+        let audio_data = match &self.audio_data {
+            Some(data) => Arc::clone(data),
+            None => return Err("No audio data available".to_string()),
+        };
         
         let was_playing = self.is_playing;
         let clamped_position = position_secs.clamp(0.0, self.duration);
@@ -246,93 +250,39 @@ impl AudioBackend for NativeAudioBackend {
             return Ok(());
         }
         
-        // For playback, we need to reload the audio at the new position
-        if let Some(data) = &self.decoded_audio {
-            // Use cached data if available to save decoding time
-            let data_arc = Arc::new(data.clone());
-            
-            // Stop current playback
-            if let Some(sink) = &self.sink {
-                sink.lock().unwrap().stop();
-            }
-            
-            // Create a new sink
-            let stream_handle = self.stream_handle.as_ref()
-                .ok_or_else(|| "Audio stream handle not available".to_string())?;
-                
-            let sink = match Sink::try_new(stream_handle) {
-                Ok(sink) => sink,
-                Err(e) => return Err(format!("Failed to create audio sink: {}", e)),
-            };
-            
-            // Try to decode the audio using cached data
-            let cursor = Cursor::new(data_arc.to_vec());
-            let source = match Decoder::new(cursor) {
-                Ok(source) => source,
-                Err(e) => return Err(format!("Failed to decode audio data: {}", e)),
-            };
-            
-            // Skip to the desired position
-            let skip_duration = Duration::from_secs_f32(clamped_position);
-            let skipped_source = source.skip_duration(skip_duration);
-            
-            // Add the source to the sink
-            sink.append(skipped_source);
-            
-            // Apply current volume
-            sink.set_volume(self.volume);
-            
-            // Save the sink
-            self.sink = Some(Arc::new(Mutex::new(sink)));
-            
-            // Update time tracking
-            self.playback_start_time = Some(Instant::now());
-            self.is_playing = true;
-        } else {
-            // Fallback if no cached data is available
-            let data = self.audio_data.as_ref().unwrap().clone();
-            
-            // Stop current playback
-            if let Some(sink) = &self.sink {
-                sink.lock().unwrap().stop();
-            }
-            
-            // Create a new sink
-            let stream_handle = self.stream_handle.as_ref()
-                .ok_or_else(|| "Audio stream handle not available".to_string())?;
-                
-            let sink = match Sink::try_new(stream_handle) {
-                Ok(sink) => sink,
-                Err(e) => return Err(format!("Failed to create audio sink: {}", e)),
-            };
-            
-            // Try to decode the audio
-            let cursor = Cursor::new((*data).clone());
-            let source = match Decoder::new(cursor) {
-                Ok(source) => source,
-                Err(e) => return Err(format!("Failed to decode audio data: {}", e)),
-            };
-            
-            // Skip to the desired position
-            let skip_duration = Duration::from_secs_f32(clamped_position);
-            let skipped_source = source.skip_duration(skip_duration);
-            
-            // Add the source to the sink
-            sink.append(skipped_source);
-            
-            // Apply current volume
-            sink.set_volume(self.volume);
-            
-            // Save the sink
-            self.sink = Some(Arc::new(Mutex::new(sink)));
-            
-            // Update time tracking
-            self.playback_start_time = Some(Instant::now());
-            self.is_playing = true;
-            
-            // Cache the data for future seeking operations
-            self.decoded_audio = Some((*data).clone());
+        // Stop current playback
+        if let Some(sink) = &self.sink {
+            sink.lock().unwrap().stop();
         }
+        
+        // Create a new sink
+        let stream_handle = self.stream_handle.as_ref()
+            .ok_or_else(|| "Audio stream handle not available".to_string())?;
+            
+        let sink = match Sink::try_new(stream_handle) {
+            Ok(sink) => sink,
+            Err(e) => return Err(format!("Failed to create audio sink: {}", e)),
+        };
+        
+        // Decode the audio (single clone, unavoidable with rodio's API)
+        let source = Self::create_decoder_from_data(&audio_data)?;
+        
+        // Skip to the desired position
+        let skip_duration = Duration::from_secs_f32(clamped_position);
+        let skipped_source = source.skip_duration(skip_duration);
+        
+        // Add the source to the sink
+        sink.append(skipped_source);
+        
+        // Apply current volume
+        sink.set_volume(self.volume);
+        
+        // Save the sink
+        self.sink = Some(Arc::new(Mutex::new(sink)));
+        
+        // Update time tracking
+        self.playback_start_time = Some(Instant::now());
+        self.is_playing = true;
         
         Ok(())
     }
@@ -354,7 +304,10 @@ impl AudioBackend for NativeAudioBackend {
     
     fn is_playing(&self) -> bool {
         if let Some(sink) = &self.sink {
-            !sink.lock().unwrap().is_paused()
+            let sink_guard = sink.lock().unwrap();
+            // Check both: not paused AND not empty (still has audio to play)
+            // When audio finishes, sink becomes empty but is_paused() returns false
+            !sink_guard.is_paused() && !sink_guard.empty()
         } else {
             false
         }

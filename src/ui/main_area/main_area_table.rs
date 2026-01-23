@@ -969,7 +969,7 @@ impl MainArea {
                                 {
                                     let audio = crate::ui::audio_player::AudioFile {
                                         file_path: file_path.to_string(),
-                                        data: replacement_data,
+                                        data: std::sync::Arc::new(replacement_data),
                                         name: audio_info.name.clone(),
                                         file_type: audio_info.file_type.clone(),
                                         id: audio_info.id.clone(),
@@ -1029,7 +1029,7 @@ impl MainArea {
                                             // Create an audio file struct for the audio player
                                             let audio = crate::ui::audio_player::AudioFile {
                                                 file_path: file_path.to_string(),
-                                                data: replacement_data,
+                                                data: std::sync::Arc::new(replacement_data),
                                                 name: audio_info.name.clone(),
                                                 file_type: audio_info.file_type.clone(),
                                                 id: audio_info.id.clone(),

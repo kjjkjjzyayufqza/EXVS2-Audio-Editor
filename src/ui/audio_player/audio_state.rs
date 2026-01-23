@@ -132,8 +132,8 @@ pub struct AudioFile {
     /// Original file path
     pub file_path: String,
     
-    /// Audio file raw data
-    pub data: Vec<u8>,
+    /// Audio file raw data (wrapped in Arc to avoid expensive clones for large files)
+    pub data: Arc<Vec<u8>>,
     
     /// Audio file name
     pub name: String,
@@ -213,7 +213,8 @@ impl AudioState {
             if self.is_playing {
                 // If starting playback and we have audio data
                 if let Some(audio) = &self.current_audio {
-                    let data_arc = Arc::new(audio.data.clone());
+                    // Use Arc::clone for cheap reference counting instead of data clone
+                    let data_arc = Arc::clone(&audio.data);
                     
                     // If we're resuming from a position other than the beginning,
                     // we need to set the position after starting playback

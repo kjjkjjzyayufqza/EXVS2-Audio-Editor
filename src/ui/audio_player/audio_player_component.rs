@@ -199,10 +199,11 @@ impl AudioPlayer {
             }
         };
 
-        // Create an audio file struct
+        // Create an audio file struct (wrap data in Arc to avoid expensive clones)
+        let data_len = audio_data.len();
         let audio = AudioFile {
             file_path: file_path.to_string(),
-            data: audio_data,
+            data: Arc::new(audio_data),
             name: file_info.name.clone(),
             file_type: file_info.file_type.clone(),
             id: file_info.id.clone(),
@@ -213,10 +214,10 @@ impl AudioPlayer {
         log::info!(
             "Loading audio: {} ({} bytes)",
             file_info.name,
-            audio.data.len()
+            data_len
         );
 
-        // Set the audio in the state
+        // Set the audio in the state (this will call toggle_play which gets the real duration from backend)
         let mut state = self.audio_state.lock().unwrap();
         state.set_audio(audio);
 
@@ -227,7 +228,7 @@ impl AudioPlayer {
         let key = format!("{}:{}", file_info.name, file_info.id);
         if let Ok(settings_map) = crate::ui::main_area::ReplaceUtils::get_loop_settings() {
             if let Some(&(start, end, use_custom)) = settings_map.get(&key) {
-                // 仅为此音频应用循环设置
+                // Apply loop settings for this audio
                 log::info!(
                     "Applied custom loop settings for {}: start={:?}, end={:?}, use_custom={}",
                     file_info.name,
@@ -241,10 +242,17 @@ impl AudioPlayer {
             }
         }
 
-        // Duration will be determined by the audio backend when playback starts
-        // We still set an estimated duration for the UI until playback begins
-        let estimated_duration = estimate_duration_from_size(file_info.size);
-        state.total_duration = estimated_duration;
+        // Check if backend could determine the real duration
+        if state.total_duration <= 0.0 {
+            log::error!(
+                "Failed to get audio duration for '{}': backend returned 0 or negative duration",
+                file_info.name
+            );
+            return Err(format!(
+                "Failed to get audio duration for '{}': unable to decode audio metadata",
+                file_info.name
+            ));
+        }
 
         Ok(())
     }
@@ -263,16 +271,4 @@ impl AudioPlayer {
     pub fn get_audio_state(&self) -> Arc<Mutex<AudioState>> {
         Arc::clone(&self.audio_state)
     }
-}
-
-/// Estimate audio duration from file size (rough approximation)
-/// Most audio files in game archives are compressed, so this is just a rough guess
-fn estimate_duration_from_size(size_bytes: usize) -> f32 {
-    // Very rough estimate: Assuming ~16KB per second for compressed audio
-    // This would vary greatly by format and compression
-    let bytes_per_second = 16000.0;
-    let estimated_seconds = size_bytes as f32 / bytes_per_second;
-
-    // Clamp to reasonable values (at least 1 second, at most 10 minutes)
-    estimated_seconds.max(1.0).min(600.0)
 }

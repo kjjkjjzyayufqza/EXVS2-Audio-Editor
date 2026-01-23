@@ -376,17 +376,10 @@ impl ExportUtils {
             vgmstream_index.to_string(),
             original_file_path.to_string(),
         ];
-        // println!(
-        //     "Running command: {:?} {}",
-        //     vgmstream_path,
-        //     args_vec.join(" ")
-        // );
 
         let result = command
             .args(&args_vec)
             .output();
-
-        // println!("Exporting command (NUS3BANK) result: {:?}", result);
 
         match result {
             Ok(output) => {
