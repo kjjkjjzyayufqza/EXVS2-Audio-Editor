@@ -49,8 +49,10 @@ impl MainArea {
                 ui.horizontal(|ui| {
                     ui.add_space(8.0);
                     ui.vertical(|ui| {
-                        // Table header
-                        ui.heading("Audio File List");
+                        // Table header with file count
+                        ui.horizontal(|ui| {
+                            ui.heading(format!("Audio File List ({})", files_count));
+                        });
 
                         ui.horizontal_wrapped(|ui| {
                             // Capture Export All button click, show confirm dialog
@@ -176,20 +178,20 @@ impl MainArea {
 
                         // File count display
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            // First add Found/Total on the rightmost, then Selected to its left (due to RTL layout)
+                            // Show selected count and found/total info
+                            let selected_count = self.selected_items.len();
+                            if selected_count > 0 {
+                                ui.label(format!("Selected: {}", selected_count));
+                                if !self.search_query.is_empty() {
+                                    ui.add_space(12.0);
+                                }
+                            }
                             if !self.search_query.is_empty() {
                                 ui.label(format!(
-                                    "Found: {} / {} files",
+                                    "Found: {} / {}",
                                     files_count,
                                     self.file_count.unwrap_or(0)
                                 ));
-                            } else {
-                                ui.label(format!("Total: {} files", files_count));
-                            }
-                            let selected_count = self.selected_items.len();
-                            if selected_count > 0 {
-                                ui.add_space(12.0);
-                                ui.label(format!("Selected: {}", selected_count));
                             }
                         });
 

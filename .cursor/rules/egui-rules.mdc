@@ -1,0 +1,414 @@
+---
+alwaysApply: true
+---
+# egui Development Best Practices
+
+This guide provides best practices for developing with egui, an immediate mode GUI library in Rust.
+
+## Core Principle: Use `ui.scope()` for UI Control
+
+**IMPORTANT**: Prefer using `ui.scope()` to control and isolate UI state changes whenever possible. This is a key pattern for maintaining clean and predictable UI code.
+
+### Why Use `ui.scope()`
+
+- Creates a scoped child `Ui` with temporary modifications
+- Changes made within the scope do NOT affect the parent `Ui`
+- Perfect for temporary style overrides, spacing adjustments, or visual changes
+- Automatically reverts all changes when the scope ends
+
+### `ui.scope()` Examples
+
+```rust
+// Temporary style override
+ui.scope(|ui| {
+    ui.visuals_mut().override_text_color = Some(egui::Color32::RED);
+    ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+    ui.style_mut().wrap_mode = Some(TextWrapMode::Truncate);
+    
+    ui.label("This text will be red, monospace, and won't wrap");
+}); // Changes revert here
+
+// Temporary spacing adjustment
+ui.scope(|ui| {
+    ui.spacing_mut().slider_width = 200.0;
+    ui.spacing_mut().item_spacing = egui::vec2(10.0, 2.0);
+    
+    ui.add(egui::Slider::new(&mut value, 0.0..=100.0));
+});
+
+// Use scope_builder for more control
+let ui_builder = egui::UiBuilder::new().id_salt("my_scoped_ui");
+ui.scope_builder(ui_builder, |ui| {
+    ui.label("Content with specific builder options");
+});
+```
+
+## Layout System
+
+### Horizontal and Vertical Layouts
+
+```rust
+// Horizontal layout
+ui.horizontal(|ui| {
+    ui.label("First");
+    ui.label("Second");
+    if ui.button("Click").clicked() {
+        // handle click
+    }
+});
+
+// Vertical layout
+ui.vertical(|ui| {
+    ui.label("Top");
+    ui.label("Middle");
+    ui.label("Bottom");
+});
+
+// Centered layouts
+ui.vertical_centered(|ui| {
+    ui.heading("Centered heading");
+});
+
+ui.horizontal_centered(|ui| {
+    ui.button("Centered button");
+});
+```
+
+### Grid Layout
+
+```rust
+use egui::Grid;
+
+Grid::new("my_grid")
+    .num_columns(2)
+    .spacing([40.0, 4.0])
+    .striped(true)
+    .show(ui, |ui| {
+        ui.label("Name:");
+        ui.text_edit_singleline(&mut name);
+        ui.end_row();
+
+        ui.label("Age:");
+        ui.add(egui::DragValue::new(&mut age));
+        ui.end_row();
+    });
+```
+
+### Panel Structure
+
+```rust
+// Side panel (left or right)
+egui::SidePanel::left("left_panel")
+    .resizable(true)
+    .default_width(200.0)
+    .show(ctx, |ui| {
+        ui.heading("Left Panel");
+    });
+
+// Top/bottom panel
+egui::TopBottomPanel::top("top_panel")
+    .show(ctx, |ui| {
+        ui.heading("Top Panel");
+    });
+
+// Central panel - ALWAYS add last
+egui::CentralPanel::default().show(ctx, |ui| {
+    ui.heading("Main Content");
+});
+```
+
+### ScrollArea
+
+```rust
+use egui::ScrollArea;
+
+// Vertical scroll with virtual scrolling for large lists
+let row_height = ui.text_style_height(&egui::TextStyle::Body);
+let num_rows = 10_000;
+
+ScrollArea::vertical()
+    .auto_shrink(false)
+    .show_rows(ui, row_height, num_rows, |ui, row_range| {
+        for row in row_range {
+            ui.label(format!("Row {}/{}", row + 1, num_rows));
+        }
+    });
+
+// Stick to bottom (chat-like scrolling)
+ScrollArea::vertical()
+    .stick_to_bottom(true)
+    .show(ui, |ui| {
+        for message in &messages {
+            ui.label(message);
+        }
+    });
+```
+
+## Style and Visuals
+
+### Per-UI Style Changes (Use with `ui.scope()`)
+
+```rust
+ui.scope(|ui| {
+    // Spacing adjustments (always use even numbers!)
+    ui.spacing_mut().item_spacing = egui::vec2(10.0, 8.0);
+    ui.spacing_mut().button_padding = egui::vec2(6.0, 4.0);
+    ui.spacing_mut().indent = 20.0;
+    
+    // Visual adjustments
+    ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE);
+    
+    // Your widgets here
+});
+```
+
+### Global Style Changes
+
+```rust
+// Apply to all styles
+ctx.all_styles_mut(|style| {
+    style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+    style.spacing.button_padding = egui::vec2(6.0, 4.0);
+    style.spacing.interact_size = egui::vec2(50.0, 22.0);
+});
+```
+
+## Sizing Guidelines
+
+### Use Even Numbers for All Dimensions
+
+**IMPORTANT**: Always use even numbers (multiples of 2) for all sizing values including `width`, `height`, `size`, `spacing`, `padding`, and `margin`. Never use odd numbers for dimensional values.
+
+#### Why Even Numbers?
+
+- Ensures pixel-perfect rendering without subpixel artifacts
+- Maintains visual harmony and consistent alignment
+- Simplifies mental calculations when designing layouts
+- Prevents visual inconsistencies during scaling and DPI changes
+
+#### Recommended Size Scale
+
+Use a consistent spacing scale based on multiples of 2 or 4:
+
+```
+0, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128, 160, 192, 200, 240, 320...
+```
+
+#### Examples
+
+```rust
+// ✅ Good - Using even numbers
+ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+ui.spacing_mut().button_padding = egui::vec2(12.0, 6.0);
+ui.add_space(16.0);
+
+egui::SidePanel::left("panel")
+    .default_width(200.0)
+    .min_width(160.0)
+    .show(ctx, |ui| { /* ... */ });
+
+ui.set_min_size(egui::vec2(64.0, 32.0));
+ui.set_max_width(240.0);
+
+let image = egui::Image::new(texture_id)
+    .fit_to_exact_size(egui::vec2(48.0, 48.0));
+
+// ❌ Bad - Using odd numbers (AVOID!)
+ui.spacing_mut().item_spacing = egui::vec2(9.0, 5.0);     // Avoid!
+ui.spacing_mut().button_padding = egui::vec2(11.0, 7.0); // Avoid!
+ui.add_space(15.0);                                       // Avoid!
+ui.set_min_size(egui::vec2(65.0, 33.0));                 // Avoid!
+```
+
+#### Apply to All Size-Related Properties
+
+This rule applies to:
+
+- **Dimensions**: `width`, `height`, `min_width`, `max_width`, `min_height`, `max_height`
+- **Spacing**: `item_spacing`, `button_padding`, `window_margin`, `menu_margin`
+- **Layout**: `indent`, `slider_width`, `combo_width`, `text_edit_width`
+- **Methods**: `ui.add_space()`, `ui.set_min_size()`, `ui.set_max_size()`, `ui.allocate_space()`
+- **Widgets**: Image sizes, icon sizes, separator thickness (use 2.0 instead of 1.0 if needed)
+- **Rounding**: `rounding` values for corners
+
+## Common Widgets Pattern
+
+### Basic Widget Usage
+
+```rust
+// Labels and text
+ui.label("This is a label");
+ui.heading("This is a heading");
+ui.hyperlink("https://example.com");
+
+// Text input
+ui.text_edit_singleline(&mut my_string);
+ui.text_edit_multiline(&mut my_text);
+
+// Buttons with response handling
+if ui.button("Click me").clicked() {
+    // Handle click
+}
+
+// Builder pattern for widgets
+let button = egui::Button::new("click me");
+if ui.add(button).clicked() {
+    // Handle click
+}
+
+// Sliders and drag values
+ui.add(egui::Slider::new(&mut my_f32, 0.0..=100.0));
+ui.add(egui::DragValue::new(&mut my_f32));
+
+// Checkbox
+ui.checkbox(&mut my_boolean, "Checkbox");
+
+// Radio buttons
+ui.horizontal(|ui| {
+    ui.radio_value(&mut my_enum, Enum::First, "First");
+    ui.radio_value(&mut my_enum, Enum::Second, "Second");
+});
+```
+
+### Response Handling
+
+```rust
+let response = ui.button("Button");
+
+if response.clicked() {
+    // Primary click
+}
+if response.secondary_clicked() {
+    // Right click
+}
+if response.hovered() {
+    // Show tooltip or highlight
+}
+if response.changed() {
+    // Value changed (for inputs)
+}
+if response.lost_focus() {
+    // Focus lost (for text edits)
+}
+```
+
+## Performance Best Practices
+
+### 1. Use FrameCache for Expensive Computations
+
+```rust
+// Cache results that are expensive to compute each frame
+// Results are automatically evicted if unused in the next frame
+let cached_result = ui.ctx().memory_mut(|mem| {
+    mem.caches.cache::<MyCacheType>().get(key)
+});
+```
+
+### 2. Virtual Scrolling for Large Lists
+
+Always use `show_rows()` for large lists instead of rendering all items:
+
+```rust
+ScrollArea::vertical().show_rows(ui, row_height, total_rows, |ui, row_range| {
+    for row in row_range {
+        // Only render visible rows
+    }
+});
+```
+
+### 3. Minimize Layout Recalculations
+
+- Structure UI code efficiently as it runs every frame
+- Use `ui.scope()` to isolate changes and prevent unintended propagation
+- Avoid unnecessary style mutations outside of scopes
+
+### 4. Repaint Control
+
+```rust
+// Request repaint only when needed
+ctx.request_repaint();
+
+// Request repaint after a delay
+ctx.request_repaint_after(std::time::Duration::from_millis(100));
+```
+
+## ID Management
+
+### Stable IDs for State
+
+```rust
+// ui.id() is stable across frames - good for storing state
+let stable_id = ui.id();
+
+// ui.unique_id() is globally unique but NOT stable - use for transient interactions
+let unique_id = ui.unique_id();
+
+// Custom ID with salt
+ui.push_id("my_section", |ui| {
+    // Widgets here have unique IDs scoped to "my_section"
+});
+```
+
+## Common Patterns
+
+### Collapsible Sections
+
+```rust
+ui.collapsing("Click to expand", |ui| {
+    ui.label("Hidden content here");
+});
+
+// With default open state
+egui::CollapsingHeader::new("Settings")
+    .default_open(true)
+    .show(ui, |ui| {
+        // Settings widgets
+    });
+```
+
+### Modal-like Behavior with Scope
+
+```rust
+ui.scope(|ui| {
+    // Disable interaction with background
+    ui.set_enabled(is_modal_closed);
+    
+    // Background content
+});
+
+if show_modal {
+    egui::Window::new("Modal")
+        .collapsible(false)
+        .show(ctx, |ui| {
+            // Modal content
+        });
+}
+```
+
+### Conditional Widget Rendering
+
+```rust
+ui.scope(|ui| {
+    ui.set_visible(should_show);
+    ui.label("Conditionally visible");
+});
+
+// Or use enabled for grayed out appearance
+ui.scope(|ui| {
+    ui.set_enabled(is_enabled);
+    if ui.button("Maybe disabled").clicked() {
+        // Only fires if enabled
+    }
+});
+```
+
+## Summary: Key Rules
+
+1. **Always prefer `ui.scope()` for temporary UI modifications**
+2. **Always use even numbers for all sizing values** (width, height, spacing, padding, etc.)
+3. Use virtual scrolling (`show_rows()`) for lists with many items
+4. Handle widget responses properly (`clicked()`, `changed()`, etc.)
+5. Use stable IDs (`ui.id()`) for state storage
+6. Add `CentralPanel` last after all other panels
+7. Cache expensive computations using `FrameCache`
+8. Isolate style changes within scopes to prevent unintended side effects

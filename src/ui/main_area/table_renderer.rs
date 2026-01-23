@@ -29,8 +29,8 @@ impl TableRenderer {
         sort_ascending: &mut bool,
     ) {
         // Set row and header height based on available space
-        let header_height = available_height * 0.06;
-        let row_height = available_height * 0.055;
+        let header_height = available_height * 0.04;
+        let row_height = available_height * 0.050;
 
         // Define column widths as proportions of the available width
         let col_width_checkbox = available_width * 0.04;
@@ -401,18 +401,12 @@ impl TableRenderer {
 
                                     // Estimated widths (px) for planning only; actual draw uses real sizes
                                     let est_icon = 30.0;
-                                    let est_export_full = 86.0; // "⤓ Export"
-                                    let est_replace_full = 96.0; // "⇆ Replace"
-                                    let est_remove_full = 90.0; // "🗑 Remove"
                                     let est_more = 30.0; // More (⋯) button
 
                                     // Planning flags
                                     let mut show_export = false;
-                                    let mut export_full = false;
                                     let mut show_replace = false;
-                                    let mut replace_full = false;
                                     let mut show_remove = false;
-                                    let mut remove_full = false;
                                     let mut overflow_export = false;
                                     let mut overflow_replace = false;
                                     let mut overflow_remove = false;
@@ -428,41 +422,28 @@ impl TableRenderer {
                                         }
                                     };
 
-                                    // Decide Export placement
-                                    if remaining_width >= spacing + est_export_full {
+                                    // Decide Export placement (icon only)
+                                    if remaining_width >= spacing + est_icon {
                                         show_export = true;
-                                        export_full = true;
-                                        remaining_width -= spacing + est_export_full;
-                                    } else if remaining_width >= spacing + est_icon {
-                                        show_export = true;
-                                        export_full = false;
                                         remaining_width -= spacing + est_icon;
                                     } else {
                                         overflow_export = true;
                                         ensure_more_reserved(&mut remaining_width);
                                     }
 
-                                    // Decide Replace placement
-                                    if remaining_width >= spacing + est_replace_full {
+                                    // Decide Replace placement (icon only)
+                                    if remaining_width >= spacing + est_icon {
                                         show_replace = true;
-                                        replace_full = true;
-                                        remaining_width -= spacing + est_replace_full;
-                                    } else if remaining_width >= spacing + est_icon {
-                                        show_replace = true;
-                                        replace_full = false;
                                         remaining_width -= spacing + est_icon;
                                     } else {
                                         overflow_replace = true;
                                         ensure_more_reserved(&mut remaining_width);
                                     }
 
-                                    // Decide Remove placement
-                                    if remaining_width >= spacing + est_remove_full {
+                                    // Decide Remove placement (icon only)
+                                    if remaining_width >= spacing + est_icon {
                                         show_remove = true;
-                                        remove_full = true;
-                                    } else if remaining_width >= spacing + est_icon {
-                                        show_remove = true;
-                                        remove_full = false;
+                                        remaining_width -= spacing + est_icon;
                                     } else {
                                         overflow_remove = true;
                                         ensure_more_reserved(&mut remaining_width);
@@ -471,18 +452,10 @@ impl TableRenderer {
                                     // Draw Export (if inline)
                                     if show_export {
                                         add_spacing(button_ui);
-                                        let export_text = if export_full {
-                                            RichText::new(format!(
-                                                "{} Export",
-                                                egui_phosphor::regular::DOWNLOAD_SIMPLE
-                                            ))
-                                            .size(text_size)
-                                        } else {
-                                            RichText::new(
-                                                egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string(),
-                                            )
-                                            .size(text_size)
-                                        };
+                                        let export_text = RichText::new(
+                                            egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string(),
+                                        )
+                                        .size(text_size);
                                         let export_button = button_ui
                                             .add(Button::new(export_text))
                                             .on_hover_text("Export");
@@ -494,20 +467,11 @@ impl TableRenderer {
                                     // Draw Replace (if inline)
                                     if show_replace {
                                         add_spacing(button_ui);
-                                        let replace_text = if replace_full {
-                                            RichText::new(format!(
-                                                "{} Replace",
-                                                egui_phosphor::regular::SWAP
-                                            ))
-                                            .size(text_size)
-                                            .color(Color32::from_rgb(255, 180, 100))
-                                        } else {
-                                            RichText::new(
-                                                egui_phosphor::regular::SWAP.to_string(),
-                                            )
-                                            .size(text_size)
-                                            .color(Color32::from_rgb(255, 180, 100))
-                                        };
+                                        let replace_text = RichText::new(
+                                            egui_phosphor::regular::SWAP.to_string(),
+                                        )
+                                        .size(text_size)
+                                        .color(Color32::from_rgb(255, 180, 100));
                                         let replace_button = button_ui
                                             .add(Button::new(replace_text))
                                             .on_hover_text("Replace");
@@ -519,20 +483,11 @@ impl TableRenderer {
                                     // Draw Remove (if inline)
                                     if show_remove {
                                         add_spacing(button_ui);
-                                        let remove_text = if remove_full {
-                                            RichText::new(format!(
-                                                "{} Remove",
-                                                egui_phosphor::regular::TRASH
-                                            ))
-                                            .size(text_size)
-                                            .color(Color32::from_rgb(255, 100, 100))
-                                        } else {
-                                            RichText::new(
-                                                egui_phosphor::regular::TRASH.to_string(),
-                                            )
-                                            .size(text_size)
-                                            .color(Color32::from_rgb(255, 100, 100))
-                                        };
+                                        let remove_text = RichText::new(
+                                            egui_phosphor::regular::TRASH.to_string(),
+                                        )
+                                        .size(text_size)
+                                        .color(Color32::from_rgb(255, 100, 100));
                                         let remove_button = button_ui
                                             .add(Button::new(remove_text))
                                             .on_hover_text("Remove");

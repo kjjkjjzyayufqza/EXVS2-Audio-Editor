@@ -39,30 +39,32 @@ impl AudioControls {
         let vertical_gap = available_height * 0.04;
 
         // Frame around the controls
-        Frame::group(ui.style())
+        Frame::new()
+            .inner_margin(8.0)
+            .fill(ui.visuals().window_fill)
             .corner_radius(CornerRadius::same(6))
-            .stroke(Stroke::new(
-                1.0,
-                ui.visuals().widgets.noninteractive.bg_stroke.color,
-            ))
             .show(ui, |ui| {
                 let render_volume_controls = |ui: &mut Ui, slider_width: f32, slider_height: f32| {
-                    // Volume slider
+                    // Volume slider (render first for right-to-left layout)
                     let mut volume = state_copy.volume * 100.0; // Convert 0-1 to 0-100 for display
-                    if ui
-                        .add_sized(
-                            [slider_width, slider_height],
-                            Slider::new(&mut volume, 0.0..=100.0)
-                                .text("")
-                                .show_value(false),
-                        )
-                        .changed()
-                    {
+                    let slider_response = ui
+                        .scope(|ui| {
+                            ui.spacing_mut().slider_width = slider_width;
+                            ui.add_sized(
+                                [ui.spacing().slider_width, slider_height],
+                                Slider::new(&mut volume, 0.0..=100.0)
+                                    .text("")
+                                    .show_value(false),
+                            )
+                        })
+                        .inner;
+
+                    if slider_response.changed() {
                         let mut state = self.audio_state.lock().unwrap();
                         state.set_volume(volume / 100.0); // Convert back to 0-1 for storage
                     }
 
-                    // Volume button with phosphor icon
+                    // Volume button with phosphor icon (render second for right-to-left layout)
                     let (volume_icon, _icon_name) =
                         if state_copy.is_muted || state_copy.volume <= 0.0 {
                             (regular::SPEAKER_NONE, "SPEAKER_NONE")
@@ -74,19 +76,28 @@ impl AudioControls {
                             (regular::SPEAKER_HIGH, "SPEAKER_HIGH")
                         };
 
-                    if ui
-                        .add(egui::Button::new(
-                            egui::RichText::new(volume_icon.to_string()).size(16.0),
+                    let volume_button_response = ui.scope(|ui| {
+                        let volume_color = if state_copy.is_muted || state_copy.volume <= 0.0 {
+                            Color32::from_gray(150)
+                        } else {
+                            Color32::from_rgb(100, 150, 255)
+                        };
+
+                        ui.add(egui::Button::new(
+                            egui::RichText::new(volume_icon.to_string())
+                                .size(16.0)
+                                .color(volume_color),
                         ))
-                        .clicked()
-                    {
+                    }).inner;
+
+                    if volume_button_response.clicked() {
                         let mut state = self.audio_state.lock().unwrap();
                         state.toggle_mute();
                     }
                 };
 
                 let slider_height = available_height * if is_narrow { 0.12 } else { 0.1 };
-                let volume_slider_width = available_width * if is_narrow { 0.5 } else { 0.25 };
+                let volume_slider_width = available_width * 0.12;
 
                 ui.add_space(vertical_gap);
 
@@ -246,7 +257,13 @@ impl AudioControls {
                         }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            render_volume_controls(ui, volume_slider_width, slider_height);
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(volume_slider_width + 40.0, slider_height),
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    render_volume_controls(ui, volume_slider_width, slider_height);
+                                },
+                            );
                         });
                     });
 
