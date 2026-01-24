@@ -1,4 +1,5 @@
-use egui::{Color32, Frame, Stroke, Ui};
+use egui::{Color32, Ui, RichText};
+use egui_phosphor::regular;
 
 use super::{
     audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
@@ -16,6 +17,8 @@ impl MainArea {
         available_height: f32,
         available_width: f32,
     ) {
+        let selected_count = self.selected_items.len();
+        
         // Use these variables to capture action information outside the immediate UI context
         // This way we can perform actions after all UI rendering is done to avoid multiple self borrowing
         struct ActionData {
@@ -28,6 +31,10 @@ impl MainArea {
             edit_grp_list: bool,
             edit_dton_tones: bool,
             edit_prop: bool,
+            replace_new: bool,
+            replace_empty: bool,
+            remove_selected: bool,
+            debug_convert_all_wav: bool,
         }
 
         let mut action_data = ActionData {
@@ -40,203 +47,178 @@ impl MainArea {
             edit_grp_list: false,
             edit_dton_tones: false,
             edit_prop: false,
+            replace_new: false,
+            replace_empty: false,
+            remove_selected: false,
+            debug_convert_all_wav: false,
         };
 
-        // First, render the UI
-        Frame::group(ui.style())
-            .stroke(Stroke::new(1.0, ui.visuals().faint_bg_color))
-            .show(ui, |ui| {
-                // Margins
-                ui.horizontal(|ui| {
-                    ui.add_space(8.0);
-                    ui.vertical(|ui| {
-                        // Table header with file count
-                        ui.horizontal(|ui| {
-                            ui.heading(format!("Audio File List ({})", files_count));
-                        });
+        // First, render the UI - Actions Bar
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            
+            // Primary Actions Group
+            ui.label(RichText::new("Actions:").weak().size(11.0));
+            
+            if ui.button(RichText::new(format!("{} Add", regular::PLUS))).on_hover_text("Add new audio file").clicked() {
+                action_data.add_audio = true;
+            }
+            
+            if ui.button(RichText::new(format!("{} Export All", regular::EXPORT))).on_hover_text("Export all files to WAV").clicked() {
+                action_data.export_all_confirm = true;
+            }
 
-                        ui.horizontal_wrapped(|ui| {
-                            // Capture Export All button click, show confirm dialog
-                            if ui.button("Export All").clicked() {
-                                action_data.export_all_confirm = true;
-                            }
+            ui.separator();
 
-                            if ui.button("Add Audio").clicked() {
-                                println!("Add Audio button clicked");
-                                action_data.add_audio = true;
-                            }
+            // Edit Group
+            ui.label(RichText::new("Edit:").weak().size(11.0));
+            if ui.button("GRP").on_hover_text("Edit GRP List").clicked() {
+                action_data.edit_grp_list = true;
+            }
+            if ui.button("DTON").on_hover_text("Edit DTON Tones").clicked() {
+                action_data.edit_dton_tones = true;
+            }
+            if ui.button("PROP").on_hover_text("Edit PROP").clicked() {
+                action_data.edit_prop = true;
+            }
 
-                            if ui.button("Edit GRP List").clicked() {
-                                action_data.edit_grp_list = true;
-                            }
+            ui.separator();
 
-                            if ui.button("Edit DTON Tones").clicked() {
-                                action_data.edit_dton_tones = true;
-                            }
-
-                            if ui.button("Edit PROP").clicked() {
-                                action_data.edit_prop = true;
-                            }
-
-                            // New: Replace with New Audio button (batch)
-                            if ui.button("Replace with New Audio").clicked() {
-                                let selected_count = self.selected_items.len();
-                                if selected_count == 0 {
-                                    self.add_toast("No items selected".to_string(), Color32::GOLD);
-                                } else {
-                                    if let Some(ref audio_files) = self.audio_files {
-                                        // Pick a representative selected audio to drive the dialog
-                                        let mut representative: Option<AudioFileInfo> = None;
-                                        for key in self.selected_items.iter() {
-                                            if let Some((name, id)) = key.split_once(':') {
-                                                if let Some(info) = audio_files.iter().find(|f| f.name == name && f.id == id) {
-                                                    representative = Some(info.clone());
-                                                    break;
-                                                }
-                                            }
-                                        }
-
-                                        if let Some(rep) = representative {
-                                            match ReplaceUtils::replace_with_file_dialog(&rep, &mut self.loop_settings_modal) {
-                                                Ok(_) => {
-                                                    self.pending_replace_new = true;
-                                                    self.add_toast(
-                                                        format!(
-                                                            "Please configure loop settings (will apply to {} selected item(s))",
-                                                            selected_count
-                                                        ),
-                                                        Color32::GOLD,
-                                                    );
-                                                }
-                                                Err(e) => {
-                                                    self.add_toast(format!("Replace failed: {}", e), Color32::RED);
-                                                }
-                                            }
-                                        } else {
-                                            self.add_toast("No matching selected items found in list".to_string(), Color32::GOLD);
-                                        }
-                                    }
-                                }
-                            }
-
-                            // New: Replace with Empty WAV button with confirmation
-                            if ui.button("Replace with Empty WAV").clicked() {
-                                // Count current selected items across filtering (persistent set)
-                                let selected_count = self.selected_items.len();
-                                if selected_count == 0 {
-                                    self.add_toast("No items selected".to_string(), Color32::GOLD);
-                                } else {
-                                    self.pending_replace_empty = true;
-                                    self.confirm_modal.open(
-                                        "Confirm Replace with Empty WAV",
-                                        &format!(
-                                            "This will replace the audio data of {} selected file(s) with empty WAV. Names and IDs will be preserved. Continue?",
-                                            selected_count
-                                        ),
-                                    );
-                                }
-                            }
-
-                            // New: Remove Selected button with confirmation
-                            if ui.button("Remove Selected").clicked() {
-                                let selected_count = self.selected_items.len();
-                                if selected_count == 0 {
-                                    self.add_toast("No items selected".to_string(), Color32::GOLD);
-                                } else if self.selected_file.is_none() {
-                                    self.add_toast("No file selected".to_string(), Color32::GOLD);
-                                } else {
-                                    self.pending_remove_selected = true;
-                                    self.confirm_modal.open(
-                                        "Confirm Remove Selected",
-                                        &format!(
-                                            "This will mark {} selected item(s) for deletion (in memory only) and they will be removed on save/export. Continue?",
-                                            selected_count
-                                        ),
-                                    );
-                                }
-                            }
-
-                            // Debug: Convert all NUS3BANK tracks to standard PCM WAV (in memory)
-                            if ui.button("Debug: Convert All to WAV").clicked() {
-                                if let Some(path) = self.selected_file.as_deref() {
-                                    if path.to_lowercase().ends_with(".nus3bank") {
-                                        self.pending_debug_convert_all_wav = true;
-                                        self.confirm_modal.open(
-                                            "Debug: Convert All to WAV",
-                                            "This will normalize all tracks in the currently opened .nus3bank to standard PCM16 WAV in memory (skips tracks that are already PCM16 WAV). This may take some time. Continue?",
-                                        );
-                                    } else {
-                                        self.add_toast(
-                                            "This debug action is only available for .nus3bank files".to_string(),
-                                            Color32::GOLD,
-                                        );
-                                    }
-                                } else {
-                                    self.add_toast("No file selected".to_string(), Color32::GOLD);
-                                }
-                            }
-                        });
-
-                        // File count display
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            // Show selected count and found/total info
-                            let selected_count = self.selected_items.len();
-                            if selected_count > 0 {
-                                ui.label(format!("Selected: {}", selected_count));
-                                if !self.search_query.is_empty() {
-                                    ui.add_space(12.0);
-                                }
-                            }
-                            if !self.search_query.is_empty() {
-                                ui.label(format!(
-                                    "Found: {} / {}",
-                                    files_count,
-                                    self.file_count.unwrap_or(0)
-                                ));
-                            }
-                        });
-
-                        ui.add_space(5.0);
-
-                        // Empty results message
-                        if !self.search_query.is_empty() && filtered_audio_files.is_empty() {
-                            ui.add_space(8.0);
-                            ui.label("No audio files match the search criteria.");
-                        }
-
-                        // The actual table rendering - capture actions but don't execute them yet
-                        TableRenderer::render_table(
-                            ui,
-                            &filtered_audio_files,
-                            &mut self.selected_rows,
-                            &mut self.selected_items,
-                            self.striped,
-                            self.clickable,
-                            self.show_grid_lines,
-                            available_height,
-                            available_width,
-                            &mut |index| {
-                                action_data.export_index = Some(index);
-                            },
-                            &mut |index| {
-                                action_data.play_index = Some(index);
-                            },
-                            &mut |index| {
-                                action_data.replace_index = Some(index);
-                            },
-                            &mut |index| {
-                                action_data.remove_index = Some(index);
-                            },
-                            &mut self.sort_column,
-                            &mut self.sort_ascending,
-                        );
-
-                        ui.add_space(8.0);
-                    });
-                    ui.add_space(8.0);
-                });
-                ui.add_space(8.0);
+            // Batch Operations Group
+            ui.label(RichText::new("Batch:").weak().size(11.0));
+            let batch_enabled = selected_count > 0;
+            
+            ui.add_enabled_ui(batch_enabled, |ui| {
+                if ui.button(RichText::new(format!("{} Replace", regular::FILE_ARROW_UP))).on_hover_text("Replace selected with new audio").clicked() {
+                    action_data.replace_new = true;
+                }
+                if ui.button(RichText::new(format!("{} Clear", regular::ERASER))).on_hover_text("Replace selected with empty WAV").clicked() {
+                    action_data.replace_empty = true;
+                }
+                if ui.button(RichText::new(format!("{} Remove", regular::TRASH))).on_hover_text("Remove selected items").clicked() {
+                    action_data.remove_selected = true;
+                }
             });
+            
+            ui.separator();
+
+            // More Actions
+            ui.menu_button("More", |ui| {
+                if ui.button("Debug: Convert All to WAV").on_hover_text("Convert all tracks to PCM16 WAV in memory (NUS3BANK only)").clicked() {
+                    action_data.debug_convert_all_wav = true;
+                    ui.close();
+                }
+            });
+
+            // Right-aligned Info
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if selected_count > 0 {
+                    ui.label(
+                        RichText::new(format!("{} selected", selected_count))
+                            .color(Color32::from_rgb(100, 150, 255))
+                            .strong()
+                    );
+                }
+                
+                if !self.search_query.is_empty() {
+                    ui.label(RichText::new(format!("Found {} / {}", files_count, self.file_count.unwrap_or(0))).weak());
+                }
+            });
+        });
+
+        ui.add_space(8.0);
+
+        // The actual table rendering - capture actions but don't execute them yet
+        TableRenderer::render_table(
+            ui,
+            &filtered_audio_files,
+            &mut self.selected_rows,
+            &mut self.selected_items,
+            self.striped,
+            self.clickable,
+            self.show_grid_lines,
+            available_height - 40.0, // Account for actions bar
+            available_width,
+            &mut |index| {
+                action_data.export_index = Some(index);
+            },
+            &mut |index| {
+                action_data.play_index = Some(index);
+            },
+            &mut |index| {
+                action_data.replace_index = Some(index);
+            },
+            &mut |index| {
+                action_data.remove_index = Some(index);
+            },
+            &mut self.sort_column,
+            &mut self.sort_ascending,
+        );
+
+        // Map captured actions to class members for processing
+        if action_data.replace_new {
+            if let Some(ref audio_files) = self.audio_files {
+                let mut representative: Option<AudioFileInfo> = None;
+                for key in self.selected_items.iter() {
+                    if let Some((name, id)) = key.split_once(':') {
+                        if let Some(info) = audio_files.iter().find(|f| f.name == name && f.id == id) {
+                            representative = Some(info.clone());
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(rep) = representative {
+                    match ReplaceUtils::replace_with_file_dialog(&rep, &mut self.loop_settings_modal) {
+                        Ok(_) => {
+                            self.pending_replace_new = true;
+                        }
+                        Err(e) => {
+                            self.add_toast(format!("Replace failed: {}", e), Color32::RED);
+                        }
+                    }
+                }
+            }
+        }
+        
+        if action_data.replace_empty {
+            self.pending_replace_empty = true;
+            self.confirm_modal.open(
+                "Confirm Replace with Empty WAV",
+                &format!(
+                    "This will replace the audio data of {} selected file(s) with empty WAV. Names and IDs will be preserved. Continue?",
+                    selected_count
+                ),
+            );
+        }
+
+        if action_data.remove_selected {
+            self.pending_remove_selected = true;
+            self.confirm_modal.open(
+                "Confirm Remove Selected",
+                &format!(
+                    "This will mark {} selected item(s) for deletion (in memory only). Continue?",
+                    selected_count
+                ),
+            );
+        }
+
+        if action_data.debug_convert_all_wav {
+            if let Some(path) = self.selected_file.as_deref() {
+                if path.to_lowercase().ends_with(".nus3bank") {
+                    self.pending_debug_convert_all_wav = true;
+                    self.confirm_modal.open(
+                        "Debug: Convert All to WAV",
+                        "This will normalize all tracks in the currently opened .nus3bank to standard PCM16 WAV in memory (skips tracks that are already PCM16 WAV). This may take some time. Continue?",
+                    );
+                } else {
+                    self.add_toast(
+                        "This debug action is only available for .nus3bank files".to_string(),
+                        Color32::GOLD,
+                    );
+                }
+            }
+        }
 
         // Collect toast messages to add - we'll add them all at once to avoid multiple self.add_toast calls
         let mut toasts_to_add = Vec::new();

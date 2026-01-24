@@ -62,10 +62,20 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Enable dark mode
-        ctx.set_visuals(egui::Visuals::dark());
+        // 自定義暗色主題，避免純黑色
+        let mut visuals = egui::Visuals::dark();
+        visuals.panel_fill = egui::Color32::from_rgb(32, 32, 32);   // 標題與播放器背景
+        visuals.window_fill = egui::Color32::from_rgb(45, 45, 45);  // 主編輯區域背景
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(32, 32, 32);
+        ctx.set_visuals(visuals);
         // Display top menu panel
         TopPanel::show(ctx, Some(self));
+
+        // Display audio player (if initialized)
+        if let Some(audio_player) = &mut self.main_area.audio_player {
+            let action = audio_player.show(ctx);
+            self.main_area.handle_audio_player_action(action);
+        }
 
         let available_rect = ctx.available_rect();
         let side_panel_width = available_rect.width() * 0.20;
@@ -90,11 +100,5 @@ impl eframe::App for TemplateApp {
 
         // Display the main editing area
         self.main_area.show(ctx);
-
-        // Display audio player (if initialized)
-        if let Some(audio_player) = &mut self.main_area.audio_player {
-            let action = audio_player.show(ctx);
-            self.main_area.handle_audio_player_action(action);
-        }
     }
 }

@@ -140,7 +140,7 @@ impl FileList {
                     if ui.add(add_btn).on_hover_text("Add Files").clicked() {
                         if let Some(paths) = rfd::FileDialog::new()
                             .set_title("Select Audio Files")
-                            .add_filter("Audio Files", &["nus3audio", "wav", "mp3"])
+                            .add_filter("Audio Files", &["nus3audio", "nus3bank", "wav", "mp3"])
                             .pick_files()
                         {
                             for path in paths {
@@ -269,8 +269,9 @@ impl FileList {
                                         ui.add_space(8.0);
 
                                         // File icon
-                                        let icon =
-                                            if file.path.to_lowercase().ends_with(".nus3audio") {
+                                        let icon = if file.path.to_lowercase().ends_with(".nus3audio")
+                                            || file.path.to_lowercase().ends_with(".nus3bank")
+                                        {
                                                 regular::MUSIC_NOTES
                                             } else {
                                                 regular::FILE
