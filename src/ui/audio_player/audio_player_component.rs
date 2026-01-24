@@ -57,13 +57,15 @@ impl AudioPlayer {
         let action = self.check_for_transitions();
 
         let available_rect = ctx.available_rect();
-        let panel_min_height = available_rect.height() * 0.15;
+        let panel_default_height = available_rect.height() * 0.20;
+        let panel_min_height = available_rect.height() * 0.12;
 
-        // Display audio player in a bottom panel
+        // Display audio player in a bottom panel with resizable height
         egui::TopBottomPanel::bottom("audio_player_panel")
+            .resizable(true)
             .min_height(panel_min_height)
+            .default_height(panel_default_height)
             .frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill))
-            .resizable(false)
             .show(ctx, |ui| {
                 self.render(ui);
             });

@@ -1,7 +1,9 @@
-use egui::{Align, Button, Color32, Frame, Layout, RichText, ScrollArea, Ui, Vec2};
+use egui::{Align, Button, Color32, Layout, RichText, ScrollArea, Ui};
 use egui_phosphor::regular;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+use super::main_area::ConfirmModal;
 
 /// File item structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -18,6 +20,8 @@ pub struct FileList {
     pub selected_file: Option<String>,
     #[serde(skip)]
     pub search_query: String,
+    #[serde(skip)]
+    pub confirm_clear_modal: ConfirmModal,
 }
 
 impl FileList {
@@ -112,6 +116,18 @@ impl FileList {
         let mut action_path = None;
         let mut is_remove_action = false;
 
+        // Show confirm modal
+        self.confirm_clear_modal.show(ui.ctx());
+        
+        // Handle confirm modal result
+        if self.confirm_clear_modal.confirmed {
+            self.clear_all();
+            file_changed = true;
+            self.confirm_clear_modal.reset_state();
+        } else if self.confirm_clear_modal.cancelled {
+            self.confirm_clear_modal.reset_state();
+        }
+
         ui.vertical(|ui| {
             // Header
             ui.add_space(8.0);
@@ -141,8 +157,10 @@ impl FileList {
                         )
                         .frame(false);
                         if ui.add(clear_btn).on_hover_text("Clear All Files").clicked() {
-                            self.clear_all();
-                            file_changed = true;
+                            self.confirm_clear_modal.open(
+                                "Clear All Files",
+                                &format!("Are you sure you want to remove all {} file(s) from the list?", self.files.len())
+                            );
                         }
 
                         ui.label(RichText::new(format!("{}", self.files.len())).weak());
@@ -151,8 +169,9 @@ impl FileList {
             });
             ui.add_space(8.0);
 
-            // Search box with improved UX
-            egui::Frame::none()
+            // Search box with improved UX - fixed width to prevent expansion
+            ui.set_width(ui.available_width());
+            egui::Frame::new()
                 .fill(ui.visuals().extreme_bg_color)
                 .corner_radius(4.0)
                 .inner_margin(4.0)
@@ -161,9 +180,10 @@ impl FileList {
                         ui.add_space(4.0);
                         ui.label(RichText::new(regular::MAGNIFYING_GLASS).weak());
 
-                        let _response = ui.add(
+                        let available_width = ui.available_width() - 30.0; // Reserve space for clear button
+                        let _response = ui.add_sized(
+                            [available_width, 20.0],
                             egui::TextEdit::singleline(&mut self.search_query)
-                                .desired_width(ui.available_width())
                                 .hint_text("Search files...")
                                 .frame(false),
                         );
@@ -221,19 +241,16 @@ impl FileList {
                                     let row_width = ui.available_width();
                                     let (id, rect) =
                                         ui.allocate_space(egui::vec2(row_width, row_height));
-                                    let response = ui.interact(rect, id, egui::Sense::click());
-
-                                    if response.clicked() {
-                                        action_path = Some(file.path.clone());
-                                        is_remove_action = false;
-                                        file_changed = true;
-                                    }
-
+                                    
                                     // Custom rendering for list item
                                     let painter = ui.painter();
                                     let rounding = 4.0;
 
-                                    if response.hovered() || is_selected {
+                                    // Determine if row is hovered (we'll check button hover separately)
+                                    let row_response = ui.interact(rect, id, egui::Sense::click());
+                                    let is_row_hovered = row_response.hovered();
+
+                                    if is_row_hovered || is_selected {
                                         let bg_color = if is_selected {
                                             ui.visuals().selection.bg_fill
                                         } else {
@@ -246,6 +263,8 @@ impl FileList {
                                     let ui_builder = egui::UiBuilder::new()
                                         .max_rect(rect)
                                         .layout(egui::Layout::left_to_right(egui::Align::Center));
+                                    
+                                    let mut remove_clicked = false;
                                     ui.scope_builder(ui_builder, |ui| {
                                         ui.add_space(8.0);
 
@@ -273,7 +292,7 @@ impl FileList {
                                             Layout::right_to_left(Align::Center),
                                             |ui| {
                                                 ui.add_space(4.0);
-                                                if response.hovered() || is_selected {
+                                                if is_row_hovered || is_selected {
                                                     let remove_btn = Button::new(
                                                         RichText::new(regular::X).size(12.0),
                                                     )
@@ -283,16 +302,25 @@ impl FileList {
                                                         .on_hover_text("Remove from list")
                                                         .clicked()
                                                     {
-                                                        action_path = Some(file.path.clone());
-                                                        is_remove_action = true;
-                                                        file_changed = true;
+                                                        remove_clicked = true;
                                                     }
                                                 }
                                             },
                                         );
                                     });
 
-                                    response.on_hover_text(&file.path);
+                                    // Handle clicks: prioritize remove button, then row selection
+                                    if remove_clicked {
+                                        action_path = Some(file.path.clone());
+                                        is_remove_action = true;
+                                        file_changed = true;
+                                    } else if row_response.clicked() {
+                                        action_path = Some(file.path.clone());
+                                        is_remove_action = false;
+                                        file_changed = true;
+                                    }
+
+                                    row_response.on_hover_text(&file.path);
                                 });
                             }
                         },

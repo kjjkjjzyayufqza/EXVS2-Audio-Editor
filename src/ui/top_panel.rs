@@ -1,5 +1,5 @@
 use crate::version_check;
-use egui::Context;
+use egui::{Context, Id};
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use crate::ui::main_area::Nus3audioFileUtils;
@@ -247,6 +247,18 @@ impl TopPanel {
                     });
                 }
 
+                ui.menu_button("Settings", |ui| {
+                    if ui.button("Reset Layout").clicked() {
+                        TopPanel::reset_layout(ctx);
+                        show_modal(
+                            "Layout Reset",
+                            "The layout has been reset to defaults.",
+                            false,
+                        );
+                        ui.close();
+                    }
+                });
+
                 ui.menu_button("Help", |ui| {
                     if ui.button("About").clicked() {
                         // Show about modal with project information
@@ -346,5 +358,15 @@ impl TopPanel {
                 );
             }
         }
+    }
+
+    /// Reset resizable panel layout to defaults
+    fn reset_layout(ctx: &Context) {
+        ctx.memory_mut(|mem| {
+            mem.data.remove::<egui::panel::PanelState>(Id::new("file_list_panel"));
+            mem.data
+                .remove::<egui::panel::PanelState>(Id::new("audio_player_panel"));
+        });
+        ctx.request_repaint();
     }
 }

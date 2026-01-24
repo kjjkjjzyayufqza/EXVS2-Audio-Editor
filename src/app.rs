@@ -68,8 +68,8 @@ impl eframe::App for TemplateApp {
         TopPanel::show(ctx, Some(self));
 
         let available_rect = ctx.available_rect();
-        let side_panel_width = available_rect.width() * 0.28;
-        let side_panel_min_width = available_rect.width() * 0.2;
+        let side_panel_width = available_rect.width() * 0.20;
+        let side_panel_min_width = available_rect.width() * 0.14;
 
         // First create the side panel with file list
         egui::SidePanel::left("file_list_panel")

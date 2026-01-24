@@ -1,5 +1,5 @@
 use super::audio_state::{AudioState, LoopMode};
-use egui::{Align, Color32, CornerRadius, Frame, Layout, RichText, Ui, Vec2, widgets::Slider};
+use egui::{Align, Color32, CornerRadius, Frame, Layout, RichText, Ui, widgets::Slider};
 use egui_phosphor::regular;
 use std::sync::{Arc, Mutex};
 
@@ -46,7 +46,7 @@ impl AudioControls {
                     ui.horizontal(|ui| {
                         // Info Section (Left)
                         ui.allocate_ui_with_layout(
-                            Vec2::new(available_width * 0.5, 45.0),
+                            egui::vec2(available_width * 0.5, 45.0),
                             Layout::left_to_right(Align::Center),
                             |ui| {
                                 if let Some(audio) = &state_copy.current_audio {
