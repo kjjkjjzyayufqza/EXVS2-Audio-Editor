@@ -1,0 +1,67 @@
+---
+alwaysApply: true
+---
+# Development Guidelines
+
+This guide provides mandatory rules for AI-assisted development in this Rust project.
+
+## Mandatory Code Verification After Development
+
+**CRITICAL**: After completing any code changes or implementing new features, the AI assistant MUST perform the following steps:
+
+### 1. Run `cargo check` for Error Detection
+
+After every code modification, run `cargo check` to verify the code compiles correctly:
+
+```bash
+cargo check
+```
+
+### 2. Fix All Errors Before Proceeding
+
+- **All `error` level issues MUST be fixed** before considering the task complete
+- Do NOT leave any compilation errors unresolved
+- Continue iterating on fixes until `cargo check` passes without errors
+
+### 3. Verification Workflow
+
+The required workflow for any code change is:
+
+1. Make code changes
+2. Run `cargo check`
+3. If errors exist:
+   - Analyze the error messages
+   - Fix all errors
+   - Run `cargo check` again
+   - Repeat until no errors remain
+4. Only consider the task complete when `cargo check` passes
+
+### Warning Handling
+
+- Warnings (`warning`) should be addressed when reasonable, but are not blocking
+- Focus on eliminating errors first, then address warnings if time permits
+
+## Example Error Handling
+
+```bash
+# After making changes, run cargo check
+cargo check
+
+# If you see errors like:
+# error[E0425]: cannot find value `x` in this scope
+# error[E0308]: mismatched types
+
+# You MUST fix these errors before proceeding!
+# Make the necessary corrections, then run cargo check again:
+cargo check
+
+# Continue until you see:
+# Finished `dev` profile [unoptimized + debuginfo] target(s) in X.XXs
+```
+
+## Summary
+
+- **ALWAYS** run `cargo check` after code changes
+- **ALWAYS** fix all compilation errors
+- **NEVER** consider a task complete with unresolved errors
+- This rule applies to ALL code modifications, no matter how small
