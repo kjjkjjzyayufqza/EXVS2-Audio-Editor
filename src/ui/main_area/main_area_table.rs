@@ -128,12 +128,22 @@ impl MainArea {
 
         ui.add_space(8.0);
 
+        let now_playing_key = self.audio_player.as_ref().and_then(|player| {
+            let state = player.get_audio_state();
+            let state = state.lock().unwrap();
+            state
+                .current_audio
+                .as_ref()
+                .map(|audio| format!("{}:{}", audio.name, audio.id))
+        });
+
         // The actual table rendering - capture actions but don't execute them yet
         TableRenderer::render_table(
             ui,
             &filtered_audio_files,
             &mut self.selected_rows,
             &mut self.selected_items,
+            now_playing_key.as_deref(),
             self.striped,
             self.clickable,
             self.show_grid_lines,

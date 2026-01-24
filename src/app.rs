@@ -62,11 +62,11 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // 自定義暗色主題，避免純黑色
+        // Custom dark theme with consistent black background
         let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = egui::Color32::from_rgb(32, 32, 32);   // 標題與播放器背景
-        visuals.window_fill = egui::Color32::from_rgb(45, 45, 45);  // 主編輯區域背景
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(32, 32, 32);
+        visuals.panel_fill = egui::Color32::from_rgb(27, 27, 27);    // Panel background (top panel, side panel, bottom player)
+        visuals.window_fill = egui::Color32::from_rgb(27, 27, 27);   // Main area background
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(27, 27, 27);
         ctx.set_visuals(visuals);
         // Display top menu panel
         TopPanel::show(ctx, Some(self));

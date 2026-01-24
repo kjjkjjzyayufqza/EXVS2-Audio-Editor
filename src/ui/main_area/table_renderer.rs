@@ -1,5 +1,5 @@
 use egui::{
-    Button, Color32, Grid, Layout, Rect, RichText, ScrollArea, Stroke, TextWrapMode, Ui, Vec2, Direction,
+    Button, Color32, Grid, Layout, Rect, RichText, ScrollArea, Stroke, StrokeKind, TextWrapMode, Ui, Vec2, Direction,
 };
 use std::collections::HashSet;
 use super::audio_file_info::AudioFileInfo;
@@ -16,6 +16,7 @@ impl TableRenderer {
         audio_files: &[AudioFileInfo],
         selected_rows: &mut HashSet<usize>,
         persistent_selected: &mut HashSet<String>,
+        now_playing_key: Option<&str>,
         striped: bool,
         clickable: bool,
         show_grid_lines: bool,
@@ -87,6 +88,16 @@ impl TableRenderer {
 
         // Header text size
         let heading_size = 17.0;
+        let now_playing_bg = if ui.visuals().dark_mode {
+            Color32::from_rgba_unmultiplied(40, 90, 130, 90)
+        } else {
+            Color32::from_rgba_unmultiplied(180, 220, 255, 120)
+        };
+        let now_playing_accent = if ui.visuals().dark_mode {
+            Color32::from_rgb(90, 180, 255)
+        } else {
+            Color32::from_rgb(40, 120, 200)
+        };
 
         // Create header
         let header_bg_color = if ui.visuals().dark_mode {
@@ -282,45 +293,63 @@ impl TableRenderer {
                         let is_persist_selected = persistent_selected.contains(&key);
                         let is_row_selected = selected_rows.contains(&row_index);
                         let is_selected = is_persist_selected || is_row_selected;
+                        let is_now_playing = now_playing_key
+                            .map(|current| current == key)
+                            .unwrap_or(false);
+
+                        let row_rect = ui.available_rect_before_wrap();
+                        let row_size = Vec2::new(row_rect.width(), row_height);
 
                         // Striped background
                         if striped && row_index % 2 == 1 {
-                            let row_rect = ui.available_rect_before_wrap();
                             ui.painter().rect_filled(
-                                Rect::from_min_size(
-                                    row_rect.min,
-                                    Vec2::new(row_rect.width(), row_height),
-                                ),
+                                Rect::from_min_size(row_rect.min, row_size),
                                 0.0,
                                 ui.visuals().faint_bg_color,
                             );
                         }
 
+                        if is_now_playing && !is_selected {
+                            ui.painter().rect_filled(
+                                Rect::from_min_size(row_rect.min, row_size),
+                                0.0,
+                                now_playing_bg,
+                            );
+                        }
+
                         // Highlight selected row
                         if is_selected {
-                            let row_rect = ui.available_rect_before_wrap();
                             ui.painter().rect_filled(
-                                Rect::from_min_size(
-                                    row_rect.min,
-                                    Vec2::new(row_rect.width(), row_height),
-                                ),
+                                Rect::from_min_size(row_rect.min, row_size),
                                 0.0,
                                 ui.visuals().selection.bg_fill,
                             );
                         }
 
+                        if is_now_playing {
+                            let rect = Rect::from_min_size(row_rect.min, row_size);
+                            let left_line_start = rect.min + Vec2::new(0.0, 2.0);
+                            let left_line_end = rect.min + Vec2::new(0.0, row_height - 2.0);
+                            ui.painter().line_segment(
+                                [left_line_start, left_line_end],
+                                Stroke::new(2.0, now_playing_accent),
+                            );
+                            ui.painter().rect_stroke(
+                                rect.shrink(0.5),
+                                0.0,
+                                Stroke::new(1.0, now_playing_accent),
+                                StrokeKind::Inside,
+                            );
+                        }
+
                         // Create a responsive area that includes the entire row
-                        let row_rect = ui.available_rect_before_wrap();
                         let sense = if clickable {
                             egui::Sense::click()
                         } else {
                             egui::Sense::hover()
                         };
                         let row_response = ui.interact(
-                            Rect::from_min_size(
-                                row_rect.min,
-                                Vec2::new(row_rect.width(), row_height),
-                            ),
+                            Rect::from_min_size(row_rect.min, row_size),
                             ui.id().with(row_index),
                             sense,
                         );
@@ -353,7 +382,18 @@ impl TableRenderer {
                         // Column 1: Name - with text clipping
                         ui.scope(|ui| {
                             ui.style_mut().wrap_mode = Some(TextWrapMode::Truncate);
-                            let text = RichText::new(&file.name).size(text_size);
+                            let text = if is_now_playing {
+                                RichText::new(format!(
+                                    "{} {}",
+                                    egui_phosphor::regular::PLAY,
+                                    file.name
+                                ))
+                                .size(text_size)
+                                .color(now_playing_accent)
+                                .strong()
+                            } else {
+                                RichText::new(&file.name).size(text_size)
+                            };
                             ui.add_sized([col_width_name, row_height], egui::Label::new(text))
                                 .on_hover_text(&file.name);
                         });
