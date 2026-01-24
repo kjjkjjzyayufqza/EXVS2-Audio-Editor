@@ -6,22 +6,23 @@ A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extre
 
 ## Overview
 
-EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format audio files. It allows you to extract, play, replace, and export audio files contained within NUS3AUDIO containers, which are commonly used in Bandai Namco's Extreme VS 2 game.
+EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO and NUS3BANK format audio files. It allows you to extract, play, replace, and export audio files contained within these containers, which are commonly used in Bandai Namco's Extreme VS 2 (EXVS2) game.
 
 ![preview](/git_images/preview.png)
 ![Loop Settings](/git_images/loop_setting.png)
 
 ## Features
 
-- **Audio File Management**: Open NUS3AUDIO files and view contained audio tracks
-- **Audio Playback**: Built-in audio player for previewing tracks
+- **Audio File Management**: Open NUS3AUDIO and NUS3BANK files and view contained audio tracks
+- **Audio Playback**: Built-in audio player for previewing tracks (supports both NUS3AUDIO and NUS3BANK)
 - **Audio Extraction**: Export audio tracks to WAV format
 - **Audio Replacement**: Replace audio tracks with your own audio files
+- **NUS3BANK Section Editing**: Edit PROP (Properties), DTON (Tones), and GRP (Groups) sections specifically for EXVS2 NUS3BANK files
 - **Advanced Loop Settings**: Configure custom loop points with precise timing control
 - **Audio Gain Adjustment**: Apply volume gain (amplification/attenuation) to audio files before processing
 - **Loop Point Processing**: Add loop points to audio files for seamless looping using vgmstream
 - **Search & Filter**: Easily find specific audio tracks within large containers
-- **Add New Audio**: Add new audio
+- **Add/Remove Audio**: Support for adding and removing audio tracks in both NUS3AUDIO and NUS3BANK containers
 
 ## System Requirements
 
@@ -35,10 +36,10 @@ EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO format aud
 
 ## Usage
 
-### Opening NUS3AUDIO Files
+### Opening Audio Files (NUS3AUDIO/NUS3BANK)
 
 1. Click the "Add File" button in the file list panel
-2. Select a NUS3AUDIO file from your computer
+2. Select a NUS3AUDIO or NUS3BANK file from your computer
 3. The file will be loaded and its contents displayed in the main area
 
 ### Playing Audio Tracks
@@ -85,7 +86,7 @@ The loop settings dialog provides the following options:
 ### Saving Changes
 
 1. After making your desired changes, click the "Save" button
-2. Choose where to save the modified NUS3AUDIO file
+2. Choose where to save the modified NUS3AUDIO or NUS3BANK file
 3. All changes will be written to the new file (the original file is not modified)
 
 ## Tools Used
@@ -100,9 +101,17 @@ This application uses the following tools to process audio files:
 
 ### NUS3BANK Format Support
 
-The NUS3BANK format implementation in this project is based on the reference code from [Smash-Forge's NUS3BANK.cs](https://github.com/jam1garner/Smash-Forge/blob/master/Smash%20Forge/Filetypes/Sounds/NUS3BANK.cs).
+This tool provides partial but functional support for the NUS3BANK format used in EXVS2. The implementation is based on the reference code from [Smash-Forge's NUS3BANK.cs](https://github.com/jam1garner/Smash-Forge/blob/master/Smash%20Forge/Filetypes/Sounds/NUS3BANK.cs).
 
-**⚠️ Experimental Status**: The NUS3BANK format support is currently in an experimental stage. While basic functionality is working, some features may be incomplete or subject to change. Please report any issues you encounter.
+Supported NUS3BANK features:
+- **TOC/TONE Parsing**: Correctly mapping TONE entries to audio data
+- **Audio Replacement**: Replacing TONE payload with WAV data (automatically converted to the appropriate format)
+- **PROP Editing**: Modifying audio properties like volume, pitch, etc.
+- **DTON Editing**: Modifying tone data specific to the bank
+- **GRP Editing**: Managing group assignments for audio tracks
+- **Adding/Removing Tracks**: Basic support for changing the number of tracks in a bank
+
+**⚠️ Experimental Status**: While many features are working for EXVS2, NUS3BANK support is still considered experimental. Always keep backups of your original files before saving.
 
 ## Development
 
