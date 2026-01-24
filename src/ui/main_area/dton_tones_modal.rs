@@ -75,13 +75,15 @@ impl DtonTonesModal {
         let mut open = self.open;
         let was_open = open;
         let available_rect = ctx.available_rect();
-        let min_width = available_rect.width() * 0.8;
-        let min_height = available_rect.height() * 0.7;
+        let default_width = available_rect.width() * 0.7;
+        let default_height = available_rect.height() * 0.7;
 
         Window::new("Edit DTON Tones")
             .open(&mut open)
-            .min_width(min_width)
-            .min_height(min_height)
+            .default_width(default_width)
+            .default_height(default_height)
+            .min_width(available_rect.width() * 0.5)
+            .min_height(available_rect.height() * 0.5)
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {
@@ -134,23 +136,29 @@ impl DtonTonesModal {
         ui.separator();
         ui.add_space(8.0);
 
+        let available_height = ui.available_height();
         ui.columns(2, |cols| {
-            self.render_left_list(&mut cols[0]);
-            self.render_right_details(&mut cols[1]);
+            self.render_left_list(&mut cols[0], available_height);
+            self.render_right_details(&mut cols[1], available_height);
         });
 
         self.flush_pending();
     }
 
-    fn render_left_list(&mut self, ui: &mut Ui) {
+    fn render_left_list(&mut self, ui: &mut Ui, available_height: f32) {
         ui.heading("Tones");
         ui.add_space(6.0);
 
         let indices = self.visible_indices();
+        let row_height = 22.0;
+        let total_rows = indices.len();
+
         ScrollArea::vertical()
             .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for idx in indices {
+            .max_height(available_height - 100.0) // Reserve space for buttons and search
+            .show_rows(ui, row_height, total_rows, |ui, row_range| {
+                for i in row_range {
+                    let idx = indices[i];
                     let name = self.tones.get(idx).map(|t| t.name.as_str()).unwrap_or("");
                     let len = self.tones.get(idx).map(|t| t.data.len()).unwrap_or(0);
                     let selected = self.selected_index == Some(idx);
@@ -176,7 +184,7 @@ impl DtonTonesModal {
         });
     }
 
-    fn render_right_details(&mut self, ui: &mut Ui) {
+    fn render_right_details(&mut self, ui: &mut Ui, available_height: f32) {
         ui.heading("Details");
         ui.add_space(6.0);
 
@@ -235,7 +243,7 @@ impl DtonTonesModal {
         ui.add_space(4.0);
         
         ui.push_id(format!("dton_data_text_{}", idx), |ui| {
-            let data_area_height = ui.available_height() * 0.4;
+            let data_area_height = (available_height - 250.0).max(150.0);
             ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .max_height(data_area_height)

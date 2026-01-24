@@ -2,7 +2,7 @@
 
 A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extreme VS 2) game.
 
-![Version](https://img.shields.io/badge/version-0.6.0-blue)
+![Version](https://img.shields.io/badge/version-0.7.0-blue)
 
 ## Overview
 
