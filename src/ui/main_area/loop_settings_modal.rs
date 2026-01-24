@@ -1,8 +1,7 @@
 use super::audio_file_info::AudioFileInfo;
 use egui::{Context, ScrollArea, Ui, Window};
-use rodio::{Decoder, Source};
-use std::io::Cursor;
 use mp3_duration;
+use hound;
 
 /// Structure to hold loop settings
 #[derive(Clone, Debug)]
@@ -65,64 +64,39 @@ impl LoopSettingsModal {
 
     /// Get the actual duration of an audio file by decoding it
     fn get_actual_audio_duration(&self, file_path: &str) -> Option<f32> {
-        // Return early if no replacement file exists
-        let path = file_path;
+        let path_lower = file_path.to_lowercase();
 
-        // Read the file
-        let file_data = match std::fs::read(path) {
-            Ok(data) => {
-                println!("Read {} bytes from audio file", data.len());
-                data
-            }
-            Err(e) => {
-                println!("Failed to read audio file {:?}: {}", path, e);
-                return None;
-            }
-        };
-
-        // Try to decode the audio with rodio to get its duration
-        match Decoder::new(Cursor::new(file_data)) {
-            Ok(decoder) => {
-                if let Some(duration) = decoder.total_duration() {
-                    let duration_secs = duration.as_secs_f32();
-                    println!("Decoded audio duration: {:.2}s", duration_secs);
-                    Some(duration_secs)
-                } else {
-                    println!("Could not determine audio duration from rodio decoder, trying mp3_duration");
-                    
-                    // Try mp3_duration if rodio couldn't determine the duration
-                    match mp3_duration::from_path(path) {
-                        Ok(duration) => {
-                            let duration_secs = duration.as_secs_f32();
-                            println!("MP3 duration: {:.2}s", duration_secs);
-                            Some(duration_secs)
-                        }
-                        Err(e) => {
-                            println!("Failed to get mp3 duration: {}", e);
-                            // Return 0 as fallback
-                            Some(0.0)
-                        }
+        if path_lower.ends_with(".wav") {
+            match hound::WavReader::open(file_path) {
+                Ok(reader) => {
+                    let spec = reader.spec();
+                    let samples = reader.duration();
+                    if spec.sample_rate > 0 {
+                        let duration_secs = samples as f32 / spec.sample_rate as f32;
+                        println!("Got duration from WAV header: {:.2}s", duration_secs);
+                        return Some(duration_secs);
                     }
                 }
-            }
-            Err(e) => {
-                println!("Failed to decode with rodio: {}, trying mp3_duration", e);
-                
-                // Try mp3_duration if rodio failed
-                match mp3_duration::from_path(path) {
-                    Ok(duration) => {
-                        let duration_secs = duration.as_secs_f32();
-                        println!("MP3 duration: {:.2}s", duration_secs);
-                        Some(duration_secs)
-                    }
-                    Err(e) => {
-                        println!("Failed to get mp3 duration: {}", e);
-                        // Return 0 as fallback
-                        Some(0.0)
-                    }
+                Err(e) => {
+                    println!("Failed to read WAV header: {}", e);
                 }
             }
         }
+
+        if path_lower.ends_with(".mp3") {
+            match mp3_duration::from_path(file_path) {
+                Ok(duration) => {
+                    let duration_secs = duration.as_secs_f32();
+                    println!("MP3 duration: {:.2}s", duration_secs);
+                    return Some(duration_secs);
+                }
+                Err(e) => {
+                    println!("Failed to get mp3 duration: {}", e);
+                }
+            }
+        }
+
+        None
     }
 
     /// Open the modal with audio info

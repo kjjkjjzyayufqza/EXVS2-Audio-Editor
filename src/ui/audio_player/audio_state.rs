@@ -1,5 +1,6 @@
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 use super::audio_backend::{AudioBackend, PlatformAudioBackend};
 use crate::ui::main_area::AudioFileInfo;
@@ -13,6 +14,28 @@ pub enum LoopMode {
     Single,
     /// Loop the entire playlist
     All,
+}
+
+/// Persisted audio player settings
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AudioPlayerSettings {
+    pub volume: f32,
+    pub is_muted: bool,
+    pub previous_volume: f32,
+    pub loop_mode: LoopMode,
+    pub shuffle: bool,
+}
+
+impl Default for AudioPlayerSettings {
+    fn default() -> Self {
+        Self {
+            volume: 0.80,
+            is_muted: false,
+            previous_volume: 0.80,
+            loop_mode: LoopMode::None,
+            shuffle: false,
+        }
+    }
 }
 
 /// Audio player state
@@ -131,9 +154,10 @@ impl Clone for AudioState {
 pub struct AudioFile {
     /// Original file path
     pub file_path: String,
-    
-    /// Audio file raw data (wrapped in Arc to avoid expensive clones for large files)
-    pub data: Arc<Vec<u8>>,
+
+    /// Temporary playback file path (native only)
+    #[cfg(not(target_arch = "wasm32"))]
+    pub playback_path: Option<String>,
     
     /// Audio file name
     pub name: String,
@@ -159,9 +183,9 @@ impl Default for AudioState {
             is_playing: false,
             current_position: 0.0,
             total_duration: 0.0,
-            volume: 0.25, // Default volume at 25%
+            volume: 0.80, // Default volume at 80%
             is_muted: false,
-            previous_volume: 0.25,
+            previous_volume: 0.80,
             loop_start: None,
             loop_end: None,
             use_custom_loop: false,
@@ -213,32 +237,37 @@ impl AudioState {
             if self.is_playing {
                 // If starting playback and we have audio data
                 if let Some(audio) = &self.current_audio {
-                    // Use Arc::clone for cheap reference counting instead of data clone
-                    let data_arc = Arc::clone(&audio.data);
-                    
-                    // If we're resuming from a position other than the beginning,
-                    // we need to set the position after starting playback
-                    let position = self.current_position;
-                    
-                    if let Err(e) = backend.play_audio(data_arc) {
-                        log::error!("Failed to play audio: {}", e);
-                        self.is_playing = false;
-                        return;
-                    }
-                    
-                    // Get actual duration from backend
-                    self.total_duration = backend.get_duration();
-                    
-                    // Apply current volume setting
-                    if let Err(e) = backend.set_volume(self.volume) {
-                        log::error!("Failed to apply volume: {}", e);
-                    }
-                    
-                    // If we're resuming from a non-zero position, seek to that position
-                    if position > 0.0 {
-                        if let Err(e) = backend.set_position(position) {
-                            log::error!("Failed to seek to position {}: {}", position, e);
-                            // Continue playback even if seeking fails
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let playback_path = audio
+                            .playback_path
+                            .as_deref()
+                            .unwrap_or(&audio.file_path);
+
+                        // If we're resuming from a position other than the beginning,
+                        // we need to set the position after starting playback
+                        let position = self.current_position;
+
+                        if let Err(e) = backend.play_audio(playback_path) {
+                            log::error!("Failed to play audio: {}", e);
+                            self.is_playing = false;
+                            return;
+                        }
+
+                        // Get actual duration from backend
+                        self.total_duration = backend.get_duration();
+
+                        // Apply current volume setting
+                        if let Err(e) = backend.set_volume(self.volume) {
+                            log::error!("Failed to apply volume: {}", e);
+                        }
+
+                        // If we're resuming from a non-zero position, seek to that position
+                        if position > 0.0 {
+                            if let Err(e) = backend.set_position(position) {
+                                log::error!("Failed to seek to position {}: {}", position, e);
+                                // Continue playback even if seeking fails
+                            }
                         }
                     }
                 }
@@ -295,7 +324,9 @@ impl AudioState {
     pub fn set_audio(&mut self, audio: AudioFile) {
         // Stop any current playback
         self.stop();
-        
+
+        self.cleanup_temp_audio();
+
         // Set new audio file
         self.current_audio = Some(audio);
         
@@ -315,6 +346,7 @@ impl AudioState {
     /// Clear the current audio
     pub fn clear_audio(&mut self) {
         self.stop();
+        self.cleanup_temp_audio();
         self.current_audio = None;
     }
     
@@ -347,6 +379,43 @@ impl AudioState {
         if let Some(backend) = &mut self.audio_backend {
             if let Err(e) = backend.set_volume(self.volume) {
                 log::error!("Failed to set audio volume: {}", e);
+            }
+        }
+    }
+
+    /// Get persisted audio settings
+    pub fn settings(&self) -> AudioPlayerSettings {
+        AudioPlayerSettings {
+            volume: self.volume,
+            is_muted: self.is_muted,
+            previous_volume: self.previous_volume,
+            loop_mode: self.loop_mode,
+            shuffle: self.shuffle,
+        }
+    }
+
+    /// Apply persisted audio settings
+    pub fn apply_settings(&mut self, settings: &AudioPlayerSettings) {
+        self.loop_mode = settings.loop_mode;
+        self.shuffle = settings.shuffle;
+        self.previous_volume = settings.previous_volume.clamp(0.0, 1.0);
+
+        let mut volume = settings.volume.clamp(0.0, 1.0);
+        if settings.is_muted {
+            if volume > 0.0 {
+                self.previous_volume = volume;
+            }
+            volume = 0.0;
+        } else if volume == 0.0 && self.previous_volume > 0.0 {
+            volume = self.previous_volume;
+        }
+
+        self.volume = volume;
+        self.is_muted = settings.is_muted;
+
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_volume(self.volume) {
+                log::error!("Failed to apply persisted volume: {}", e);
             }
         }
     }
@@ -386,6 +455,17 @@ impl AudioState {
             
             // Check if we're actually playing
             self.is_playing = backend.is_playing();
+        }
+    }
+
+    fn cleanup_temp_audio(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(audio) = &self.current_audio {
+            if let Some(path) = audio.playback_path.as_deref() {
+                if path != audio.file_path {
+                    let _ = fs::remove_file(Path::new(path));
+                }
+            }
         }
     }
     

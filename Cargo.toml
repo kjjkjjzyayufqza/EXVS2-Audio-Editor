@@ -40,7 +40,7 @@ rand = "0.9.2"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11.8"
 rfd = "0.12"  # File dialog
-rodio = "0.17.1"  # Audio playback library for native platforms
+kira = { version = "0.11", features = ["symphonia"] }  # Audio playback library for native platforms
 winapi = { version = "0.3", features = ["winbase"] }  # For Windows-specific process creation flags
 
 # Build dependencies for Windows icon

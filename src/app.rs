@@ -75,6 +75,7 @@ impl eframe::App for TemplateApp {
         if let Some(audio_player) = &mut self.main_area.audio_player {
             let action = audio_player.show(ctx);
             self.main_area.handle_audio_player_action(action);
+            self.main_area.sync_audio_settings_from_player();
         }
 
         let available_rect = ctx.available_rect();

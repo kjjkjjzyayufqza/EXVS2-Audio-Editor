@@ -5,9 +5,11 @@ use std::fs;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use once_cell::sync::Lazy;
 
 // Cache for indexing patterns to avoid re-analyzing the same file multiple times
@@ -19,6 +21,50 @@ static INDEXING_PATTERN_CACHE: Lazy<Mutex<HashMap<String, bool>>> = Lazy::new(||
 pub struct ExportUtils;
 
 impl ExportUtils {
+    fn build_temp_audio_path(base_name: &str, extension: &str) -> PathBuf {
+        let temp_dir = std::env::temp_dir();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let pid = std::process::id();
+        let filename = format!("{}_{}_{}.{}", base_name, pid, timestamp, extension);
+        temp_dir.join(filename)
+    }
+
+    fn detect_audio_extension(data: &[u8]) -> &'static str {
+        if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WAVE" {
+            return "wav";
+        }
+        if data.len() >= 4 && &data[0..4] == b"OggS" {
+            return "ogg";
+        }
+        if data.len() >= 4 && &data[0..4] == b"fLaC" {
+            return "flac";
+        }
+        if data.len() >= 3 && &data[0..3] == b"ID3" {
+            return "mp3";
+        }
+        if data.len() >= 2 && data[0] == 0xFF && (data[1] & 0xE0) == 0xE0 {
+            return "mp3";
+        }
+        "bin"
+    }
+
+    /// Write audio bytes into a temporary file and return the file path
+    pub fn write_temp_audio_bytes(
+        audio_file_info: &AudioFileInfo,
+        audio_bytes: &[u8],
+        tag: &str,
+    ) -> Result<String, String> {
+        let extension = Self::detect_audio_extension(audio_bytes);
+        let base_name = format!("temp_audio_{}_{}", audio_file_info.id, tag);
+        let temp_output_path = Self::build_temp_audio_path(&base_name, extension);
+        let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
+        fs::write(&temp_output_path, audio_bytes)
+            .map_err(|e| format!("Failed to write temporary audio file: {}", e))?;
+        Ok(temp_output_path_str)
+    }
     /// Determine the correct vgmstream index based on the nus3audio file's indexing pattern
     /// 
     /// This function analyzes the nus3audio file to detect whether it uses:
@@ -99,15 +145,15 @@ impl ExportUtils {
         }
     }
 
-    /// Convert audio to WAV format using vgmstream-cli and return the data in memory
+    /// Convert audio to WAV format using vgmstream-cli and return the temp file path
     /// Supports both NUS3AUDIO and NUS3BANK files
-    pub fn convert_to_wav_in_memory(
+    pub fn convert_to_wav_temp_path(
         audio_file_info: &AudioFileInfo,
         original_file_path: &str,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<String, String> {
         // Check if this is a NUS3BANK file
         if audio_file_info.is_nus3bank {
-            return Self::convert_nus3bank_to_wav_in_memory(audio_file_info, original_file_path);
+            return Self::convert_nus3bank_to_wav_temp_path(audio_file_info, original_file_path);
         }
         
         // Original NUS3AUDIO implementation
@@ -115,9 +161,10 @@ impl ExportUtils {
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
         // Create a temporary output file path
-        let temp_dir = std::env::temp_dir();
-        let temp_filename = format!("temp_convert_{}.wav", audio_file_info.id);
-        let temp_output_path = temp_dir.join(&temp_filename);
+        let temp_output_path = Self::build_temp_audio_path(
+            &format!("temp_convert_{}", audio_file_info.id),
+            "wav",
+        );
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
         // Run vgmstream-cli to convert audio to WAV
@@ -159,19 +206,7 @@ impl ExportUtils {
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    // Read the temporary WAV file into memory
-                    match fs::read(&temp_output_path) {
-                        Ok(wav_data) => {
-                            // Clean up the temporary file
-                            let _ = fs::remove_file(&temp_output_path);
-                            Ok(wav_data)
-                        }
-                        Err(e) => {
-                            // Clean up the temporary file even if reading failed
-                            let _ = fs::remove_file(&temp_output_path);
-                            Err(format!("Failed to read converted WAV data: {}", e))
-                        }
-                    }
+                    Ok(temp_output_path_str)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
                     Err(format!("vgmstream-cli error: {}", error))
@@ -340,11 +375,11 @@ impl ExportUtils {
         Ok(exported_paths)
     }
     
-    /// Convert NUS3BANK track to WAV format in memory (direct extraction)
-    fn convert_nus3bank_to_wav_in_memory(
+    /// Convert NUS3BANK track to WAV format and return the temp file path
+    fn convert_nus3bank_to_wav_temp_path(
         audio_file_info: &AudioFileInfo,
         original_file_path: &str,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<String, String> {
         // Use vgmstream-cli to decode specific subsong into a temporary WAV
         // Compute subsong index for vgmstream (1-based). Our UI id is 0-based.
         let id_num = audio_file_info.id.parse::<u32>()
@@ -355,9 +390,10 @@ impl ExportUtils {
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
         // Create a temporary output file path
-        let temp_dir = std::env::temp_dir();
-        let temp_filename = format!("temp_convert_bank_{}.wav", vgmstream_index);
-        let temp_output_path = temp_dir.join(&temp_filename);
+        let temp_output_path = Self::build_temp_audio_path(
+            &format!("temp_convert_bank_{}", vgmstream_index),
+            "wav",
+        );
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
         // Run vgmstream-cli to convert audio to WAV
@@ -384,16 +420,7 @@ impl ExportUtils {
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    match fs::read(&temp_output_path) {
-                        Ok(wav_data) => {
-                            let _ = fs::remove_file(&temp_output_path);
-                            Ok(wav_data)
-                        }
-                        Err(e) => {
-                            let _ = fs::remove_file(&temp_output_path);
-                            Err(format!("Failed to read converted WAV data: {}", e))
-                        }
-                    }
+                    Ok(temp_output_path_str)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
                     Err(format!("vgmstream-cli error: {}", error))

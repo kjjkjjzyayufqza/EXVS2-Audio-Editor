@@ -109,18 +109,21 @@ impl AudioPlayer {
             Nus3audioFileUtils::get_pending_added_data(&file_info.name, &file_info.id);
 
         // Determine which audio data to use (replacement or original)
-        let audio_data = if let Some(replacement_data) = replacement_audio_data {
-            // We have replacement data, use it directly
+        let playback_path = if let Some(replacement_data) = replacement_audio_data {
             log::info!("Using replacement audio data for: {}", file_info.name);
-
-            // The replacement data has already been processed to add loop points during replacement
-            replacement_data
+            crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
+                file_info,
+                &replacement_data,
+                "replacement",
+            )?
         } else if let Some(added_data) = pending_added_data {
-            // Use pending added audio data
             log::info!("Using pending added audio data for: {}", file_info.name);
-            added_data
+            crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
+                file_info,
+                &added_data,
+                "pending",
+            )?
         } else {
-            // No replacement data, use the original file
             log::info!(
                 "No replacement/added data found, using original file for: {}",
                 file_info.name
@@ -128,84 +131,57 @@ impl AudioPlayer {
 
             // Check if this is a NUS3BANK or NUS3AUDIO file
             if file_info.is_nus3bank {
-                // For NUS3BANK files, use vgmstream to convert to WAV
                 log::info!(
                     "Processing NUS3BANK file for: {} (hex_id: {})",
                     file_info.name,
                     file_info.hex_id.as_ref().unwrap_or(&file_info.id)
                 );
-                match crate::ui::main_area::ExportUtils::convert_to_wav_in_memory(
-                    file_info, file_path,
-                ) {
-                    Ok(wav_data) => {
-                        log::info!(
-                            "Successfully converted NUS3BANK audio to WAV format: {} ({} bytes)",
-                            file_info.name,
-                            wav_data.len()
-                        );
-                        wav_data
-                    }
-                    Err(e) => {
+                crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path)
+                    .map_err(|e| {
                         log::error!(
                             "Failed to convert NUS3BANK audio to WAV format for track '{}' ({}): {}",
                             file_info.name,
                             file_info.hex_id.as_ref().unwrap_or(&file_info.id),
                             e
                         );
-                        return Err(format!(
-                            "Failed to convert NUS3BANK audio to WAV format: {}",
-                            e
-                        ));
-                    }
-                }
+                        format!("Failed to convert NUS3BANK audio to WAV format: {}", e)
+                    })?
             } else {
-                // For NUS3AUDIO files, use the nus3audio library
                 log::info!("Processing NUS3AUDIO file for: {}", file_info.name);
-                let nus3_file = match Nus3audioFile::open(file_path) {
-                    Ok(file) => file,
-                    Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
-                };
-
-                // Find the audio file with matching name
-                let audio_file = nus3_file
-                    .files
-                    .iter()
-                    .find(|f| f.name == file_info.name)
-                    .ok_or_else(|| {
-                        format!(
-                            "Audio file '{}' not found in NUS3AUDIO file",
-                            file_info.name
-                        )
-                    })?;
-
-                // Try to convert the audio data to WAV format using vgmstream
-                match crate::ui::main_area::ExportUtils::convert_to_wav_in_memory(
-                    file_info, file_path,
-                ) {
-                    Ok(wav_data) => {
-                        log::info!(
-                            "Successfully converted NUS3AUDIO audio to WAV format: {} ({} bytes)",
-                            file_info.name,
-                            wav_data.len()
-                        );
-                        wav_data
-                    }
+                match crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path) {
+                    Ok(temp_path) => temp_path,
                     Err(e) => {
                         log::warn!(
                             "Failed to convert NUS3AUDIO audio to WAV format: {}. Using original format instead.",
                             e
                         );
-                        audio_file.data.clone()
+                        let nus3_file = Nus3audioFile::open(file_path)
+                            .map_err(|err| format!("Failed to open NUS3AUDIO file: {}", err))?;
+                        let audio_file = nus3_file
+                            .files
+                            .iter()
+                            .find(|f| f.name == file_info.name)
+                            .ok_or_else(|| {
+                                format!(
+                                    "Audio file '{}' not found in NUS3AUDIO file",
+                                    file_info.name
+                                )
+                            })?;
+                        crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
+                            file_info,
+                            &audio_file.data,
+                            "fallback",
+                        )?
                     }
                 }
             }
         };
 
-        // Create an audio file struct (wrap data in Arc to avoid expensive clones)
-        let data_len = audio_data.len();
+        // Create an audio file struct
         let audio = AudioFile {
             file_path: file_path.to_string(),
-            data: Arc::new(audio_data),
+            #[cfg(not(target_arch = "wasm32"))]
+            playback_path: Some(playback_path.clone()),
             name: file_info.name.clone(),
             file_type: file_info.file_type.clone(),
             id: file_info.id.clone(),
@@ -214,9 +190,9 @@ impl AudioPlayer {
         };
 
         log::info!(
-            "Loading audio: {} ({} bytes)",
+            "Loading audio: {} (path: {})",
             file_info.name,
-            data_len
+            playback_path
         );
 
         // Set the audio in the state (this will call toggle_play which gets the real duration from backend)

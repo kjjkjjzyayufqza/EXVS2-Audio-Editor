@@ -10,7 +10,7 @@ use super::{
     search_column::SearchColumn, sort_column::SortColumn,
     toast_message::ToastMessage,
 };
-use crate::ui::audio_player::AudioPlayer;
+use crate::ui::audio_player::{AudioPlayer, AudioPlayerSettings};
 
 /// Main editing area component
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -45,6 +45,8 @@ pub struct MainArea {
     // Audio player
     #[serde(skip)]
     pub audio_player: Option<AudioPlayer>,
+    #[serde(default)]
+    pub audio_settings: AudioPlayerSettings,
     // Output path configuration
     pub output_path: Option<String>,
     // Toast notifications
@@ -136,6 +138,7 @@ impl MainArea {
             sort_ascending: true,
             // Create new audio player
             audio_player: Some(AudioPlayer::new()),
+            audio_settings: AudioPlayerSettings::default(),
             // Initialize output path as None
             output_path: None,
             // Initialize toast messages
@@ -195,6 +198,21 @@ impl MainArea {
             self.audio_player = Some(AudioPlayer::new());
         } else {
             println!("Audio player was already initialized");
+        }
+
+        if let Some(audio_player) = &mut self.audio_player {
+            let audio_state = audio_player.get_audio_state();
+            let mut state = audio_state.lock().unwrap();
+            state.apply_settings(&self.audio_settings);
+        }
+    }
+
+    /// Persist current audio settings into state
+    pub fn sync_audio_settings_from_player(&mut self) {
+        if let Some(audio_player) = &self.audio_player {
+            let audio_state = audio_player.get_audio_state();
+            let state = audio_state.lock().unwrap();
+            self.audio_settings = state.settings();
         }
     }
 }

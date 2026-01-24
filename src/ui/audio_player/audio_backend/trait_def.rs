@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 /// Audio playback backend trait
 /// Defines the interface for platform-specific audio playback implementations
 #[allow(dead_code)]
@@ -7,8 +5,8 @@ pub trait AudioBackend: std::fmt::Debug {
     /// Initialize the audio backend
     fn init(&mut self) -> Result<(), String>;
     
-    /// Play audio from raw data
-    fn play_audio(&mut self, data: Arc<Vec<u8>>) -> Result<(), String>;
+    /// Play audio from a file path
+    fn play_audio(&mut self, file_path: &str) -> Result<(), String>;
     
     /// Pause audio playback
     fn pause(&mut self) -> Result<(), String>;

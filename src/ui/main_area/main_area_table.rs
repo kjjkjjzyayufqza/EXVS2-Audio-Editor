@@ -949,19 +949,35 @@ impl MainArea {
                                 if let Some(replacement_data) =
                                     ReplaceUtils::get_replacement_data_unified(audio_info)
                                 {
-                                    let audio = crate::ui::audio_player::AudioFile {
-                                        file_path: file_path.to_string(),
-                                        data: std::sync::Arc::new(replacement_data),
-                                        name: audio_info.name.clone(),
-                                        file_type: audio_info.file_type.clone(),
-                                        id: audio_info.id.clone(),
-                                        #[cfg(target_arch = "wasm32")]
-                                        temp_url: None,
-                                    };
-                                    if let Some(audio_player) = &mut self.audio_player {
-                                        let state = audio_player.get_audio_state();
-                                        let mut state = state.lock().unwrap();
-                                        state.set_audio(audio);
+                                    match ExportUtils::write_temp_audio_bytes(
+                                        audio_info,
+                                        &replacement_data,
+                                        "replacement",
+                                    ) {
+                                        Ok(temp_path) => {
+                                            let audio = crate::ui::audio_player::AudioFile {
+                                                file_path: file_path.to_string(),
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                playback_path: Some(temp_path),
+                                                name: audio_info.name.clone(),
+                                                file_type: audio_info.file_type.clone(),
+                                                id: audio_info.id.clone(),
+                                                #[cfg(target_arch = "wasm32")]
+                                                temp_url: None,
+                                            };
+                                            if let Some(audio_player) = &mut self.audio_player {
+                                                let state = audio_player.get_audio_state();
+                                                let mut state = state.lock().unwrap();
+                                                state.set_audio(audio);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to prepare playback audio: {}", e);
+                                            toasts_to_add.push((
+                                                "Failed to prepare playback audio".to_string(),
+                                                Color32::RED,
+                                            ));
+                                        }
                                     }
                                 }
 
@@ -1008,25 +1024,40 @@ impl MainArea {
                                         if let Some(replacement_data) =
                                             ReplaceUtils::get_replacement_data_unified(audio_info)
                                         {
-                                            // Create an audio file struct for the audio player
-                                            let audio = crate::ui::audio_player::AudioFile {
-                                                file_path: file_path.to_string(),
-                                                data: std::sync::Arc::new(replacement_data),
-                                                name: audio_info.name.clone(),
-                                                file_type: audio_info.file_type.clone(),
-                                                id: audio_info.id.clone(),
-                                                #[cfg(target_arch = "wasm32")]
-                                                temp_url: None,
-                                            };
+                                            match ExportUtils::write_temp_audio_bytes(
+                                                audio_info,
+                                                &replacement_data,
+                                                "replacement",
+                                            ) {
+                                                Ok(temp_path) => {
+                                                    let audio = crate::ui::audio_player::AudioFile {
+                                                        file_path: file_path.to_string(),
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        playback_path: Some(temp_path),
+                                                        name: audio_info.name.clone(),
+                                                        file_type: audio_info.file_type.clone(),
+                                                        id: audio_info.id.clone(),
+                                                        #[cfg(target_arch = "wasm32")]
+                                                        temp_url: None,
+                                                    };
 
-                                            // Update the audio player if it exists
-                                            if let Some(audio_player) = &mut self.audio_player {
-                                                let state = audio_player.get_audio_state();
-                                                let mut state = state.lock().unwrap();
-                                                state.set_audio(audio);
+                                                    // Update the audio player if it exists
+                                                    if let Some(audio_player) = &mut self.audio_player {
+                                                        let state = audio_player.get_audio_state();
+                                                        let mut state = state.lock().unwrap();
+                                                        state.set_audio(audio);
 
-                                                // AudioPlayer.load_audio will automatically apply the loop settings for the specific audio file
-                                                // Therefore we don't need to set the loop points here
+                                                        // AudioPlayer.load_audio will automatically apply the loop settings for the specific audio file
+                                                        // Therefore we don't need to set the loop points here
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log::error!("Failed to prepare playback audio: {}", e);
+                                                    toasts_to_add.push((
+                                                        "Failed to prepare playback audio".to_string(),
+                                                        Color32::RED,
+                                                    ));
+                                                }
                                             }
                                         }
 

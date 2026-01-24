@@ -2,9 +2,8 @@ use super::audio_file_info::AudioFileInfo;
 use egui::{Context, ScrollArea, Ui, Window};
 use std::fs;
 use std::path::Path;
-use rodio::{Decoder, Source};
-use std::io::Cursor;
 use mp3_duration;
+use hound;
 
 /// Structure to hold new audio file settings
 #[derive(Clone, Debug, Default)]
@@ -56,42 +55,27 @@ impl AddAudioModal {
 
     /// Get the actual duration of an audio file by decoding it
     fn get_actual_audio_duration(&self, file_path: &str) -> Option<f32> {
-        // Return early if no file path exists
-        let path = file_path;
+        let path_lower = file_path.to_lowercase();
 
-        // Read the file
-        let file_data = match std::fs::read(path) {
-            Ok(data) => {
-                println!("Read {} bytes from audio file", data.len());
-                data
-            }
-            Err(e) => {
-                println!("Failed to read audio file {:?}: {}", path, e);
-                return None;
-            }
-        };
-
-        // Try to decode the audio with rodio to get its duration
-        let cursor = Cursor::new(file_data.clone());
-
-        // Try with rodio first
-        match Decoder::new(cursor) {
-            Ok(decoder) => {
-                let duration_secs = decoder.total_duration().map(|d| d.as_secs_f32());
-                
-                if let Some(duration) = duration_secs {
-                    println!("Got duration from rodio: {:.2}s", duration);
-                    return Some(duration);
+        if path_lower.ends_with(".wav") {
+            match hound::WavReader::open(file_path) {
+                Ok(reader) => {
+                    let spec = reader.spec();
+                    let samples = reader.duration();
+                    if spec.sample_rate > 0 {
+                        let duration_secs = samples as f32 / spec.sample_rate as f32;
+                        println!("Got duration from WAV header: {:.2}s", duration_secs);
+                        return Some(duration_secs);
+                    }
                 }
-            }
-            Err(e) => {
-                println!("Rodio error (will try mp3_duration next): {:?}", e);
+                Err(e) => {
+                    println!("Failed to read WAV header: {}", e);
+                }
             }
         }
 
-        // Try with mp3_duration as a fallback for MP3 files
-        if path.to_lowercase().ends_with(".mp3") {
-            match mp3_duration::from_path(path) {
+        if path_lower.ends_with(".mp3") {
+            match mp3_duration::from_path(file_path) {
                 Ok(duration) => {
                     let secs = duration.as_secs_f32();
                     println!("Got duration from mp3_duration: {:.2}s", secs);
@@ -103,7 +87,6 @@ impl AddAudioModal {
             }
         }
 
-        // If both methods failed, return None
         None
     }
 
