@@ -101,7 +101,11 @@ pub struct AudioState {
     /// Whether the user requested the previous track
     #[serde(skip)]
     pub should_play_previous: bool,
-    
+
+    /// True while the user is dragging the seek slider (suppresses backend position updates)
+    #[serde(skip)]
+    pub is_seeking: bool,
+
     /// Audio backend for playback
     #[serde(skip)]
     audio_backend: Option<Box<dyn AudioBackend>>,
@@ -144,7 +148,8 @@ impl Clone for AudioState {
             current_track_index: self.current_track_index,
             should_play_next: self.should_play_next,
             should_play_previous: self.should_play_previous,
-            audio_backend: None, // Don't clone the audio backend
+            is_seeking: self.is_seeking,
+            audio_backend: None,
         }
     }
 }
@@ -195,6 +200,7 @@ impl Default for AudioState {
             current_track_index: None,
             should_play_next: false,
             should_play_previous: false,
+            is_seeking: false,
             audio_backend: None,
         };
         
@@ -438,8 +444,7 @@ impl AudioState {
     /// Update playback state from backend
     pub fn update_from_backend(&mut self) {
         if let Some(backend) = &mut self.audio_backend {
-            // Update position
-            if self.is_playing {
+            if self.is_playing && !self.is_seeking {
                 self.current_position = backend.get_position();
 
                 // Check if track has finished

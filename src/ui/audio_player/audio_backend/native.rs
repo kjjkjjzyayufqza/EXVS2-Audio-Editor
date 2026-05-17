@@ -7,38 +7,26 @@ use kira::{
     AudioManagerSettings,
     DefaultBackend,
     Tween,
-    sound::FromFileError,
-    sound::streaming::{StreamingSoundData, StreamingSoundHandle},
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
 };
 
 use crate::ui::audio_player::audio_backend::trait_def::AudioBackend;
 
-/// Native audio backend implementation using kira
+/// Native audio backend implementation using kira (static sound for instant seek)
 pub struct NativeAudioBackend {
-    /// Audio manager for playback
     manager: Option<AudioManager<DefaultBackend>>,
-    /// Handle to the currently playing sound
-    sound_handle: Option<StreamingSoundHandle<FromFileError>>,
-    /// Current position in seconds
+    sound_handle: Option<StaticSoundHandle>,
     current_position: f32,
-    /// Start time of playback for position tracking
     playback_start_time: Option<Instant>,
-    /// Position when playback started
     playback_start_position: f32,
-    /// Audio duration in seconds
     duration: f32,
-    /// Whether audio is currently loaded
     audio_loaded: bool,
-    /// Is currently playing
     is_playing: bool,
-    /// Whether backend initialization succeeded
     initialized: bool,
-    /// Current volume level (0.0 - 1.0)
     volume: f32,
 }
 
 impl NativeAudioBackend {
-    /// Create a new native audio backend
     pub fn new() -> Self {
         Self {
             manager: None,
@@ -50,11 +38,10 @@ impl NativeAudioBackend {
             audio_loaded: false,
             is_playing: false,
             initialized: false,
-            volume: 1.0, // Default volume is 100%
+            volume: 1.0,
         }
     }
 
-    /// Estimate the duration of audio from the WAV header
     fn estimate_wav_duration_from_file(&self, file_path: &str) -> f32 {
         let mut file = match File::open(file_path) {
             Ok(file) => file,
@@ -146,9 +133,9 @@ impl AudioBackend for NativeAudioBackend {
         }
 
         let t_load = Instant::now();
-        let sound_data = StreamingSoundData::from_file(file_path)
+        let sound_data = StaticSoundData::from_file(file_path)
             .map_err(|e| format!("Failed to load audio file: {}", e))?;
-        println!("[PERF] kira StreamingSoundData::from_file: {}ms", t_load.elapsed().as_millis());
+        println!("[PERF] kira StaticSoundData::from_file: {}ms", t_load.elapsed().as_millis());
 
         let t_play = Instant::now();
         let mut handle = manager.play(sound_data)

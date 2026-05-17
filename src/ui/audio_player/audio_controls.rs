@@ -115,17 +115,17 @@ impl AudioControls {
 
                     // Middle Row: Progress Slider
                     ui.horizontal(|ui| {
+                        let mut progress = state_copy.progress();
+                        let slider_width = ui.available_width() - 100.0;
+
+                        let position_text = state_copy.format_position();
                         ui.label(
-                            RichText::new(state_copy.format_position())
+                            RichText::new(&position_text)
                                 .monospace()
                                 .size(11.0)
                                 .color(ui.visuals().weak_text_color()),
                         );
 
-                        let mut progress = state_copy.progress();
-                        let slider_width = ui.available_width() - 50.0;
-
-                        // Custom styled slider
                         ui.spacing_mut().slider_width = slider_width;
                         let slider_response = ui.add(
                             Slider::new(&mut progress, 0.0..=1.0)
@@ -133,8 +133,15 @@ impl AudioControls {
                                 .text(""),
                         );
 
+                        if slider_response.changed() && has_audio {
+                            let mut state = self.audio_state.lock().unwrap();
+                            state.is_seeking = true;
+                            state.current_position = progress * state.total_duration;
+                        }
+
                         if slider_response.drag_stopped() && has_audio {
                             let mut state = self.audio_state.lock().unwrap();
+                            state.is_seeking = false;
                             let new_position = progress * state.total_duration;
                             state.set_position(new_position);
                         }
