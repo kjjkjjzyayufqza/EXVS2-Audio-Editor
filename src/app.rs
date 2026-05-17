@@ -1,3 +1,4 @@
+use crate::i18n::{Locale, locale_ctx_id};
 use crate::ui::{FileList, MainArea, TopPanel};
 use crate::version_check;
 
@@ -5,6 +6,9 @@ use crate::version_check;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
+    /// UI language (persisted). Defaults to system locale on first run.
+    #[serde(default)]
+    pub locale: Locale,
     // Remove skip attribute to persist file list between sessions
     file_list: FileList,
     // Remove skip attribute to persist main area settings (like output path) between sessions
@@ -14,6 +18,7 @@ pub struct TemplateApp {
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
+            locale: Locale::default(),
             file_list: FileList::new(),
             main_area: MainArea::new(),
         }
@@ -35,6 +40,7 @@ impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        crate::fonts::install_cjk_font_if_available(&mut fonts);
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
@@ -62,6 +68,15 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.data_mut(|d| d.insert_temp(locale_ctx_id(), self.locale));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+            crate::i18n::I18n::new(self.locale)
+                .window_title()
+                .to_owned(),
+        ));
+
+        self.main_area.sync_locale(self.locale);
+
         // Custom dark theme with consistent black background
         let mut visuals = egui::Visuals::dark();
         visuals.panel_fill = egui::Color32::from_rgb(27, 27, 27);    // Panel background (top panel, side panel, bottom player)

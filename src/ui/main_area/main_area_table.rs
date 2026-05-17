@@ -1,3 +1,4 @@
+use crate::i18n::I18n;
 use egui::{Color32, Ui, RichText};
 use egui_phosphor::regular;
 
@@ -17,8 +18,9 @@ impl MainArea {
         available_height: f32,
         available_width: f32,
     ) {
+        let t = I18n::from_ctx(ui.ctx());
         let selected_count = self.selected_items.len();
-        
+
         // Use these variables to capture action information outside the immediate UI context
         // This way we can perform actions after all UI rendering is done to avoid multiple self borrowing
         struct ActionData {
@@ -58,44 +60,44 @@ impl MainArea {
             ui.spacing_mut().item_spacing.x = 8.0;
             
             // Primary Actions Group
-            ui.label(RichText::new("Actions:").weak().size(11.0));
+            ui.label(RichText::new(t.actions_colon()).weak().size(11.0));
             
-            if ui.button(RichText::new(format!("{} Add", regular::PLUS))).on_hover_text("Add new audio file").clicked() {
+            if ui.button(RichText::new(format!("{} {}", regular::PLUS, t.add_audio_btn()))).on_hover_text(t.add_audio_tooltip()).clicked() {
                 action_data.add_audio = true;
             }
             
-            if ui.button(RichText::new(format!("{} Export All", regular::EXPORT))).on_hover_text("Export all files to WAV").clicked() {
+            if ui.button(RichText::new(format!("{} {}", regular::EXPORT, t.export_all_btn()))).on_hover_text(t.export_all_tooltip()).clicked() {
                 action_data.export_all_confirm = true;
             }
 
             ui.separator();
 
             // Edit Group
-            ui.label(RichText::new("Edit:").weak().size(11.0));
-            if ui.button("GRP").on_hover_text("Edit GRP List").clicked() {
+            ui.label(RichText::new(t.edit_colon()).weak().size(11.0));
+            if ui.button("GRP").on_hover_text(t.edit_grp_tooltip()).clicked() {
                 action_data.edit_grp_list = true;
             }
-            if ui.button("DTON").on_hover_text("Edit DTON Tones").clicked() {
+            if ui.button("DTON").on_hover_text(t.edit_dton_tooltip()).clicked() {
                 action_data.edit_dton_tones = true;
             }
-            if ui.button("PROP").on_hover_text("Edit PROP").clicked() {
+            if ui.button("PROP").on_hover_text(t.edit_prop_tooltip()).clicked() {
                 action_data.edit_prop = true;
             }
 
             ui.separator();
 
             // Batch Operations Group
-            ui.label(RichText::new("Batch:").weak().size(11.0));
+            ui.label(RichText::new(t.batch_colon()).weak().size(11.0));
             let batch_enabled = selected_count > 0;
             
             ui.add_enabled_ui(batch_enabled, |ui| {
-                if ui.button(RichText::new(format!("{} Replace", regular::FILE_ARROW_UP))).on_hover_text("Replace selected with new audio").clicked() {
+                if ui.button(RichText::new(format!("{} {}", regular::FILE_ARROW_UP, t.replace_btn()))).on_hover_text(t.replace_selected_tooltip()).clicked() {
                     action_data.replace_new = true;
                 }
-                if ui.button(RichText::new(format!("{} Clear", regular::ERASER))).on_hover_text("Replace selected with empty WAV").clicked() {
+                if ui.button(RichText::new(format!("{} {}", regular::ERASER, t.clear_btn()))).on_hover_text(t.clear_wav_tooltip()).clicked() {
                     action_data.replace_empty = true;
                 }
-                if ui.button(RichText::new(format!("{} Remove", regular::TRASH))).on_hover_text("Remove selected items").clicked() {
+                if ui.button(RichText::new(format!("{} {}", regular::TRASH, t.remove_btn()))).on_hover_text(t.remove_selected_tooltip()).clicked() {
                     action_data.remove_selected = true;
                 }
             });
@@ -103,8 +105,8 @@ impl MainArea {
             ui.separator();
 
             // More Actions
-            ui.menu_button("More", |ui| {
-                if ui.button("Debug: Convert All to WAV").on_hover_text("Convert all tracks to PCM16 WAV in memory (NUS3BANK only)").clicked() {
+            ui.menu_button(t.more_menu(), |ui| {
+                if ui.button(t.debug_convert_all()).on_hover_text(t.debug_convert_tooltip()).clicked() {
                     action_data.debug_convert_all_wav = true;
                     ui.close();
                 }
@@ -114,14 +116,14 @@ impl MainArea {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if selected_count > 0 {
                     ui.label(
-                        RichText::new(format!("{} selected", selected_count))
+                        RichText::new(t.selected_count(selected_count))
                             .color(Color32::from_rgb(100, 150, 255))
                             .strong()
                     );
                 }
                 
                 if !self.search_query.is_empty() {
-                    ui.label(RichText::new(format!("Found {} / {}", files_count, self.file_count.unwrap_or(0))).weak());
+                    ui.label(RichText::new(t.found_count(files_count, self.file_count.unwrap_or(0))).weak());
                 }
             });
         });
@@ -149,6 +151,7 @@ impl MainArea {
             self.show_grid_lines,
             available_height - 40.0, // Account for actions bar
             available_width,
+            &t,
             &mut |index| {
                 action_data.export_index = Some(index);
             },
@@ -184,7 +187,7 @@ impl MainArea {
                             self.pending_replace_new = true;
                         }
                         Err(e) => {
-                            self.add_toast(format!("Replace failed: {}", e), Color32::RED);
+                            self.add_toast(t.replace_failed(&e), Color32::RED);
                         }
                     }
                 }
@@ -194,22 +197,16 @@ impl MainArea {
         if action_data.replace_empty {
             self.pending_replace_empty = true;
             self.confirm_modal.open(
-                "Confirm Replace with Empty WAV",
-                &format!(
-                    "This will replace the audio data of {} selected file(s) with empty WAV. Names and IDs will be preserved. Continue?",
-                    selected_count
-                ),
+                t.confirm_replace_empty_title(),
+                &t.confirm_replace_empty_body(selected_count),
             );
         }
 
         if action_data.remove_selected {
             self.pending_remove_selected = true;
             self.confirm_modal.open(
-                "Confirm Remove Selected",
-                &format!(
-                    "This will mark {} selected item(s) for deletion (in memory only). Continue?",
-                    selected_count
-                ),
+                t.confirm_remove_selected_title(),
+                &t.confirm_remove_selected_body(selected_count),
             );
         }
 
@@ -218,12 +215,12 @@ impl MainArea {
                 if path.to_lowercase().ends_with(".nus3bank") {
                     self.pending_debug_convert_all_wav = true;
                     self.confirm_modal.open(
-                        "Debug: Convert All to WAV",
-                        "This will normalize all tracks in the currently opened .nus3bank to standard PCM16 WAV in memory (skips tracks that are already PCM16 WAV). This may take some time. Continue?",
+                        t.debug_convert_all(),
+                        t.confirm_debug_convert_body(),
                     );
                 } else {
                     self.add_toast(
-                        "This debug action is only available for .nus3bank files".to_string(),
+                        t.debug_nus3bank_only().to_string(),
                         Color32::GOLD,
                     );
                 }
@@ -243,15 +240,19 @@ impl MainArea {
             
             if let Some(_file_path) = &selected_file {
                 // Use AddAudioUtils to open file dialog and show add audio modal
-                match AddAudioUtils::add_with_file_dialog(&mut self.add_audio_modal, self.audio_files.clone()) {
+                match AddAudioUtils::add_with_file_dialog(
+                    &mut self.add_audio_modal,
+                    self.audio_files.clone(),
+                    t.locale,
+                ) {
                     Ok(_) => {
                         toasts_to_add.push((
-                            "Please configure settings for the new audio file".to_string(),
+                            t.configure_new_audio_toast().to_string(),
                             Color32::GOLD,
                         ));
                     }
                     Err(e) => {
-                        toasts_to_add.push((format!("Add audio failed: {}", e), Color32::RED));
+                        toasts_to_add.push((t.add_audio_failed(&e), Color32::RED));
                     }
                 }
             }
@@ -261,15 +262,15 @@ impl MainArea {
         if action_data.edit_grp_list {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.grp_list_modal.open_for_file(&file_path);
+                    self.grp_list_modal.open_for_file(&file_path, t.locale);
                 } else {
                     toasts_to_add.push((
-                        "GRP editing is only available for .nus3bank files".to_string(),
+                        t.grp_nus3bank_only().to_string(),
                         Color32::GOLD,
                     ));
                 }
             } else {
-                toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
             }
         }
 
@@ -277,15 +278,15 @@ impl MainArea {
         if action_data.edit_dton_tones {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.dton_tones_modal.open_for_file(&file_path);
+                    self.dton_tones_modal.open_for_file(&file_path, t.locale);
                 } else {
                     toasts_to_add.push((
-                        "DTON editing is only available for .nus3bank files".to_string(),
+                        t.dton_nus3bank_only().to_string(),
                         Color32::GOLD,
                     ));
                 }
             } else {
-                toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
             }
         }
 
@@ -293,15 +294,15 @@ impl MainArea {
         if action_data.edit_prop {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.prop_edit_modal.open_for_file(&file_path);
+                    self.prop_edit_modal.open_for_file(&file_path, t.locale);
                 } else {
                     toasts_to_add.push((
-                        "PROP editing is only available for .nus3bank files".to_string(),
+                        t.prop_nus3bank_only().to_string(),
                         Color32::GOLD,
                     ));
                 }
             } else {
-                toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
             }
         }
 
@@ -317,8 +318,8 @@ impl MainArea {
             self.pending_export_all = true;
             
             self.confirm_modal.open(
-                "Confirm Export All",
-                &format!("Are you sure you want to export all {} audio files? This may take some time.", file_count)
+                t.confirm_export_all_title(),
+                &t.confirm_export_all_body(file_count),
             );
         }
 
@@ -336,17 +337,17 @@ impl MainArea {
                         ) {
                             Ok(path) => {
                                 toasts_to_add.push((
-                                    format!("Successfully exported to: {}", path),
+                                    t.exported_to(path),
                                     Color32::GREEN,
                                 ));
                             }
                             Err(e) => {
-                                toasts_to_add.push((format!("Export failed: {}", e), Color32::RED));
+                                toasts_to_add.push((t.export_failed(&e), Color32::RED));
                             }
                         }
                     } else {
                         toasts_to_add.push((
-                            "No output directory set. Please set an output directory.".to_string(),
+                            t.no_output_dir().to_string(),
                             Color32::GOLD,
                         ));
                     }
@@ -382,30 +383,30 @@ impl MainArea {
                                 }
 
                                 toasts_to_add
-                                    .push((format!("Now playing: {}", audio_name), Color32::GREEN));
+                                    .push((t.now_playing(&audio_name), Color32::GREEN));
                                 log::info!("Successfully started playing: {}", audio_name);
                             }
                             Err(e) => {
-                                let error_msg = format!("Failed to load audio '{}': {}", audio_name, e);
+                                let error_msg = t.failed_load_audio(&audio_name, &e);
                                 log::error!("{}", error_msg);
                                 toasts_to_add
                                     .push((error_msg, Color32::RED));
                             }
                         }
                     } else {
-                        let error_msg = "Audio player is not initialized".to_string();
+                        let error_msg = t.audio_player_not_initialized().to_string();
                         log::error!("{}", error_msg);
                         toasts_to_add
                             .push((error_msg, Color32::RED));
                     }
                 } else {
-                    let error_msg = "No file selected for playback".to_string();
+                    let error_msg = t.no_file_for_playback().to_string();
                     log::error!("{}", error_msg);
                     toasts_to_add
                         .push((error_msg, Color32::RED));
                 }
             } else {
-                let error_msg = format!("Invalid audio index: {} (max: {})", idx, filtered_audio_files.len());
+                let error_msg = t.invalid_audio_index(idx, filtered_audio_files.len());
                 log::error!("{}", error_msg);
                 toasts_to_add
                     .push((error_msg, Color32::RED));
@@ -438,12 +439,12 @@ impl MainArea {
                             // Don't update the display information yet
                             // Wait until the loop settings are confirmed before making any changes
                             toasts_to_add.push((
-                                format!("Please configure loop settings for: {}", audio_info.name),
+                                t.configure_loop_for(&audio_info.name),
                                 Color32::GOLD,
                             ));
                         }
                         Err(e) => {
-                            toasts_to_add.push((format!("Replace failed: {}", e), Color32::RED));
+                            toasts_to_add.push((t.replace_failed(&e), Color32::RED));
                         }
                     }
                 }
@@ -468,8 +469,8 @@ impl MainArea {
                     
                     // Open the confirm dialog
                     self.confirm_modal.open(
-                        "Confirm",
-                        &format!("Are you sure you want to delete the audio \"{}\"? This action cannot be undone.", audio_info.name)
+                        t.confirm_title_default(),
+                        &t.confirm_delete_audio_body(&audio_info.name)
                     );
                 }
             }
@@ -493,21 +494,17 @@ impl MainArea {
                         match ExportUtils::export_all_to_wav_unified(file_path, output_dir) {
                             Ok(paths) => {
                                 toasts_to_add.push((
-                                    format!(
-                                        "Successfully exported {} files to: {}",
-                                        paths.len(),
-                                        output_dir
-                                    ),
+                                    t.exported_count_to(paths.len(), output_dir),
                                     Color32::GREEN,
                                 ));
                             }
                             Err(e) => {
-                                toasts_to_add.push((format!("Export failed: {}", e), Color32::RED));
+                                toasts_to_add.push((t.export_failed(&e), Color32::RED));
                             }
                         }
                     } else {
                         toasts_to_add.push((
-                            "No output directory set. Please set an output directory.".to_string(),
+                            t.no_output_dir().to_string(),
                             Color32::GOLD,
                         ));
                     }
@@ -537,7 +534,7 @@ impl MainArea {
                                         replaced += 1;
                                     }
                                     Err(e) => {
-                                        toasts_to_add.push((format!("Failed to replace {}: {}", key, e), Color32::RED));
+                                        toasts_to_add.push((t.failed_replace_key(&key, &e), Color32::RED));
                                     }
                                 }
                             }
@@ -550,11 +547,11 @@ impl MainArea {
                             self.selected_items.clear();
                             
                             toasts_to_add.push((
-                                format!("Replaced {} item(s) with empty WAV (names/ids preserved)", replaced),
+                                t.replaced_empty_wav(replaced),
                                 Color32::GREEN,
                             ));
                         } else {
-                            toasts_to_add.push(("No matching selected items to replace".to_string(), Color32::GOLD));
+                            toasts_to_add.push((t.no_matching_replace().to_string(), Color32::GOLD));
                         }
                     }
                 }
@@ -566,14 +563,14 @@ impl MainArea {
                 let selected_file_path = match self.selected_file.as_deref() {
                     Some(p) => p,
                     None => {
-                        toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                        toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
                         return;
                     }
                 };
 
                 if !selected_file_path.to_lowercase().ends_with(".nus3bank") {
                     toasts_to_add.push((
-                        "Debug convert is only available for .nus3bank files".to_string(),
+                        t.debug_convert_bank_only().to_string(),
                         Color32::GOLD,
                     ));
                     return;
@@ -583,7 +580,7 @@ impl MainArea {
                 let bank = match crate::nus3bank::structures::Nus3bankFile::open(selected_file_path) {
                     Ok(f) => f,
                     Err(e) => {
-                        toasts_to_add.push((format!("Failed to open .nus3bank: {}", e), Color32::RED));
+                        toasts_to_add.push((t.failed_open_bank(&e), Color32::RED));
                         return;
                     }
                 };
@@ -649,17 +646,14 @@ impl MainArea {
                             }
                             Err(e) => {
                                 failed += 1;
-                                toasts_to_add.push((format!("Convert failed for {}: {}", info.name, e), Color32::RED));
+                                toasts_to_add.push((t.convert_failed_for(&info.name, &e), Color32::RED));
                             }
                         }
                     }
                 }
 
                 toasts_to_add.push((
-                    format!(
-                        "Debug convert done: converted={}, skipped={}, failed={}",
-                        converted, skipped, failed
-                    ),
+                    t.debug_convert_done(converted, skipped, failed),
                     if failed == 0 { Color32::GREEN } else { Color32::GOLD },
                 ));
             }
@@ -670,7 +664,7 @@ impl MainArea {
                 let selected_file_path = match self.selected_file.as_deref() {
                     Some(p) => p,
                     None => {
-                        toasts_to_add.push(("No file selected".to_string(), Color32::GOLD));
+                        toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
                         return;
                     }
                 };
@@ -702,7 +696,7 @@ impl MainArea {
                                 }
                             }
                             Err(e) => {
-                                toasts_to_add.push((format!("Failed to mark for deletion: {}", e), Color32::RED));
+                                toasts_to_add.push((t.failed_mark_deletion(&e), Color32::RED));
                             }
                         }
                     }
@@ -715,14 +709,14 @@ impl MainArea {
 
                     if removed_count > 0 {
                         toasts_to_add.push((
-                            format!("Successfully marked {} item(s) for deletion", removed_count),
+                            t.marked_for_deletion_count(removed_count),
                             Color32::GREEN,
                         ));
                     } else {
-                        toasts_to_add.push(("No matching selected items found in list".to_string(), Color32::GOLD));
+                        toasts_to_add.push((t.no_matching_in_list().to_string(), Color32::GOLD));
                     }
                 } else {
-                    toasts_to_add.push(("No audio list loaded".to_string(), Color32::GOLD));
+                    toasts_to_add.push((t.no_audio_list().to_string(), Color32::GOLD));
                 }
             }
             // If there is an audio to be removed, perform the removal
@@ -752,14 +746,14 @@ impl MainArea {
                                     self.selected_items.remove(&key);
                                     
                                     toasts_to_add.push((
-                                        format!("Successfully marked for deletion: {}", audio_info.name),
+                                        t.marked_deleted_one(&audio_info.name),
                                         Color32::GREEN,
                                     ));
                                 }
                             }
                         }
                         Err(e) => {
-                            toasts_to_add.push((format!("Failed to mark for deletion: {}", e), Color32::RED));
+                            toasts_to_add.push((t.failed_mark_deletion(&e), Color32::RED));
                         }
                     }
                     
@@ -796,7 +790,7 @@ impl MainArea {
                 let original_file_path = match &self.add_audio_modal.settings.file_path {
                     Some(path) => path,
                     None => {
-                        toasts_to_add.push(("No audio file path available".to_string(), Color32::RED));
+                        toasts_to_add.push((t.no_audio_path().to_string(), Color32::RED));
                         return;
                     }
                 };
@@ -806,7 +800,8 @@ impl MainArea {
                 let is_nus3bank = selected_file_path.to_lowercase().ends_with(".nus3bank");
                 
                 // 处理新音频文件
-                match AddAudioUtils::process_new_audio(&self.add_audio_modal, is_nus3bank) {
+                match AddAudioUtils::process_new_audio(&self.add_audio_modal, is_nus3bank, t.locale)
+                {
                     Ok(new_audio_info) => {
                         // 3. 尝试将音频转换为WAV格式
                         match AddAudioUtils::convert_to_wav(original_file_path) {
@@ -826,13 +821,13 @@ impl MainArea {
                                             audio_files.push(new_audio_info.clone());
                                             self.file_count = Some(audio_files.len());
                                             toasts_to_add.push((
-                                                format!("Successfully added new audio (converted to WAV): {}", new_audio_info.name),
+                                                t.added_wav(&new_audio_info.name),
                                                 Color32::GREEN,
                                             ));
                                         }
                                     },
                                     Err(e) => {
-                                        toasts_to_add.push((format!("Failed to register WAV audio: {}", e), Color32::RED));
+                                        toasts_to_add.push((t.register_wav_failed(&e), Color32::RED));
                                     }
                                 }
                             },
@@ -855,23 +850,23 @@ impl MainArea {
                                                 audio_files.push(new_audio_info.clone());
                                                 self.file_count = Some(audio_files.len());
                                                 toasts_to_add.push((
-                                                    format!("Successfully added new audio (original format): {}", new_audio_info.name),
+                                                    t.added_original(&new_audio_info.name),
                                                     Color32::GREEN,
                                                 ));
                                             }
                                         },
                                         Err(e) => {
-                                            toasts_to_add.push((format!("Failed to add audio: {}", e), Color32::RED));
+                                            toasts_to_add.push((t.failed_add_audio(&e), Color32::RED));
                                         }
                                     }
                                 } else {
-                                    toasts_to_add.push(("No audio data available".to_string(), Color32::RED));
+                                    toasts_to_add.push((t.no_audio_data().to_string(), Color32::RED));
                                 }
                             }
                         }
                     },
                     Err(e) => {
-                        toasts_to_add.push((format!("Failed to process new audio: {}", e), Color32::RED));
+                        toasts_to_add.push((t.failed_process_new_audio(&e), Color32::RED));
                     }
                 }
             }
@@ -907,7 +902,7 @@ impl MainArea {
                         // Retrieve the file path chosen during the dialog (from representative)
                         let rep_path_opt = ReplaceUtils::get_replacement_path(&audio_info.name, &audio_info.id);
                         if rep_path_opt.is_none() {
-                            toasts_to_add.push(("No replacement file path found".to_string(), Color32::RED));
+                            toasts_to_add.push((t.no_replacement_path().to_string(), Color32::RED));
                             return;
                         }
                         let rep_path = rep_path_opt.unwrap();
@@ -938,7 +933,7 @@ impl MainArea {
                                             replaced_count += 1;
                                         }
                                         Err(e) => {
-                                            toasts_to_add.push((format!("Failed to process replacement for {}: {}", key, e), Color32::RED));
+                                            toasts_to_add.push((t.failed_process_replacement_key(&key, &e), Color32::RED));
                                         }
                                     }
                                 }
@@ -947,11 +942,11 @@ impl MainArea {
                             self.file_count = Some(audio_files.len());
 
                             let loop_message = if use_custom_loop {
-                                let start_str = loop_start.map_or("start".to_string(), |s| format!("{:.2}s", s));
-                                let end_str = loop_end.map_or("end".to_string(), |e| format!("{:.2}s", e));
-                                format!(" (Loop: {} to {})", start_str, end_str)
+                                let start_str = loop_start.map_or(t.loop_word_start().to_string(), |s| format!("{:.2}s", s));
+                                let end_str = loop_end.map_or(t.loop_word_end().to_string(), |e| format!("{:.2}s", e));
+                                t.loop_parenthetical_range(&start_str, &end_str)
                             } else {
-                                " (Full track loop)".to_string()
+                                t.loop_parenthetical_full().to_string()
                             };
 
                             if replaced_count > 0 {
@@ -984,7 +979,7 @@ impl MainArea {
                                         Err(e) => {
                                             log::error!("Failed to prepare playback audio: {}", e);
                                             toasts_to_add.push((
-                                                "Failed to prepare playback audio".to_string(),
+                                                t.prepare_playback_audio_failed().to_string(),
                                                 Color32::RED,
                                             ));
                                         }
@@ -995,11 +990,11 @@ impl MainArea {
                                 self.selected_items.clear();
 
                                 toasts_to_add.push((
-                                    format!("Successfully replaced {} item(s) in memory{}", replaced_count, loop_message),
+                                    t.replaced_in_memory_count(replaced_count, &loop_message),
                                     Color32::GREEN,
                                 ));
                             } else {
-                                toasts_to_add.push(("No matching selected items to replace".to_string(), Color32::GOLD));
+                                toasts_to_add.push((t.no_matching_replace().to_string(), Color32::GOLD));
                             }
                         }
                     } else {
@@ -1064,7 +1059,7 @@ impl MainArea {
                                                 Err(e) => {
                                                     log::error!("Failed to prepare playback audio: {}", e);
                                                     toasts_to_add.push((
-                                                        "Failed to prepare playback audio".to_string(),
+                                                        t.prepare_playback_audio_failed().to_string(),
                                                         Color32::RED,
                                                     ));
                                                 }
@@ -1073,19 +1068,16 @@ impl MainArea {
 
                                         let loop_message = if use_custom_loop {
                                             let start_str = loop_start
-                                                .map_or("start".to_string(), |s| format!("{:.2}s", s));
+                                                .map_or(t.loop_word_start().to_string(), |s| format!("{:.2}s", s));
                                             let end_str = loop_end
-                                                .map_or("end".to_string(), |e| format!("{:.2}s", e));
-                                            format!(" (Loop: {} to {})", start_str, end_str)
+                                                .map_or(t.loop_word_end().to_string(), |e| format!("{:.2}s", e));
+                                            t.loop_parenthetical_range(&start_str, &end_str)
                                         } else {
-                                            " (Full track loop)".to_string()
+                                            t.loop_parenthetical_full().to_string()
                                         };
 
                                         toasts_to_add.push((
-                                            format!(
-                                                "Successfully replaced audio in memory: {}{}",
-                                                audio_info.name, loop_message
-                                            ),
+                                            t.replaced_in_memory_one(&audio_info.name, &loop_message),
                                             Color32::GREEN,
                                         ));
                                     }
@@ -1093,7 +1085,7 @@ impl MainArea {
                             }
                             Err(e) => {
                                 toasts_to_add.push((
-                                    format!("Failed to process replacement: {}", e),
+                                    t.failed_process_replacement(&e),
                                     Color32::RED,
                                 ));
 
@@ -1126,6 +1118,7 @@ impl MainArea {
     }
 
     fn play_next_track(&mut self) {
+        let t = I18n::new(self.ui_locale);
         let (next_index, playlist) = {
             let player = match self.audio_player.as_ref() {
                 Some(p) => p,
@@ -1183,13 +1176,14 @@ impl MainArea {
                     let mut state = state.lock().unwrap();
                     state.current_track_index = Some(next_index);
                     // load_audio already starts playback via set_audio, no need to toggle again
-                    self.add_toast(format!("Now playing: {}", next_track.name), Color32::GREEN);
+                    self.add_toast(t.now_playing(&next_track.name), Color32::GREEN);
                 }
             }
         }
     }
 
     fn play_previous_track(&mut self) {
+        let t = I18n::new(self.ui_locale);
         let (prev_index, playlist) = {
             let player = match self.audio_player.as_ref() {
                 Some(p) => p,
@@ -1228,7 +1222,7 @@ impl MainArea {
                     let mut state = state.lock().unwrap();
                     state.current_track_index = Some(prev_index);
                     // load_audio already starts playback via set_audio, no need to toggle again
-                    self.add_toast(format!("Now playing: {}", prev_track.name), Color32::GREEN);
+                    self.add_toast(t.now_playing(&prev_track.name), Color32::GREEN);
                 }
             }
         }

@@ -1,3 +1,4 @@
+use crate::i18n::I18n;
 use egui::{Align, Align2, Color32, Context, Layout, RichText, Ui};
 use egui_phosphor::regular;
 
@@ -35,6 +36,7 @@ impl MainArea {
 
     /// Render the main area content
     pub fn render(&mut self, ui: &mut Ui) {
+        let t = I18n::from_ctx(ui.ctx());
         // First, clean up expired toast messages
         self.toast_messages.retain(|toast| !toast.has_expired());
         let available_height = ui.available_height();
@@ -74,7 +76,7 @@ impl MainArea {
                         ui.vertical_centered(|ui| {
                             ui.add(egui::Spinner::new());
                             ui.add_space(10.0);
-                            ui.label("Loading audio file info...");
+                            ui.label(t.loading_audio());
                         });
                     });
                 }
@@ -88,8 +90,8 @@ impl MainArea {
                             .color(ui.visuals().weak_text_color())
                     );
                     ui.add_space(10.0);
-                    ui.heading("No file selected");
-                    ui.label("Please select a file from the list on the left to start editing");
+                    ui.heading(t.no_file_selected_heading());
+                    ui.label(t.no_file_selected_hint());
                 });
             });
         }
@@ -97,6 +99,7 @@ impl MainArea {
 
     /// Render header with file information
     fn render_header(&mut self, ui: &mut Ui, selected: &str) {
+        let t = I18n::from_ctx(ui.ctx());
         egui::Frame::new()
             .fill(ui.visuals().panel_fill) // 使用面板背景色
             .inner_margin(egui::Margin::symmetric(16, 12))
@@ -108,7 +111,7 @@ impl MainArea {
                             .size(24.0)
                             .color(Color32::from_rgb(100, 150, 255))
                     );
-                    ui.heading("Audio Editor");
+                    ui.heading(t.audio_editor_heading());
                     
                     ui.add_space(20.0);
                     ui.separator();
@@ -117,7 +120,7 @@ impl MainArea {
                     // Current File Info
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Currently editing:").weak().size(11.0));
+                            ui.label(RichText::new(t.currently_editing()).weak().size(11.0));
                             
                             // Display filename with ellipsis if too long
                             let display_name = if selected.len() > 80 {
@@ -139,7 +142,7 @@ impl MainArea {
 
                         if let Some(count) = self.file_count {
                             ui.label(
-                                RichText::new(format!("{} audio files found", count))
+                                RichText::new(t.audio_files_found(count))
                                     .weak()
                                     .size(11.0)
                             );
@@ -148,7 +151,7 @@ impl MainArea {
                     
                     // Right-aligned status/actions can go here
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button(RichText::new(format!("{} Refresh", regular::ARROWS_CLOCKWISE))).clicked() {
+                        if ui.button(RichText::new(format!("{} {}", regular::ARROWS_CLOCKWISE, t.refresh()))).clicked() {
                             if let Some(path) = self.selected_file.clone() {
                                 self.update_selected_file(Some(path));
                             }
@@ -160,6 +163,8 @@ impl MainArea {
 
     /// Render toolbar with search and output path
     fn render_toolbar(&mut self, ui: &mut Ui) {
+        let t = I18n::from_ctx(ui.ctx());
+        let loc = t.locale;
         egui::Frame::new()
             .inner_margin(egui::Margin::symmetric(16, 8))
             .show(ui, |ui| {
@@ -178,7 +183,7 @@ impl MainArea {
                     
                     // Advanced search toggle
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let text = if self.show_advanced_search { "Simple View" } else { "Advanced Search" };
+                        let text = if self.show_advanced_search { t.simple_view() } else { t.advanced_search() };
                         let icon = if self.show_advanced_search { regular::CARET_UP } else { regular::CARET_DOWN };
                         
                         if ui.button(format!("{} {}", icon, text)).clicked() {
@@ -191,22 +196,22 @@ impl MainArea {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.add_space(24.0); // Align with search icon
-                        ui.label("Search in:");
+                        ui.label(t.search_in());
                         egui::ComboBox::from_id_salt("search_column_toolbar")
-                            .selected_text(self.search_column.display_name())
+                            .selected_text(self.search_column.display_name_for_locale(loc))
                             .width(120.0)
                             .show_ui(ui, |ui| {
                                 for column in super::search_column::SearchColumn::all_columns() {
                                     ui.selectable_value(
                                         &mut self.search_column,
                                         column,
-                                        column.display_name()
+                                        column.display_name_for_locale(loc)
                                     );
                                 }
                             });
-                        
+
                         ui.add_space(10.0);
-                        ui.small("Tip: Use 'KB' or 'MB' for size search");
+                        ui.small(t.tip_size_search());
                     });
                 }
             });

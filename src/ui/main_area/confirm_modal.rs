@@ -51,6 +51,7 @@ impl ConfirmModal {
             return;
         }
 
+        let t = crate::i18n::I18n::from_ctx(ctx);
         let available_rect = ctx.available_rect();
         let min_width = available_rect.width() * 0.3;
         let min_height = available_rect.height() * 0.2;
@@ -71,7 +72,7 @@ impl ConfirmModal {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Confirm button - red warning color
                             if ui.add(Button::new(
-                                RichText::new("Confirm")
+                                RichText::new(t.confirm())
                                     .color(Color32::from_rgb(255, 255, 255))
                             ).fill(Color32::from_rgb(220, 50, 50))).clicked() {
                                 self.confirmed = true;
@@ -81,7 +82,7 @@ impl ConfirmModal {
                             ui.add_space(10.0);
                             
                             // Cancel button
-                            if ui.button("Cancel").clicked() {
+                            if ui.button(t.cancel()).clicked() {
                                 self.cancelled = true;
                                 self.open = false;
                             }

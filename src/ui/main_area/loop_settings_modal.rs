@@ -1,4 +1,5 @@
 use super::audio_file_info::AudioFileInfo;
+use crate::i18n::I18n;
 use egui::{Context, ScrollArea, Ui, Window};
 use mp3_duration;
 use hound;
@@ -155,7 +156,8 @@ impl LoopSettingsModal {
         }
 
         if let Some(audio_info) = &self.audio_info {
-            let title = format!("Loop Settings - {}", audio_info.name);
+            let t = I18n::from_ctx(ctx);
+            let title = t.loop_settings_title(&audio_info.name);
             let available_rect = ctx.available_rect();
             let min_width = available_rect.width() * 0.5;
             let min_height = available_rect.height() * 0.5;
@@ -174,10 +176,11 @@ impl LoopSettingsModal {
 
     /// Render modal content
     fn render_content(&mut self, ui: &mut Ui) {
+        let t = I18n::from_ctx(ui.ctx());
         if let Some(audio_info) = &self.audio_info {
             ui.vertical_centered(|ui| {
                 ui.add_space(10.0);
-                ui.heading("Audio Information");
+                ui.heading(t.audio_information());
                 ui.add_space(10.0);
             });
 
@@ -188,7 +191,7 @@ impl LoopSettingsModal {
                     .spacing([10.0, 10.0])
                     .striped(true)
                     .show(ui, |ui| {
-                        ui.label("Name:");
+                        ui.label(t.name_label());
                         ui.label(&audio_info.name);
                         ui.end_row();
                     });
@@ -197,21 +200,21 @@ impl LoopSettingsModal {
 
                 // Loop settings section
                 ui.vertical_centered(|ui| {
-                    ui.heading("Loop Settings");
+                    ui.heading(t.loop_settings_heading());
                     ui.add_space(10.0);
                 });
 
-                ui.checkbox(&mut self.settings.enable_loop, "Enable loop functionality");
+                ui.checkbox(&mut self.settings.enable_loop, t.enable_loop());
                 
                 ui.add_space(5.0);
                 
                 if self.settings.enable_loop {
-                    ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                    ui.checkbox(&mut self.settings.use_custom_loop, t.use_custom_loop());
                 } else {
                     // Disable custom loop when loop is disabled
                     self.settings.use_custom_loop = false;
                     ui.add_enabled_ui(false, |ui| {
-                        ui.checkbox(&mut self.settings.use_custom_loop, "Use custom loop points");
+                        ui.checkbox(&mut self.settings.use_custom_loop, t.use_custom_loop());
                     });
                 }
 
@@ -220,7 +223,7 @@ impl LoopSettingsModal {
 
                     // Loop start input
                     ui.horizontal(|ui| {
-                        ui.label("Loop Start (seconds):");
+                        ui.label(t.loop_start_sec());
                         let mut start_value = self.settings.loop_start.unwrap_or(0.0);
                         if ui
                             .add(
@@ -244,7 +247,7 @@ impl LoopSettingsModal {
 
                     // Loop end input
                     ui.horizontal(|ui| {
-                        ui.label("Loop End (seconds):");
+                        ui.label(t.loop_end_sec());
                         let mut end_value = self
                             .settings
                             .loop_end
@@ -272,23 +275,23 @@ impl LoopSettingsModal {
                     };
 
                     ui.add_space(10.0);
-                    ui.label(format!("Loop Duration: {:.2} seconds", loop_duration));
+                    ui.label(t.loop_duration_sec(loop_duration));
                 } else if self.settings.enable_loop {
-                    ui.label("Audio will loop from beginning to end");
+                    ui.label(t.loop_full_track());
                 } else {
-                    ui.label("Loop functionality is disabled");
+                    ui.label(t.loop_disabled());
                 }
 
                 ui.add_space(16.0);
 
                 // Gain section
                 ui.vertical_centered(|ui| {
-                    ui.heading("Gain");
+                    ui.heading(t.gain_heading());
                     ui.add_space(8.0);
                 });
 
                 ui.horizontal(|ui| {
-                    ui.label("Gain (dB):");
+                    ui.label(t.gain_db_label());
                     let mut gain_value = self.settings.gain_db;
                     if ui
                         .add(egui::Slider::new(&mut gain_value, -24.0..=24.0).suffix(" dB"))
@@ -303,13 +306,13 @@ impl LoopSettingsModal {
                     if ui.button("+6 dB").clicked() {
                         self.settings.gain_db = 6.0;
                     }
-                    if ui.button("Reset").clicked() {
+                    if ui.button(t.reset_gain()).clicked() {
                         self.settings.gain_db = 0.0;
                     }
                 });
 
                 let linear_factor = 10f32.powf(self.settings.gain_db / 20.0);
-                ui.label(format!("Linear factor: {:.3}", linear_factor));
+                ui.label(t.linear_factor(linear_factor));
 
                 ui.add_space(20.0);
             });
@@ -320,11 +323,11 @@ impl LoopSettingsModal {
             // Control buttons
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(t.cancel()).clicked() {
                         self.open = false;
                     }
 
-                    if ui.button("Confirm").clicked() {
+                    if ui.button(t.confirm()).clicked() {
                         self.confirmed = true;
                         self.open = false;
                     }

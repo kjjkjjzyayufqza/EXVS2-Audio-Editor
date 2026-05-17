@@ -104,6 +104,10 @@ pub struct MainArea {
     // Pending debug: convert all NUS3BANK tracks to PCM WAV (in memory)
     #[serde(skip)]
     pub pending_debug_convert_all_wav: bool,
+
+    /// Current UI language (synced from [`crate::TemplateApp`] each frame).
+    #[serde(skip)]
+    pub ui_locale: crate::i18n::Locale,
 }
 
 impl Default for MainArea {
@@ -180,7 +184,14 @@ impl MainArea {
 
             // Initialize pending debug convert all wav
             pending_debug_convert_all_wav: false,
+
+            ui_locale: crate::i18n::Locale::En,
         }
+    }
+
+    /// Sync language from app for toasts / player actions without egui `Context`.
+    pub fn sync_locale(&mut self, locale: crate::i18n::Locale) {
+        self.ui_locale = locale;
     }
 
     /// Add a toast notification

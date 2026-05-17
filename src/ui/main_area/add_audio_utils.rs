@@ -1,5 +1,6 @@
 use super::add_audio_modal::AddAudioModal;
 use super::audio_file_info::AudioFileInfo;
+use crate::i18n::{I18n, Locale};
 use rfd::FileDialog;
 use std::fs;
 #[cfg(windows)]
@@ -85,19 +86,21 @@ impl AddAudioUtils {
     pub fn add_with_file_dialog(
         add_audio_modal: &mut AddAudioModal,
         existing_audio_files: Option<Vec<AudioFileInfo>>,
+        locale: Locale,
     ) -> Result<(), String> {
+        let t = I18n::new(locale);
         // Open a file dialog to select the audio file
         let result: Option<std::path::PathBuf> = FileDialog::new()
             .add_filter(
-                "Audio Files",
+                t.audio_files_filter(),
                 &["wav", "mp3", "flac", "ogg", "lopus", "idsp", "bin"],
             )
-            .add_filter("All Files", &["*"])
-            .set_title("Select Audio File to Add")
+            .add_filter(t.all_files_filter(), &["*"])
+            .set_title(t.select_audio_file_to_add())
             .pick_file();
 
         if result.is_none() {
-            return Err("No file selected".to_string());
+            return Err(t.no_file_selected().to_string());
         }
 
         // Get selected file path
@@ -105,18 +108,23 @@ impl AddAudioUtils {
         let path_str = selected_path.to_string_lossy().to_string();
 
         // Open the modal with the selected file
-        add_audio_modal.open_with_file(&path_str, existing_audio_files);
+        add_audio_modal.open_with_file(&path_str, existing_audio_files, locale);
 
         Ok(())
     }
 
     /// Process the new audio file after the modal is confirmed
     /// The is_nus3bank flag will be determined by the caller based on the current file type
-    pub fn process_new_audio(add_audio_modal: &AddAudioModal, is_nus3bank: bool) -> Result<AudioFileInfo, String> {
+    pub fn process_new_audio(
+        add_audio_modal: &AddAudioModal,
+        is_nus3bank: bool,
+        locale: Locale,
+    ) -> Result<AudioFileInfo, String> {
+        let t = I18n::new(locale);
         // Check if file path exists
         let file_path = match &add_audio_modal.settings.file_path {
             Some(path) => path,
-            None => return Err("No audio file path available".to_string()),
+            None => return Err(t.no_audio_path().to_string()),
         };
 
         // Convert the audio file to WAV format using vgmstream
@@ -128,7 +136,7 @@ impl AddAudioUtils {
                 // Fall back to the original file data if conversion fails
                 match &add_audio_modal.file_data {
                     Some(data) => data.clone(),
-                    None => return Err("No audio file data available".to_string()),
+                    None => return Err(t.no_audio_data().to_string()),
                 }
             }
         };
@@ -138,13 +146,13 @@ impl AddAudioUtils {
         let id = add_audio_modal.settings.id.clone();
 
         if name.is_empty() || id.is_empty() {
-            return Err("Name and ID cannot be empty".to_string());
+            return Err(t.name_and_id_required().to_string());
         }
 
         // Convert ID to valid format expected by Nus3audioFile
         let id_val = match id.parse::<u32>() {
             Ok(val) => val,
-            Err(_) => return Err("ID must be a valid number".to_string()),
+            Err(_) => return Err(t.id_must_be_valid_number().to_string()),
         };
 
         // Get the filename from the original file path

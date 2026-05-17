@@ -1,4 +1,5 @@
 use super::audio_file_info::AudioFileInfo;
+use crate::i18n::{I18n, Locale};
 use egui::{Context, ScrollArea, Ui, Window};
 use std::fs;
 use std::path::Path;
@@ -91,7 +92,13 @@ impl AddAudioModal {
     }
 
     /// Open the modal with a selected audio file
-    pub fn open_with_file(&mut self, file_path: &str, existing_audio_files: Option<Vec<AudioFileInfo>>) {
+    pub fn open_with_file(
+        &mut self,
+        file_path: &str,
+        existing_audio_files: Option<Vec<AudioFileInfo>>,
+        locale: Locale,
+    ) {
+        let loc = I18n::new(locale);
         println!("Opening add audio modal with file: {}", file_path);
         
         self.existing_audio_files = existing_audio_files;
@@ -157,7 +164,7 @@ impl AddAudioModal {
             }
             Err(e) => {
                 println!("Failed to read audio file: {}", e);
-                self.error = Some(format!("Failed to read audio file: {}", e));
+                self.error = Some(loc.failed_read_audio(&e));
                 self.file_data = None;
             }
         }
@@ -187,7 +194,8 @@ impl AddAudioModal {
         let min_width = available_rect.width() * 0.5;
         let min_height = available_rect.height() * 0.5;
 
-        Window::new("Add New Audio File")
+        let t = I18n::from_ctx(ctx);
+        Window::new(t.add_new_audio_title())
             .min_width(min_width)
             .min_height(min_height)
             .resizable(true)
@@ -199,14 +207,15 @@ impl AddAudioModal {
 
     /// Render modal content
     fn render_content(&mut self, ui: &mut Ui) {
+        let t = I18n::from_ctx(ui.ctx());
         ui.vertical_centered(|ui| {
             ui.add_space(10.0);
-            ui.heading("Add New Audio File");
+            ui.heading(t.add_new_audio_title());
             ui.add_space(10.0);
         });
 
         if let Some(error) = &self.error {
-            ui.label("Error:");
+            ui.label(t.error_label());
             ui.colored_label(egui::Color32::RED, error);
             ui.add_space(10.0);
             ui.separator();
@@ -217,14 +226,14 @@ impl AddAudioModal {
             ScrollArea::vertical().show(ui, |ui| {
                 // File information
                 ui.vertical_centered(|ui| {
-                    ui.heading("File Information");
+                    ui.heading(t.file_information());
                     ui.add_space(10.0);
                 });
 
                 // Show file path
                 if let Some(file_path) = &self.settings.file_path {
                     ui.horizontal(|ui| {
-                        ui.label("Selected File:");
+                        ui.label(t.selected_file_label());
                         ui.label(file_path);
                     });
                 }
@@ -233,8 +242,8 @@ impl AddAudioModal {
 
                 // Duration (estimated or actual)
                 ui.horizontal(|ui| {
-                    ui.label("Duration:");
-                    ui.label(format!("{:.2} seconds", self.settings.estimated_duration));
+                    ui.label(t.duration_label());
+                    ui.label(t.seconds_fmt(self.settings.estimated_duration));
                 });
 
                 ui.add_space(20.0);
@@ -243,13 +252,13 @@ impl AddAudioModal {
 
                 // Audio metadata input fields
                 ui.vertical_centered(|ui| {
-                    ui.heading("Audio Metadata");
+                    ui.heading(t.audio_metadata());
                     ui.add_space(10.0);
                 });
 
                 // Name input
                 ui.horizontal(|ui| {
-                    ui.label("Name:");
+                    ui.label(t.name_label());
                     ui.text_edit_singleline(&mut self.settings.name);
                 });
 
@@ -263,12 +272,12 @@ impl AddAudioModal {
                 };
 
                 if name_exists {
-                    ui.colored_label(egui::Color32::RED, "Error: Name already exists!");
+                    ui.colored_label(egui::Color32::RED, t.name_exists_error());
                 }
 
                 // ID input
                 ui.horizontal(|ui| {
-                    ui.label("ID:");
+                    ui.label(t.id_label());
                     ui.text_edit_singleline(&mut self.settings.id);
                 });
 
@@ -282,7 +291,7 @@ impl AddAudioModal {
                 };
 
                 if id_exists {
-                    ui.colored_label(egui::Color32::RED, "Error: ID already exists!");
+                    ui.colored_label(egui::Color32::RED, t.id_exists_error());
                 }
 
                 ui.add_space(20.0);
@@ -294,7 +303,7 @@ impl AddAudioModal {
             // Control buttons
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(t.cancel()).clicked() {
                         self.open = false;
                     }
 
@@ -319,7 +328,10 @@ impl AddAudioModal {
                                                self.settings.name.is_empty() || 
                                                self.settings.id.is_empty();
 
-                    if ui.add_enabled(!has_validation_errors, egui::Button::new("Confirm")).clicked() {
+                    if ui
+                        .add_enabled(!has_validation_errors, egui::Button::new(t.confirm()))
+                        .clicked()
+                    {
                         self.confirmed = true;
                         self.open = false;
                     }
@@ -327,16 +339,16 @@ impl AddAudioModal {
             });
         } else {
             // No file data
-            ui.label("No audio file loaded. Please select a valid audio file.");
-            
+            ui.label(t.no_audio_loaded());
+
             ui.add_space(20.0);
             ui.separator();
             ui.add_space(10.0);
-            
+
             // Just show cancel button
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(t.cancel()).clicked() {
                         self.open = false;
                     }
                 });

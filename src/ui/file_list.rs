@@ -1,3 +1,4 @@
+use crate::i18n::I18n;
 use egui::{Align, Button, Color32, Layout, RichText, ScrollArea, Ui};
 use egui_phosphor::regular;
 use serde::{Deserialize, Serialize};
@@ -112,6 +113,7 @@ impl FileList {
 
     /// Display the file list
     pub fn show(&mut self, ui: &mut Ui) -> bool {
+        let t = I18n::from_ctx(ui.ctx());
         let mut file_changed = false;
         let mut action_path = None;
         let mut is_remove_action = false;
@@ -132,15 +134,15 @@ impl FileList {
             // Header
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.heading(format!("{} Files", regular::FILES));
+                ui.heading(format!("{} {}", regular::FILES, t.files_heading()));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     // Add Button (Always visible at the top for better UX)
                     let add_btn =
                         Button::new(RichText::new(regular::PLUS_CIRCLE).size(20.0)).frame(false);
-                    if ui.add(add_btn).on_hover_text("Add Files").clicked() {
+                    if ui.add(add_btn).on_hover_text(t.add_files_tooltip()).clicked() {
                         if let Some(paths) = rfd::FileDialog::new()
-                            .set_title("Select Audio Files")
-                            .add_filter("Audio Files", &["nus3audio", "nus3bank", "wav", "mp3"])
+                            .set_title(t.select_audio_files_title())
+                            .add_filter(t.audio_files_filter(), &["nus3audio", "nus3bank", "wav", "mp3"])
                             .pick_files()
                         {
                             for path in paths {
@@ -156,10 +158,10 @@ impl FileList {
                             RichText::new(regular::TRASH).color(Color32::from_rgb(255, 100, 100)),
                         )
                         .frame(false);
-                        if ui.add(clear_btn).on_hover_text("Clear All Files").clicked() {
+                        if ui.add(clear_btn).on_hover_text(t.clear_all_files_title()).clicked() {
                             self.confirm_clear_modal.open(
-                                "Clear All Files",
-                                &format!("Are you sure you want to remove all {} file(s) from the list?", self.files.len())
+                                t.clear_all_files_title(),
+                                &t.clear_all_files_confirm(self.files.len())
                             );
                         }
 
@@ -184,14 +186,14 @@ impl FileList {
                         let _response = ui.add_sized(
                             [available_width, 20.0],
                             egui::TextEdit::singleline(&mut self.search_query)
-                                .hint_text("Search files...")
+                                .hint_text(t.search_files_hint())
                                 .frame(false),
                         );
 
                         if !self.search_query.is_empty() {
                             if ui
                                 .button(regular::X)
-                                .on_hover_text("Clear Search")
+                                .on_hover_text(t.clear_search_tooltip())
                                 .clicked()
                             {
                                 self.search_query.clear();
@@ -207,7 +209,7 @@ impl FileList {
                     ui.add_space(20.0);
                     ui.label(RichText::new(regular::FILE_DASHED).size(32.0).weak());
                     ui.add_space(8.0);
-                    ui.label(RichText::new("No files added").weak());
+                    ui.label(RichText::new(t.no_files_added()).weak());
                     ui.add_space(20.0);
                 });
             } else {
@@ -216,7 +218,7 @@ impl FileList {
                 if filtered.is_empty() {
                     ui.vertical_centered(|ui| {
                         ui.add_space(20.0);
-                        ui.label(RichText::new("No matching files").weak());
+                        ui.label(RichText::new(t.no_matching_files()).weak());
                     });
                 } else {
                     let row_height = 32.0;
@@ -300,7 +302,7 @@ impl FileList {
                                                     .frame(false);
                                                     if ui
                                                         .add(remove_btn)
-                                                        .on_hover_text("Remove from list")
+                                                        .on_hover_text(t.remove_from_list_tooltip())
                                                         .clicked()
                                                     {
                                                         remove_clicked = true;

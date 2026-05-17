@@ -22,6 +22,7 @@ impl TableRenderer {
         show_grid_lines: bool,
         available_height: f32,
         available_width: f32,
+        i18n: &crate::i18n::I18n,
         on_export_clicked: &mut dyn FnMut(usize),
         on_play_clicked: &mut dyn FnMut(usize),
         on_replace_clicked: &mut dyn FnMut(usize),
@@ -139,7 +140,7 @@ impl TableRenderer {
                                 }
                             }
                         }
-                        resp.on_hover_text("Select/Deselect all (filtered)");
+                        resp.on_hover_text(i18n.select_all_filtered_tooltip());
                     });
                 }
                 
@@ -153,7 +154,7 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let name_text = RichText::new(format!("Name{}", name_sort_icon)).size(heading_size).strong();
+                let name_text = RichText::new(format!("{}{}", i18n.col_name(), name_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
                     [col_width_name, header_height],
@@ -177,7 +178,7 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let id_text = RichText::new(format!("ID{}", id_sort_icon)).size(heading_size).strong();
+                let id_text = RichText::new(format!("{}{}", i18n.col_id(), id_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
                     [col_width_id, header_height],
@@ -201,7 +202,7 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let size_text = RichText::new(format!("Size{}", size_sort_icon)).size(heading_size).strong();
+                let size_text = RichText::new(format!("{}{}", i18n.col_size(), size_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
                     [col_width_size, header_height],
@@ -225,7 +226,7 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let filename_text = RichText::new(format!("Filename{}", filename_sort_icon)).size(heading_size).strong();
+                let filename_text = RichText::new(format!("{}{}", i18n.col_filename(), filename_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
                     [col_width_filename, header_height],
@@ -249,7 +250,7 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let type_text = RichText::new(format!("Type{}", type_sort_icon)).size(heading_size).strong();
+                let type_text = RichText::new(format!("{}{}", i18n.col_type(), type_sort_icon)).size(heading_size).strong();
                 
                 if ui.add_sized(
                     [col_width_type, header_height],
@@ -269,7 +270,7 @@ impl TableRenderer {
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.add(
-                            egui::Button::new(RichText::new("Action").size(heading_size).strong())
+                            egui::Button::new(RichText::new(i18n.col_action()).size(heading_size).strong())
                                 .fill(header_bg_color)
                         );
                     }
@@ -471,7 +472,7 @@ impl TableRenderer {
                                                     .size(text_size)
                                                     .color(Color32::from_rgb(100, 255, 150)),
                                             );
-                                            if ui.add(play_btn).on_hover_text("Play").clicked() {
+                                            if ui.add(play_btn).on_hover_text(i18n.play_tooltip()).clicked() {
                                                 on_play_clicked(row_index);
                                             }
 
@@ -479,7 +480,7 @@ impl TableRenderer {
                                                 RichText::new(egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string())
                                                     .size(text_size),
                                             );
-                                            if ui.add(export_btn).on_hover_text("Export").clicked() {
+                                            if ui.add(export_btn).on_hover_text(i18n.export_tooltip()).clicked() {
                                                 on_export_clicked(row_index);
                                             }
                                             ui.end_row();
@@ -490,7 +491,7 @@ impl TableRenderer {
                                                     .size(text_size)
                                                     .color(Color32::from_rgb(255, 180, 100)),
                                             );
-                                            if ui.add(replace_btn).on_hover_text("Replace").clicked() {
+                                            if ui.add(replace_btn).on_hover_text(i18n.replace_tooltip()).clicked() {
                                                 on_replace_clicked(row_index);
                                             }
 
@@ -499,7 +500,7 @@ impl TableRenderer {
                                                     .size(text_size)
                                                     .color(Color32::from_rgb(255, 100, 100)),
                                             );
-                                            if ui.add(remove_btn).on_hover_text("Remove").clicked() {
+                                            if ui.add(remove_btn).on_hover_text(i18n.remove_tooltip()).clicked() {
                                                 on_remove_clicked(row_index);
                                             }
                                             ui.end_row();
@@ -592,7 +593,7 @@ impl TableRenderer {
                                             .size(text_size);
                                             let export_button = button_ui
                                                 .add(Button::new(export_text))
-                                                .on_hover_text("Export");
+                                                .on_hover_text(i18n.export_tooltip());
                                             if export_button.clicked() {
                                                 on_export_clicked(row_index);
                                             }
@@ -608,7 +609,7 @@ impl TableRenderer {
                                             .color(Color32::from_rgb(255, 180, 100));
                                             let replace_button = button_ui
                                                 .add(Button::new(replace_text))
-                                                .on_hover_text("Replace");
+                                                .on_hover_text(i18n.replace_tooltip());
                                             if replace_button.clicked() {
                                                 on_replace_clicked(row_index);
                                             }
@@ -624,7 +625,7 @@ impl TableRenderer {
                                             .color(Color32::from_rgb(255, 100, 100));
                                             let remove_button = button_ui
                                                 .add(Button::new(remove_text))
-                                                .on_hover_text("Remove");
+                                                .on_hover_text(i18n.remove_tooltip());
                                             if remove_button.clicked() {
                                                 on_remove_clicked(row_index);
                                             }
@@ -636,19 +637,19 @@ impl TableRenderer {
                                             let more_label = RichText::new("⋯").size(text_size);
                                             let _ = button_ui.menu_button(more_label, |ui| {
                                                 if overflow_export {
-                                                    if ui.button("Export").clicked() {
+                                                    if ui.button(i18n.export_tooltip()).clicked() {
                                                         on_export_clicked(row_index);
                                                         ui.close();
                                                     }
                                                 }
                                                 if overflow_replace {
-                                                    if ui.button("Replace").clicked() {
+                                                    if ui.button(i18n.replace_tooltip()).clicked() {
                                                         on_replace_clicked(row_index);
                                                         ui.close();
                                                     }
                                                 }
                                                 if overflow_remove {
-                                                    if ui.button("Remove").clicked() {
+                                                    if ui.button(i18n.remove_tooltip()).clicked() {
                                                         on_remove_clicked(row_index);
                                                         ui.close();
                                                     }
