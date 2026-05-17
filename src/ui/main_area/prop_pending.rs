@@ -30,9 +30,3 @@ pub fn clear(file_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn take(file_path: &str) -> Option<PropSection> {
-    PROP_PENDING
-        .lock()
-        .ok()?
-        .remove(file_path)
-}

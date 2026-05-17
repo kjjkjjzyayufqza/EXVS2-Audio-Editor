@@ -19,21 +19,6 @@ pub enum FileChangeType {
 pub struct Nus3audioFileUtils;
 
 impl Nus3audioFileUtils {
-    /// Register a file addition (in memory only)
-    pub fn register_add(audio_info: &AudioFileInfo, data: Vec<u8>) -> Result<(), String> {
-        let key = format!("{}:{}", audio_info.name, audio_info.id);
-
-        if let Ok(mut changes) = FILE_CHANGES.lock() {
-            changes.insert(
-                key,
-                FileChangeType::Add(audio_info.id.clone(), audio_info.name.clone(), data),
-            );
-            Ok(())
-        } else {
-            Err("Failed to register file addition".to_string())
-        }
-    }
-
     /// Register a file removal (in memory only)
     pub fn register_remove(audio_info: &AudioFileInfo, selected_file_path: Option<&str>) -> Result<(), String> {
         // Use consistent key format based on file type to match replace_in_memory
@@ -84,8 +69,9 @@ impl Nus3audioFileUtils {
         // Use unified method to apply all in-memory replacements and save the file (supports both NUS3AUDIO and NUS3BANK)
         match super::replace_utils::ReplaceUtils::apply_replacements_and_save_unified(file_path, file_path) {
             Ok(_) => {
-                // 清空 FILE_CHANGES
                 Self::clear_changes();
+                // Invalidate WAV cache for this file since on-disk content changed
+                super::export_utils::ExportUtils::clear_wav_cache_for_file(file_path);
                 Ok(())
             }
             Err(e) => Err(format!("Failed to write updated file: {}", e)),

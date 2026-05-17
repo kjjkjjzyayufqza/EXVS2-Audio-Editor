@@ -145,13 +145,20 @@ impl AudioBackend for NativeAudioBackend {
             handle.stop(Tween::default());
         }
 
+        let t_load = Instant::now();
         let sound_data = StreamingSoundData::from_file(file_path)
             .map_err(|e| format!("Failed to load audio file: {}", e))?;
+        println!("[PERF] kira StreamingSoundData::from_file: {}ms", t_load.elapsed().as_millis());
 
+        let t_play = Instant::now();
         let mut handle = manager.play(sound_data)
             .map_err(|e| format!("Failed to start audio playback: {}", e))?;
+        println!("[PERF] kira manager.play: {}ms", t_play.elapsed().as_millis());
 
+        let t_dur = Instant::now();
         self.duration = self.estimate_wav_duration_from_file(file_path);
+        println!("[PERF] kira estimate_wav_duration: {}ms (duration={:.2}s)", t_dur.elapsed().as_millis(), self.duration);
+
         self.current_position = 0.0;
         self.playback_start_time = Some(Instant::now());
         self.playback_start_position = 0.0;

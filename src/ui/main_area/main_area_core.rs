@@ -1,16 +1,31 @@
 use egui::Color32;
 use std::collections::HashSet;
+use std::sync::mpsc;
 
 use super::{
     add_audio_modal::AddAudioModal, audio_file_info::AudioFileInfo, confirm_modal::ConfirmModal,
     dton_tones_modal::DtonTonesModal,
     grp_list_modal::GrpListModal,
-    loop_settings_modal::LoopSettingsModal, 
+    loop_settings_modal::LoopSettingsModal,
     prop_edit_modal::PropEditModal,
     search_column::SearchColumn, sort_column::SortColumn,
     toast_message::ToastMessage,
 };
 use crate::ui::audio_player::{AudioPlayer, AudioPlayerSettings};
+
+pub enum FileLoadResult {
+    Nus3audio {
+        file_name: String,
+        file_count: usize,
+        audio_files: Vec<AudioFileInfo>,
+        track_ids: Vec<u32>,
+    },
+    Nus3bank {
+        file_count: usize,
+        audio_files: Vec<AudioFileInfo>,
+    },
+    Error(String),
+}
 
 /// Main editing area component
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -108,6 +123,9 @@ pub struct MainArea {
     /// Current UI language (synced from [`crate::TemplateApp`] each frame).
     #[serde(skip)]
     pub ui_locale: crate::i18n::Locale,
+
+    #[serde(skip)]
+    pub file_load_receiver: Option<mpsc::Receiver<FileLoadResult>>,
 }
 
 impl Default for MainArea {
@@ -186,6 +204,8 @@ impl MainArea {
             pending_debug_convert_all_wav: false,
 
             ui_locale: crate::i18n::Locale::En,
+
+            file_load_receiver: None,
         }
     }
 

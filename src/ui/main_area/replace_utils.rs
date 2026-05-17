@@ -563,16 +563,6 @@ impl ReplaceUtils {
         result
     }
 
-    /// Get the replacement audio data for a specific audio file
-    pub fn get_replacement_data(audio_name: &str, audio_id: &str) -> Option<Vec<u8>> {
-        let key = format!("{}:{}", audio_name, audio_id);
-        if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
-            map.get(&key).cloned()
-        } else {
-            None
-        }
-    }
-
     /// Get the replacement audio data for a specific audio file (unified for both file types)
     pub fn get_replacement_data_unified(audio_file_info: &AudioFileInfo) -> Option<Vec<u8>> {
         // Create the correct key based on file type
@@ -1023,19 +1013,4 @@ impl ReplaceUtils {
         }
     }
     
-    /// Replace audio data in memory for NUS3BANK files
-    pub fn replace_nus3bank_in_memory(
-        file_path: &str,
-        audio_file_info: &AudioFileInfo,
-        replacement_file_path: &str,
-    ) -> Result<(), String> {
-        // Load the replacement file data
-        let replacement_data = fs::read(replacement_file_path)
-            .map_err(|e| format!("Failed to read replacement file: {}", e))?;
-        
-        let hex_id = audio_file_info.hex_id.as_ref()
-            .ok_or_else(|| "No hex ID found for NUS3BANK track".to_string())?;
-        
-        Nus3bankReplacer::replace_track_in_memory(file_path, hex_id, replacement_data)
-    }
 }

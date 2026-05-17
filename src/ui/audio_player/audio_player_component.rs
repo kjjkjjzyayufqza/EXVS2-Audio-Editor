@@ -101,28 +101,37 @@ impl AudioPlayer {
 
     /// Load audio from file info
     pub fn load_audio(&mut self, file_info: &AudioFileInfo, file_path: &str) -> Result<(), String> {
-        // Check if there's a replacement audio data in memory first (unified method for both file types)
-        let replacement_audio_data = ReplaceUtils::get_replacement_data_unified(file_info);
+        let t_total = Instant::now();
+        println!("[PERF] load_audio start: {}", file_info.name);
 
-        // Check if there is pending added audio data not saved yet
+        // Check if there's a replacement audio data in memory first (unified method for both file types)
+        let t_lookup = Instant::now();
+        let replacement_audio_data = ReplaceUtils::get_replacement_data_unified(file_info);
         let pending_added_data =
             Nus3audioFileUtils::get_pending_added_data(&file_info.name, &file_info.id);
+        println!("[PERF] replacement data lookup: {}ms", t_lookup.elapsed().as_millis());
 
         // Determine which audio data to use (replacement or original)
         let playback_path = if let Some(replacement_data) = replacement_audio_data {
             log::info!("Using replacement audio data for: {}", file_info.name);
-            crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
+            let t_write = Instant::now();
+            let path = crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
                 file_info,
                 &replacement_data,
                 "replacement",
-            )?
+            )?;
+            println!("[PERF] write_temp_audio_bytes (replacement): {}ms", t_write.elapsed().as_millis());
+            path
         } else if let Some(added_data) = pending_added_data {
             log::info!("Using pending added audio data for: {}", file_info.name);
-            crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
+            let t_write = Instant::now();
+            let path = crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
                 file_info,
                 &added_data,
                 "pending",
-            )?
+            )?;
+            println!("[PERF] write_temp_audio_bytes (pending): {}ms", t_write.elapsed().as_millis());
+            path
         } else {
             log::info!(
                 "No replacement/added data found, using original file for: {}",
@@ -136,7 +145,8 @@ impl AudioPlayer {
                     file_info.name,
                     file_info.hex_id.as_ref().unwrap_or(&file_info.id)
                 );
-                crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path)
+                let t_conv = Instant::now();
+                let path = crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path)
                     .map_err(|e| {
                         log::error!(
                             "Failed to convert NUS3BANK audio to WAV format for track '{}' ({}): {}",
@@ -145,16 +155,23 @@ impl AudioPlayer {
                             e
                         );
                         format!("Failed to convert NUS3BANK audio to WAV format: {}", e)
-                    })?
+                    })?;
+                println!("[PERF] convert_to_wav_temp_path (NUS3BANK): {}ms", t_conv.elapsed().as_millis());
+                path
             } else {
                 log::info!("Processing NUS3AUDIO file for: {}", file_info.name);
+                let t_conv = Instant::now();
                 match crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path) {
-                    Ok(temp_path) => temp_path,
+                    Ok(temp_path) => {
+                        println!("[PERF] convert_to_wav_temp_path (NUS3AUDIO): {}ms", t_conv.elapsed().as_millis());
+                        temp_path
+                    },
                     Err(e) => {
                         log::warn!(
                             "Failed to convert NUS3AUDIO audio to WAV format: {}. Using original format instead.",
                             e
                         );
+                        let t_fallback = Instant::now();
                         let nus3_file = Nus3audioFile::open(file_path)
                             .map_err(|err| format!("Failed to open NUS3AUDIO file: {}", err))?;
                         let audio_file = nus3_file
@@ -167,11 +184,13 @@ impl AudioPlayer {
                                     file_info.name
                                 )
                             })?;
-                        crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
+                        let path = crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
                             file_info,
                             &audio_file.data,
                             "fallback",
-                        )?
+                        )?;
+                        println!("[PERF] fallback write_temp_audio_bytes: {}ms", t_fallback.elapsed().as_millis());
+                        path
                     }
                 }
             }
@@ -196,8 +215,10 @@ impl AudioPlayer {
         );
 
         // Set the audio in the state (this will call toggle_play which gets the real duration from backend)
+        let t_set = Instant::now();
         let mut state = self.audio_state.lock().unwrap();
         state.set_audio(audio);
+        println!("[PERF] state.set_audio (incl. backend.play_audio): {}ms", t_set.elapsed().as_millis());
 
         // Reset loop settings to defaults
         state.set_loop_points(None, None, false);
@@ -232,6 +253,7 @@ impl AudioPlayer {
             ));
         }
 
+        println!("[PERF] load_audio total: {}ms ({})", t_total.elapsed().as_millis(), file_info.name);
         Ok(())
     }
 

@@ -325,7 +325,22 @@ impl AudioState {
         // Stop any current playback
         self.stop();
 
-        self.cleanup_temp_audio();
+        // Only delete the previous temp file when switching to a *different* path.
+        // If the same cached WAV path is reused (e.g. clicking the same track again),
+        // cleanup_temp_audio would delete the file we are about to play.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let reusing_same_path = self.current_audio
+                .as_ref()
+                .and_then(|a| a.playback_path.as_deref())
+                .zip(audio.playback_path.as_deref())
+                .map(|(old, new)| old == new)
+                .unwrap_or(false);
+
+            if !reusing_same_path {
+                self.cleanup_temp_audio();
+            }
+        }
 
         // Set new audio file
         self.current_audio = Some(audio);
@@ -458,7 +473,7 @@ impl AudioState {
         }
     }
 
-    fn cleanup_temp_audio(&mut self) {
+    pub(crate) fn cleanup_temp_audio(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(audio) = &self.current_audio {
             if let Some(path) = audio.playback_path.as_deref() {
@@ -538,5 +553,96 @@ impl AudioState {
         } else {
             0.0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn make_temp_wav(name: &str) -> String {
+        let path = std::env::temp_dir().join(name);
+        let mut f = std::fs::File::create(&path).unwrap();
+        // Minimal WAV header — content only needs to exist on disk
+        f.write_all(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00").unwrap();
+        path.to_str().unwrap().to_string()
+    }
+
+    fn dummy_audio(playback_path: Option<String>) -> AudioFile {
+        AudioFile {
+            file_path: "dummy.nus3audio".to_string(),
+            playback_path,
+            name: "test_track".to_string(),
+            file_type: "WAV".to_string(),
+            id: "0".to_string(),
+        }
+    }
+
+    // Regression test: clicking the same track twice used to delete the cached WAV file
+    // before playback, causing "file not found" (OS error 2) errors.
+    #[test]
+    fn same_path_reuse_detected_and_skips_cleanup() {
+        let wav = make_temp_wav("audio_state_same_path_test.wav");
+
+        let mut state = AudioState::default();
+        state.current_audio = Some(dummy_audio(Some(wav.clone())));
+
+        let new_audio = dummy_audio(Some(wav.clone()));
+
+        let reusing = state
+            .current_audio
+            .as_ref()
+            .and_then(|a| a.playback_path.as_deref())
+            .zip(new_audio.playback_path.as_deref())
+            .map(|(old, new)| old == new)
+            .unwrap_or(false);
+
+        assert!(reusing, "same WAV path must be detected as reuse");
+
+        // When reusing, cleanup must NOT run
+        if !reusing {
+            state.cleanup_temp_audio();
+        }
+
+        assert!(
+            std::path::Path::new(&wav).exists(),
+            "cached WAV must survive when the same track is replayed"
+        );
+        let _ = std::fs::remove_file(&wav);
+    }
+
+    // Switching to a different track must still clean up the old temp file.
+    #[test]
+    fn different_path_triggers_cleanup() {
+        let wav_a = make_temp_wav("audio_state_track_a.wav");
+        let wav_b = make_temp_wav("audio_state_track_b.wav");
+
+        let mut state = AudioState::default();
+        state.current_audio = Some(dummy_audio(Some(wav_a.clone())));
+
+        let new_audio = dummy_audio(Some(wav_b.clone()));
+
+        let reusing = state
+            .current_audio
+            .as_ref()
+            .and_then(|a| a.playback_path.as_deref())
+            .zip(new_audio.playback_path.as_deref())
+            .map(|(old, new)| old == new)
+            .unwrap_or(false);
+
+        assert!(!reusing, "different WAV paths must not be flagged as reuse");
+
+        state.cleanup_temp_audio();
+
+        assert!(
+            !std::path::Path::new(&wav_a).exists(),
+            "old temp WAV must be deleted when switching tracks"
+        );
+        assert!(
+            std::path::Path::new(&wav_b).exists(),
+            "new track's WAV must not be touched by cleanup"
+        );
+        let _ = std::fs::remove_file(&wav_b);
     }
 }

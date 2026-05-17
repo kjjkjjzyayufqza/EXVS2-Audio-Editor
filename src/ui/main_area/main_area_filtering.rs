@@ -1,6 +1,8 @@
 use nus3audio::Nus3audioFile;
+use std::sync::mpsc;
+use std::time::Instant;
 use super::{
-    main_area_core::MainArea,
+    main_area_core::{FileLoadResult, MainArea},
     audio_file_info::AudioFileInfo,
     search_column::SearchColumn,
     sort_column::SortColumn,
@@ -97,73 +99,142 @@ impl MainArea {
         size_raw.contains(query)
     }
 
-    /// Update the selected file and load NUS3AUDIO info if applicable
+    /// Poll for background file load completion. Call once per frame.
+    pub fn poll_file_load(&mut self, ctx: &egui::Context) {
+        let result = match &self.file_load_receiver {
+            Some(rx) => rx.try_recv().ok(),
+            None => None,
+        };
+        if let Some(result) = result {
+            self.file_load_receiver = None;
+            match result {
+                FileLoadResult::Nus3audio { file_name, file_count, audio_files, track_ids } => {
+                    super::export_utils::ExportUtils::prime_indexing_cache(&file_name, &track_ids);
+                    self.file_count = Some(file_count);
+                    self.audio_files = Some(audio_files);
+                }
+                FileLoadResult::Nus3bank { file_count, audio_files } => {
+                    self.file_count = Some(file_count);
+                    self.audio_files = Some(audio_files);
+                }
+                FileLoadResult::Error(msg) => {
+                    self.error_message = Some(msg);
+                }
+            }
+        } else if self.file_load_receiver.is_some() {
+            ctx.request_repaint();
+        }
+    }
+
+    /// Update the selected file and load NUS3AUDIO info if applicable.
+    /// Skips reloading if the same file is already loaded to avoid redundant I/O.
     pub fn update_selected_file(&mut self, file_path: Option<String>) {
-        // Clear any previously replaced audio data in memory
+        if file_path == self.selected_file && self.audio_files.is_some() {
+            return;
+        }
+
         ReplaceUtils::clear_replacements();
-        
+
         self.selected_file = file_path;
         self.file_count = None;
         self.audio_files = None;
         self.error_message = None;
 
-        // If file is selected, determine type and load accordingly
         if let Some(file_name) = &self.selected_file {
-            let file_name = file_name.clone(); // Clone to avoid borrowing issues
-            if file_name.to_lowercase().ends_with(".nus3audio") {
-                self.load_nus3audio_file(&file_name);
-            } else if file_name.to_lowercase().ends_with(".nus3bank") {
-                self.load_nus3bank_file(&file_name);
+            self.spawn_file_load(file_name.clone());
+        }
+    }
+
+    /// Force a full reload of the currently selected file, bypassing the same-file skip.
+    pub fn force_reload_selected_file(&mut self) {
+        ReplaceUtils::clear_replacements();
+        self.file_count = None;
+        self.audio_files = None;
+        self.error_message = None;
+
+        if let Some(file_name) = self.selected_file.clone() {
+            self.spawn_file_load(file_name);
+        }
+    }
+
+    fn spawn_file_load(&mut self, file_name: String) {
+        let (tx, rx) = mpsc::channel();
+        self.file_load_receiver = Some(rx);
+
+        std::thread::spawn(move || {
+            let lower = file_name.to_lowercase();
+            let result = if lower.ends_with(".nus3audio") {
+                Self::load_nus3audio_bg(&file_name)
+            } else if lower.ends_with(".nus3bank") {
+                Self::load_nus3bank_bg(&file_name)
+            } else {
+                FileLoadResult::Error(format!("Unsupported file format: {}", file_name))
+            };
+            let _ = tx.send(result);
+        });
+    }
+
+    fn load_nus3audio_bg(file_name: &str) -> FileLoadResult {
+        let t_open = Instant::now();
+        match Nus3audioFile::open(file_name) {
+            Ok(nus3_file) => {
+                let open_ms = t_open.elapsed().as_millis();
+                println!("[PERF] NUS3AUDIO open: {}ms ({} tracks)", open_ms, nus3_file.files.len());
+
+                let track_ids: Vec<u32> = nus3_file.files.iter().map(|f| f.id).collect();
+                let file_count = nus3_file.files.len();
+
+                let t_process = Instant::now();
+                let mut audio_files = Vec::new();
+
+                for audio_file in nus3_file.files.iter() {
+                    let file_type = if audio_file.data.len() >= 4 {
+                        match &audio_file.data[..4] {
+                            b"OPUS" => "OPUS",
+                            b"IDSP" => "IDSP",
+                            b"RIFF" => "WAV",
+                            b"BNSF" => "BNSF",
+                            _ => "Unknown",
+                        }
+                    } else {
+                        "Unknown"
+                    };
+
+                    audio_files.push(AudioFileInfo::from_nus3audio(
+                        audio_file.name.clone(),
+                        audio_file.id.to_string(),
+                        audio_file.data.len(),
+                        audio_file.filename(),
+                        file_type.to_string(),
+                    ));
+                }
+
+                println!("[PERF] NUS3AUDIO process tracks: {}ms", t_process.elapsed().as_millis());
+                println!("[PERF] NUS3AUDIO load total: {}ms", t_open.elapsed().as_millis());
+
+                FileLoadResult::Nus3audio {
+                    file_name: file_name.to_string(),
+                    file_count,
+                    audio_files,
+                    track_ids,
+                }
+            }
+            Err(e) => {
+                println!("[PERF] NUS3AUDIO open FAILED: {}ms", t_open.elapsed().as_millis());
+                FileLoadResult::Error(format!("Error loading NUS3AUDIO file: {}", e))
             }
         }
     }
-    
-    /// Load NUS3AUDIO file (existing implementation)
-    fn load_nus3audio_file(&mut self, file_name: &str) {
-        match Nus3audioFile::open(file_name) {
-                    Ok(nus3_file) => {
-                        // Store file count
-                        self.file_count = Some(nus3_file.files.len());
 
-                        // Extract structured file info
-                        let mut audio_files = Vec::new();
-
-                        for audio_file in nus3_file.files.iter() {
-                            // Attempt to detect file type based on header
-                            let file_type = if audio_file.data.len() >= 4 {
-                                match &audio_file.data[..4] {
-                                    b"OPUS" => "OPUS",
-                                    b"IDSP" => "IDSP",
-                                    b"RIFF" => "WAV",
-                                    b"BNSF" => "BNSF",
-                                    _ => "Unknown",
-                                }
-                            } else {
-                                "Unknown"
-                            };
-
-                            audio_files.push(AudioFileInfo::from_nus3audio(
-                                audio_file.name.clone(),
-                                audio_file.id.to_string(),
-                                audio_file.data.len(),
-                                audio_file.filename(),
-                                file_type.to_string(),
-                            ));
-                        }
-
-                        self.audio_files = Some(audio_files);
-                    }
-                    Err(e) => {
-                        self.error_message = Some(format!("Error loading NUS3AUDIO file: {}", e));
-                    }
-                }
-    }
-    
-    /// Load NUS3BANK file (new implementation)
-    fn load_nus3bank_file(&mut self, file_name: &str) {
+    fn load_nus3bank_bg(file_name: &str) -> FileLoadResult {
+        let t_open = Instant::now();
         match Nus3bankFile::open(file_name) {
             Ok(nus3bank_file) => {
-                self.file_count = Some(nus3bank_file.tracks.len());
+                let open_ms = t_open.elapsed().as_millis();
+                println!("[PERF] NUS3BANK open: {}ms ({} tracks)", open_ms, nus3bank_file.tracks.len());
+
+                let t_process = Instant::now();
+                let file_count = nus3bank_file.tracks.len();
                 let mut audio_files = Vec::new();
 
                 for track in nus3bank_file.tracks.iter() {
@@ -176,10 +247,17 @@ impl MainArea {
                     ));
                 }
 
-                self.audio_files = Some(audio_files);
+                println!("[PERF] NUS3BANK process tracks: {}ms", t_process.elapsed().as_millis());
+                println!("[PERF] NUS3BANK load total: {}ms", t_open.elapsed().as_millis());
+
+                FileLoadResult::Nus3bank {
+                    file_count,
+                    audio_files,
+                }
             }
             Err(e) => {
-                self.error_message = Some(format!("Error loading NUS3BANK file: {}", e));
+                println!("[PERF] NUS3BANK open FAILED: {}ms", t_open.elapsed().as_millis());
+                FileLoadResult::Error(format!("Error loading NUS3BANK file: {}", e))
             }
         }
     }

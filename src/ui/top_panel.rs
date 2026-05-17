@@ -164,9 +164,9 @@ impl TopPanel {
 
                                         // Update UI if needed
                                         if let Some(app_mut) = app.as_mut() {
-                                            // Refresh the file view by reloading it
+                                            // Force reload after save since the on-disk file changed
                                             let main_area = app_mut.main_area_mut();
-                                            main_area.update_selected_file(Some(file_path.clone()));
+                                            main_area.force_reload_selected_file();
                                         }
                                     }
                                     Err(e) => {

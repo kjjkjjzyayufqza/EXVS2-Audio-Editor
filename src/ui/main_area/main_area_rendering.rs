@@ -7,24 +7,15 @@ use super::main_area_core::MainArea;
 impl MainArea {
     /// Display the main editing area
     pub fn show(&mut self, ctx: &Context) {
-        // Show the loop settings modal if open
+        self.poll_file_load(ctx);
+
         self.loop_settings_modal.show(ctx);
-        
-        // Show the add audio modal if open
         self.add_audio_modal.show(ctx);
-        
-        // Show the confirm modal if open
         self.confirm_modal.show(ctx);
-
-        // Show the GRP list modal if open
         self.grp_list_modal.show(ctx);
-
-        // Show the DTON tones modal if open
         self.dton_tones_modal.show(ctx);
-
-        // Show the PROP edit modal if open
         self.prop_edit_modal.show(ctx);
-        
+
         egui::CentralPanel::default()
             .frame(egui::Frame::new()
                 .fill(ctx.style().visuals.window_fill) // 使用視窗背景色（深灰色）
@@ -74,9 +65,13 @@ impl MainArea {
                 } else {
                     ui.centered_and_justified(|ui| {
                         ui.vertical_centered(|ui| {
-                            ui.add(egui::Spinner::new());
-                            ui.add_space(10.0);
-                            ui.label(t.loading_audio());
+                            ui.add(egui::Spinner::new().size(32.0));
+                            ui.add_space(12.0);
+                            ui.label(
+                                RichText::new(t.loading_audio())
+                                    .size(14.0)
+                                    .color(ui.visuals().weak_text_color()),
+                            );
                         });
                     });
                 }
@@ -152,9 +147,7 @@ impl MainArea {
                     // Right-aligned status/actions can go here
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.button(RichText::new(format!("{} {}", regular::ARROWS_CLOCKWISE, t.refresh()))).clicked() {
-                            if let Some(path) = self.selected_file.clone() {
-                                self.update_selected_file(Some(path));
-                            }
+                            self.force_reload_selected_file();
                         }
                     });
                 });
