@@ -169,7 +169,11 @@ impl Nus3bankParser {
         BinaryReader::assert_magic(&mut r, b"PROP")?;
         let _section_size = BinaryReader::read_u32_le(&mut r)?;
 
-        let _padding0 = BinaryReader::read_u32_le(&mut r)?;
+        if let Some(prop) = Self::try_parse_prop_bitmask(section)? {
+            return Ok(prop);
+        }
+
+        let leading_u32 = BinaryReader::read_u32_le(&mut r)?;
         let unk1 = BinaryReader::read_i32_le(&mut r)?;
         let reserved_u16 = BinaryReader::read_u16_le(&mut r)?;
         let unk2 = BinaryReader::read_u16_le(&mut r)?;
@@ -218,7 +222,87 @@ impl Nus3bankParser {
             unk2,
             unk3,
             layout,
+            leading_u32,
+            presence_mask: unk1 as u32,
+            version: ((unk2 as u32) << 16) | reserved_u16 as u32,
+            bit5_u32: None,
+            bit6_u32: None,
         })
+    }
+
+    fn try_parse_prop_bitmask(section: &[u8]) -> Result<Option<PropSection>, Nus3bankError> {
+        if section.len() < 20 {
+            return Ok(None);
+        }
+
+        let leading_u32 = u32::from_le_bytes([section[8], section[9], section[10], section[11]]);
+        let presence_mask =
+            u32::from_le_bytes([section[12], section[13], section[14], section[15]]);
+        if presence_mask & 1 == 0 {
+            return Ok(None);
+        }
+
+        let supported_mask = 0x0000_00F1u32;
+        if presence_mask & !supported_mask != 0 {
+            return Ok(None);
+        }
+
+        let version = u32::from_le_bytes([section[16], section[17], section[18], section[19]]);
+        if version & 0xFFFF_0000 != 0x0003_0000 {
+            return Ok(None);
+        }
+
+        let parsed = (|| -> Result<PropSection, Nus3bankError> {
+            let mut r = Cursor::new(section);
+            r.seek(SeekFrom::Start(20))?;
+
+            let mut project = String::new();
+            let mut bit5_u32 = None;
+            let mut bit6_u32 = None;
+            let mut timestamp = String::new();
+
+            if presence_mask & (1 << 4) != 0 {
+                project = BinaryReader::read_len_u8_string(&mut r)?;
+                BinaryReader::align4(&mut r)?;
+            }
+            if presence_mask & (1 << 5) != 0 {
+                bit5_u32 = Some(BinaryReader::read_u32_le(&mut r)?);
+            }
+            if presence_mask & (1 << 6) != 0 {
+                bit6_u32 = Some(BinaryReader::read_u32_le(&mut r)?);
+            }
+            if presence_mask & (1 << 7) != 0 {
+                timestamp = BinaryReader::read_len_u8_string(&mut r)?;
+                BinaryReader::align4(&mut r)?;
+            }
+
+            let remaining = (section.len() as u64).saturating_sub(r.position()) as usize;
+            if remaining != 0 {
+                return Err(Nus3bankError::InvalidFormat {
+                    reason: "PROP bitmask candidate has trailing bytes".to_string(),
+                });
+            }
+
+            Ok(PropSection {
+                project,
+                timestamp,
+                unk1: presence_mask as i32,
+                reserved_u16: (version & 0xFFFF) as u16,
+                unk2: (version >> 16) as u16,
+                unk3: 0,
+                layout: super::structures::PropLayout::Bitmask,
+                leading_u32,
+                presence_mask,
+                version,
+                bit5_u32,
+                bit6_u32,
+            })
+        })();
+
+        match parsed {
+            Ok(prop) => Ok(Some(prop)),
+            Err(_) => Ok(None),
+        }
     }
 
     fn parse_binf(section: &[u8]) -> Result<BinfSection, Nus3bankError> {
@@ -388,15 +472,14 @@ impl Nus3bankParser {
             }
 
             let available = (entry_end - data_start) as usize;
-            let float_bytes = available - (available % 4);
+            let raw_data = BinaryReader::read_bytes(&mut r, available)?;
+            let descriptor_words = Self::parse_dton_descriptor_words(&raw_data);
+            let float_bytes = raw_data.len() - (raw_data.len() % 4);
             let float_count = float_bytes / 4;
 
             let mut data = Vec::with_capacity(float_count);
-            for _ in 0..float_count {
-                if r.position() + 4 > entry_end {
-                    break;
-                }
-                data.push(BinaryReader::read_f32_le(&mut r)?);
+            for chunk in raw_data[..float_bytes].chunks_exact(4) {
+                data.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
             }
 
             tones.push(ToneDes {
@@ -404,10 +487,24 @@ impl Nus3bankParser {
                 unk1,
                 name,
                 data,
+                raw_data,
+                descriptor_words,
             });
         }
 
         Ok(DtonSection { tones })
+    }
+
+    fn parse_dton_descriptor_words(raw_data: &[u8]) -> Vec<u32> {
+        let mut words = Vec::new();
+        for chunk in raw_data.chunks_exact(4) {
+            let word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            words.push(word);
+            if word & 0x8000_0000 == 0 {
+                break;
+            }
+        }
+        words
     }
 
     fn parse_tone(section: &[u8]) -> Result<ToneSection, Nus3bankError> {
@@ -459,6 +556,7 @@ impl Nus3bankParser {
             // Minimum full header up to `param` is ~100 bytes (depends on name length), so we use a
             // conservative cutoff and fall back to a minimal parse.
             if actual_len < 104 {
+                let raw_meta = section[meta_start as usize..meta_end as usize].to_vec();
                 let hash = BinaryReader::read_i32_le(&mut r)?;
                 let unk1 = BinaryReader::read_i32_le(&mut r)?;
                 let mut name_bytes = Vec::new();
@@ -473,6 +571,9 @@ impl Nus3bankParser {
 
                 tones.push(ToneMeta {
                     meta_prefix: Vec::new(),
+                    raw_meta,
+                    pack_offset_field_pos: None,
+                    pack_size_field_pos: None,
                     hash,
                     unk1,
                     name,
@@ -507,7 +608,11 @@ impl Nus3bankParser {
             (pos + 3) & !3
         }
 
-        fn try_parse(meta: &[u8], tone_idx: usize, prefix_len: usize) -> Result<ToneMeta, Nus3bankError> {
+        fn try_parse(
+            meta: &[u8],
+            tone_idx: usize,
+            prefix_len: usize,
+        ) -> Result<ToneMeta, Nus3bankError> {
             let mut c = Cursor::new(meta);
 
             let meta_prefix = if prefix_len == 8 {
@@ -530,7 +635,9 @@ impl Nus3bankParser {
 
             let reserved0 = BinaryReader::read_i32_le(&mut c)?;
             let reserved8 = BinaryReader::read_i32_le(&mut c)?;
+            let pack_offset_field_pos = c.position() as usize;
             let offset = BinaryReader::read_i32_le(&mut c)?;
+            let pack_size_field_pos = c.position() as usize;
             let size = BinaryReader::read_i32_le(&mut c)?;
 
             let mut param = [0.0f32; 12];
@@ -541,7 +648,10 @@ impl Nus3bankParser {
             let offsets_count = BinaryReader::read_i32_le(&mut c)?;
             if offsets_count < 0 || offsets_count > 1_000_000 {
                 return Err(Nus3bankError::InvalidFormat {
-                    reason: format!("Invalid offsets_count: {} (index={})", offsets_count, tone_idx),
+                    reason: format!(
+                        "Invalid offsets_count: {} (index={})",
+                        offsets_count, tone_idx
+                    ),
                 });
             }
             let needed_offsets_bytes = (offsets_count as u64) * 4;
@@ -558,7 +668,10 @@ impl Nus3bankParser {
             let unkvalues_count = BinaryReader::read_i32_le(&mut c)?;
             if unkvalues_count < 0 || unkvalues_count > 1_000_000 {
                 return Err(Nus3bankError::InvalidFormat {
-                    reason: format!("Invalid unkvalues_count: {} (index={})", unkvalues_count, tone_idx),
+                    reason: format!(
+                        "Invalid unkvalues_count: {} (index={})",
+                        unkvalues_count, tone_idx
+                    ),
                 });
             }
 
@@ -584,7 +697,10 @@ impl Nus3bankParser {
                     (true, true) => UnkvaluesPairOrder::IndexThenValue,
                     (false, false) => {
                         return Err(Nus3bankError::InvalidFormat {
-                            reason: format!("Unable to determine unkvalues pair order (index={})", tone_idx),
+                            reason: format!(
+                                "Unable to determine unkvalues pair order (index={})",
+                                tone_idx
+                            ),
                         });
                     }
                 };
@@ -655,6 +771,17 @@ impl Nus3bankParser {
 
             Ok(ToneMeta {
                 meta_prefix,
+                raw_meta: meta.to_vec(),
+                pack_offset_field_pos: if offset >= 0 && size >= 0 {
+                    Some(pack_offset_field_pos)
+                } else {
+                    None
+                },
+                pack_size_field_pos: if offset >= 0 && size >= 0 {
+                    Some(pack_size_field_pos)
+                } else {
+                    None
+                },
                 hash,
                 unk1,
                 name,
@@ -670,7 +797,7 @@ impl Nus3bankParser {
                 end,
                 payload: Vec::new(),
                 meta_size: meta.len() as u32,
-                removed: false,
+                removed: size <= 0,
             })
         }
 
@@ -715,6 +842,9 @@ impl Nus3bankParser {
                 // - Preserve raw bytes in `meta_prefix` for debug inspection
                 Ok(ToneMeta {
                     meta_prefix: meta.to_vec(),
+                    raw_meta: meta.to_vec(),
+                    pack_offset_field_pos: None,
+                    pack_size_field_pos: None,
                     hash: 0,
                     unk1: 0,
                     name: String::new(),

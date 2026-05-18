@@ -83,6 +83,9 @@ fn audio_track_json(t: &AudioTrack) -> Value {
 fn tone_meta_json(t: &ToneMeta, opt: &DebugJsonOptions) -> Value {
     let mut v = json!({
         "meta_prefix_len": t.meta_prefix.len(),
+        "raw_meta_len": t.raw_meta.len(),
+        "pack_offset_field_pos": t.pack_offset_field_pos,
+        "pack_size_field_pos": t.pack_size_field_pos,
         "hash": t.hash,
         "unk1": t.unk1,
         "name": t.name,
@@ -126,6 +129,11 @@ impl Nus3bankFile {
                 "unk2": p.unk2,
                 "unk3": p.unk3,
                 "layout": format!("{:?}", p.layout),
+                "leading_u32": p.leading_u32,
+                "presence_mask": p.presence_mask,
+                "version": p.version,
+                "bit5_u32": p.bit5_u32,
+                "bit6_u32": p.bit6_u32,
             })
         });
 
@@ -148,6 +156,8 @@ impl Nus3bankFile {
                     "name": td.name,
                     "data_len": td.data.len(),
                     "data": td.data,
+                    "raw_data_len": td.raw_data.len(),
+                    "descriptor_words": td.descriptor_words,
                 })).collect::<Vec<_>>()
             })
         });
@@ -196,7 +206,10 @@ impl Nus3bankFile {
     }
 
     /// Convert the parsed file into a pretty-printed JSON string for debugging/inspection.
-    pub fn to_debug_json_string(&self, opt: &DebugJsonOptions) -> Result<String, serde_json::Error> {
+    pub fn to_debug_json_string(
+        &self,
+        opt: &DebugJsonOptions,
+    ) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(&self.to_debug_json_value(opt))
     }
 }
@@ -207,12 +220,11 @@ pub fn write_debug_json_file<P: AsRef<std::path::Path>>(
     opt: &DebugJsonOptions,
     out_path: P,
 ) -> Result<(), super::error::Nus3bankError> {
-    let s = file
-        .to_debug_json_string(opt)
-        .map_err(|e| super::error::Nus3bankError::Reconstruction {
+    let s = file.to_debug_json_string(opt).map_err(|e| {
+        super::error::Nus3bankError::Reconstruction {
             reason: format!("Failed to serialize debug JSON: {e}"),
-        })?;
+        }
+    })?;
     std::fs::write(out_path, s)?;
     Ok(())
 }
-

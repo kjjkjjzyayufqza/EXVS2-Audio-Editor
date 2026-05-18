@@ -56,6 +56,8 @@ mod tests {
             unk1: 2,
             name: name.to_string(),
             data: vec![0.0, 1.0],
+            raw_data: vec![0, 0, 0, 0, 0, 0, 0x80, 0x3F],
+            descriptor_words: Vec::new(),
         }
     }
 
@@ -89,4 +91,3 @@ mod tests {
         assert!(!has(p1));
     }
 }
-

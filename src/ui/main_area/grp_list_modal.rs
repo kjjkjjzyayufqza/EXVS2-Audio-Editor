@@ -172,19 +172,9 @@ impl GrpListModal {
         ui.separator();
         ui.add_space(8.0);
 
-        let mut remove_index: Option<usize> = None;
         let mut needs_flush = false;
 
-        self.render_virtual_list(ui, &mut remove_index, &mut needs_flush);
-
-        if let Some(idx) = remove_index {
-            if idx < self.names.len() {
-                self.names.remove(idx);
-                self.update_visible_indices_cache();
-                self.dirty = true;
-                needs_flush = true;
-            }
-        }
+        self.render_virtual_list(ui, &mut needs_flush);
 
         if needs_flush || self.dirty {
             self.flush_pending();
@@ -197,7 +187,8 @@ impl GrpListModal {
             self.visible_indices_cache = (0..self.names.len()).collect();
         } else {
             let needle = q.to_lowercase();
-            self.visible_indices_cache = self.names
+            self.visible_indices_cache = self
+                .names
                 .iter()
                 .enumerate()
                 .filter_map(|(i, s)| {
@@ -212,37 +203,38 @@ impl GrpListModal {
         self.last_search_query = self.search_query.clone();
     }
 
-    fn render_virtual_list(&mut self, ui: &mut Ui, remove_index: &mut Option<usize>, needs_flush: &mut bool) {
+    fn render_virtual_list(&mut self, ui: &mut Ui, needs_flush: &mut bool) {
         let t = I18n::new(self.locale);
         const ROW_HEIGHT: f32 = 28.0;
         const OVERSCAN: usize = 5;
-        
+
         let available_height = ui.available_height();
         let total_rows = self.visible_indices_cache.len();
-        
+
         let visible_rows = (available_height / ROW_HEIGHT).ceil() as usize + 1;
-        
+
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let scroll_offset = ui.clip_rect().min.y - ui.cursor().min.y;
-                let start_row = ((scroll_offset.abs() / ROW_HEIGHT).floor() as usize).saturating_sub(OVERSCAN);
+                let start_row =
+                    ((scroll_offset.abs() / ROW_HEIGHT).floor() as usize).saturating_sub(OVERSCAN);
                 let end_row = (start_row + visible_rows + OVERSCAN * 2).min(total_rows);
-                
+
                 if start_row > 0 {
                     ui.add_space(start_row as f32 * ROW_HEIGHT);
                 }
-                
+
                 for idx in start_row..end_row {
                     if idx >= self.visible_indices_cache.len() {
                         break;
                     }
-                    
+
                     let i = self.visible_indices_cache[idx];
                     if i >= self.names.len() {
                         continue;
                     }
-                    
+
                     ui.horizontal(|ui| {
                         ui.label(format!("{:6}", i));
                         let resp = ui.add_sized(
@@ -259,12 +251,9 @@ impl GrpListModal {
                             self.dirty = true;
                             *needs_flush = true;
                         }
-                        if ui.button(t.remove_row()).clicked() {
-                            *remove_index = Some(i);
-                        }
                     });
                 }
-                
+
                 let remaining = total_rows.saturating_sub(end_row);
                 if remaining > 0 {
                     ui.add_space(remaining as f32 * ROW_HEIGHT);
@@ -353,10 +342,5 @@ impl GrpListModal {
 }
 
 pub fn apply_grp_names_to_file(file: &mut Nus3bankFile, names: Vec<String>) {
-    if names.is_empty() {
-        file.grp = None;
-        return;
-    }
     file.grp = Some(GrpSection { names });
 }
-

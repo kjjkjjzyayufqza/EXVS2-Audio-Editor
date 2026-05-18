@@ -250,8 +250,22 @@ impl PropEditModal {
                                 prop.layout = PropLayout::Minimal;
                                 self.dirty = true;
                             }
-                            if ui.radio(!layout_minimal, t.layout_extended()).clicked() {
+                            if ui
+                                .radio(prop.layout == PropLayout::Extended, t.layout_extended())
+                                .clicked()
+                            {
                                 prop.layout = PropLayout::Extended;
+                                self.dirty = true;
+                            }
+                            if ui
+                                .radio(prop.layout == PropLayout::Bitmask, "OB bitmask")
+                                .clicked()
+                            {
+                                prop.layout = PropLayout::Bitmask;
+                                prop.presence_mask |= 1;
+                                if prop.version & 0xFFFF_0000 != 0x0003_0000 {
+                                    prop.version = 0x0003_0000;
+                                }
                                 self.dirty = true;
                             }
                         });
@@ -303,6 +317,66 @@ impl PropEditModal {
                                 self.dirty = true;
                             }
                         });
+
+                        if prop.layout == PropLayout::Bitmask {
+                            ui.add_space(8.0);
+                            ui.separator();
+                            ui.add_space(8.0);
+                            ui.heading("OB runtime fields");
+
+                            ui.horizontal(|ui| {
+                                ui.label("Leading u32");
+                                let resp = ui.add(egui::DragValue::new(&mut prop.leading_u32));
+                                if resp.changed() {
+                                    self.dirty = true;
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Presence mask");
+                                let resp = ui.add(egui::DragValue::new(&mut prop.presence_mask));
+                                if resp.changed() {
+                                    prop.presence_mask |= 1;
+                                    self.dirty = true;
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Version");
+                                let resp = ui.add(egui::DragValue::new(&mut prop.version));
+                                if resp.changed() {
+                                    self.dirty = true;
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                let mut enabled = prop.bit5_u32.is_some();
+                                if ui.checkbox(&mut enabled, "Bit 5 u32").changed() {
+                                    prop.bit5_u32 = if enabled { Some(0) } else { None };
+                                    self.dirty = true;
+                                }
+                                if let Some(value) = prop.bit5_u32.as_mut() {
+                                    let resp = ui.add(egui::DragValue::new(value));
+                                    if resp.changed() {
+                                        self.dirty = true;
+                                    }
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                let mut enabled = prop.bit6_u32.is_some();
+                                if ui.checkbox(&mut enabled, "Bit 6 u32").changed() {
+                                    prop.bit6_u32 = if enabled { Some(0) } else { None };
+                                    self.dirty = true;
+                                }
+                                if let Some(value) = prop.bit6_u32.as_mut() {
+                                    let resp = ui.add(egui::DragValue::new(value));
+                                    if resp.changed() {
+                                        self.dirty = true;
+                                    }
+                                }
+                            });
+                        }
                     });
                 });
         });
@@ -333,6 +407,11 @@ impl PropEditModal {
             unk2: preset.unk2,
             unk3: preset.unk3,
             layout: preset.layout,
+            leading_u32: 0,
+            presence_mask: 0,
+            version: 0x0003_0000,
+            bit5_u32: None,
+            bit6_u32: None,
         });
         self.dirty = true;
         self.error = None;
@@ -343,10 +422,8 @@ impl PropEditModal {
             return;
         };
 
-        let preset_name = t.prop_custom_preset_name(
-            &prop.project,
-            prop.layout == PropLayout::Minimal,
-        );
+        let preset_name =
+            t.prop_custom_preset_name(&prop.project, prop.layout == PropLayout::Minimal);
 
         let new_preset = DebugPreset {
             name: preset_name,
@@ -373,6 +450,11 @@ impl PropEditModal {
             unk2: 3,
             unk3: 0,
             layout: PropLayout::Extended,
+            leading_u32: 0,
+            presence_mask: 0,
+            version: 0x0003_0000,
+            bit5_u32: None,
+            bit6_u32: None,
         });
         self.dirty = true;
         self.error = None;

@@ -168,12 +168,7 @@ impl DtonTonesModal {
                     let name = self.tones.get(idx).map(|t| t.name.as_str()).unwrap_or("");
                     let len = self.tones.get(idx).map(|t| t.data.len()).unwrap_or(0);
                     let selected = self.selected_index == Some(idx);
-                    let label = format!(
-                        "{:3}  {:<24}  {}",
-                        idx,
-                        name,
-                        t.dton_len_label(len)
-                    );
+                    let label = format!("{:3}  {:<24}  {}", idx, name, t.dton_len_label(len));
                     if ui.selectable_label(selected, label).clicked() {
                         self.selected_index = Some(idx);
                         self.sync_data_text_from_selected();
@@ -222,7 +217,11 @@ impl DtonTonesModal {
             ui.label(t.data_length_label());
             ui.label(format!("{}", tone.data.len()));
             if self.keep_original_length {
-                let orig = self.original_data_lens.get(idx).copied().unwrap_or(tone.data.len());
+                let orig = self
+                    .original_data_lens
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(tone.data.len());
                 ui.add_space(8.0);
                 ui.label(t.dton_original_len(orig));
             }
@@ -244,6 +243,14 @@ impl DtonTonesModal {
                     self.dirty = true;
                 }
             });
+            ui.horizontal(|ui| {
+                ui.label("Raw descriptor bytes");
+                ui.label(format!("{}", tone.raw_data.len()));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Descriptor words");
+                ui.label(format!("{:?}", tone.descriptor_words));
+            });
         }
 
         ui.add_space(10.0);
@@ -252,7 +259,7 @@ impl DtonTonesModal {
 
         ui.label(t.data_floats_label());
         ui.add_space(4.0);
-        
+
         ui.push_id(format!("dton_data_text_{}", idx), |ui| {
             let data_area_height = (available_height - 250.0).max(150.0);
             ScrollArea::vertical()
@@ -319,7 +326,11 @@ impl DtonTonesModal {
         match parse_f32_list(&self.data_text, &t) {
             Ok(values) => {
                 if self.keep_original_length {
-                    let expected = self.original_data_lens.get(idx).copied().unwrap_or(values.len());
+                    let expected = self
+                        .original_data_lens
+                        .get(idx)
+                        .copied()
+                        .unwrap_or(values.len());
                     if values.len() != expected {
                         self.data_parse_error =
                             Some(t.data_length_mismatch(values.len(), expected));
@@ -352,6 +363,8 @@ impl DtonTonesModal {
             unk1: 0,
             name: String::new(),
             data: vec![0.0; base_len],
+            raw_data: vec![0; base_len * 4],
+            descriptor_words: Vec::new(),
         };
         self.tones.push(tone);
         self.original_data_lens.push(base_len);
@@ -368,7 +381,11 @@ impl DtonTonesModal {
             return;
         }
         let cloned = self.tones[idx].clone();
-        let orig_len = self.original_data_lens.get(idx).copied().unwrap_or(cloned.data.len());
+        let orig_len = self
+            .original_data_lens
+            .get(idx)
+            .copied()
+            .unwrap_or(cloned.data.len());
         self.tones.push(cloned);
         self.original_data_lens.push(orig_len);
         self.selected_index = Some(self.tones.len().saturating_sub(1));
@@ -383,17 +400,12 @@ impl DtonTonesModal {
         if idx >= self.tones.len() {
             return;
         }
-        self.tones.remove(idx);
-        self.original_data_lens.remove(idx);
-
-        if self.tones.is_empty() {
-            self.selected_index = None;
-            self.data_text.clear();
-        } else {
-            let next = idx.min(self.tones.len().saturating_sub(1));
-            self.selected_index = Some(next);
-            self.sync_data_text_from_selected();
-        }
+        self.tones[idx].name.clear();
+        self.tones[idx].data.clear();
+        self.tones[idx].raw_data.clear();
+        self.tones[idx].descriptor_words.clear();
+        self.original_data_lens[idx] = 0;
+        self.sync_data_text_from_selected();
         self.dirty = true;
     }
 
@@ -424,10 +436,7 @@ impl DtonTonesModal {
         }
 
         let file = Nus3bankFile::open(file_path).map_err(|e| t.nus3bank_open_failed(e))?;
-        Ok(file
-            .dton
-            .map(|d| d.tones)
-            .unwrap_or_else(|| Vec::new()))
+        Ok(file.dton.map(|d| d.tones).unwrap_or_else(|| Vec::new()))
     }
 
     fn reload_from_file(&mut self) {
@@ -454,10 +463,6 @@ impl DtonTonesModal {
 }
 
 pub fn apply_dton_tones_to_file(file: &mut Nus3bankFile, tones: Vec<ToneDes>) {
-    if tones.is_empty() {
-        file.dton = None;
-        return;
-    }
     file.dton = Some(DtonSection { tones });
 }
 
@@ -487,4 +492,3 @@ fn floats_to_text(values: &[f32]) -> String {
     }
     s
 }
-

@@ -26,6 +26,16 @@ pub struct PropSection {
     pub unk3: u16,
     /// Controls how PROP is rebuilt to preserve original layout.
     pub layout: PropLayout,
+    /// First payload u32 before the OB bitmask. Legacy layouts keep this as their first padding u32.
+    pub leading_u32: u32,
+    /// OB PROP presence mask at section offset +0x0C.
+    pub presence_mask: u32,
+    /// OB PROP version field. Major version must be 3 for bitmask PROP.
+    pub version: u32,
+    /// Optional OB PROP bit 5 u32 field.
+    pub bit5_u32: Option<u32>,
+    /// Optional OB PROP bit 6 u32 field.
+    pub bit6_u32: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +44,8 @@ pub enum PropLayout {
     Minimal,
     /// Extended PROP with `unk3` and `timestamp` (C# `NusProp` behavior).
     Extended,
+    /// OB engine PROP layout driven by a u32 presence mask.
+    Bitmask,
 }
 
 /// BINF section (C# `NusBinf`)
@@ -63,6 +75,10 @@ pub struct ToneDes {
     pub unk1: i32,
     pub name: String,
     pub data: Vec<f32>, // Length varies; bounded by DTON entry size
+    /// Exact descriptor bytes after the name/alignment header.
+    pub raw_data: Vec<u8>,
+    /// Descriptor presence words read until the first word with no high continuation bit.
+    pub descriptor_words: Vec<u32>,
 }
 
 /// TONE section (C# `NUS_TONE`)
@@ -81,6 +97,12 @@ pub enum UnkvaluesPairOrder {
 pub struct ToneMeta {
     /// Optional 8-byte prefix found in some BANKTOC variants before the normal ToneMeta fields.
     pub meta_prefix: Vec<u8>,
+    /// Exact original TONE metadata block for runtime-compatible patching.
+    pub raw_meta: Vec<u8>,
+    /// Byte position of the PACK offset field inside `raw_meta`.
+    pub pack_offset_field_pos: Option<usize>,
+    /// Byte position of the PACK size field inside `raw_meta`.
+    pub pack_size_field_pos: Option<usize>,
     pub hash: i32,
     pub unk1: i32,
     pub name: String,
@@ -182,7 +204,11 @@ impl Nus3bankFile {
         self.tracks.iter_mut().find(|t| t.hex_id == hex_id)
     }
 
-    pub fn replace_track_data(&mut self, hex_id: &str, new_data: Vec<u8>) -> Result<(), Nus3bankError> {
+    pub fn replace_track_data(
+        &mut self,
+        hex_id: &str,
+        new_data: Vec<u8>,
+    ) -> Result<(), Nus3bankError> {
         if new_data.is_empty() {
             return Err(Nus3bankError::InvalidFormat {
                 reason: "Audio data cannot be empty".to_string(),
@@ -199,20 +225,22 @@ impl Nus3bankFile {
         let tone_index = self.tracks[track_pos].tone_index;
 
         {
-            let tone = self.tone.tones.get_mut(tone_index).ok_or_else(|| Nus3bankError::InvalidFormat {
-                reason: format!("Tone index out of bounds for track {}", hex_id),
+            let tone = self.tone.tones.get_mut(tone_index).ok_or_else(|| {
+                Nus3bankError::InvalidFormat {
+                    reason: format!("Tone index out of bounds for track {}", hex_id),
+                }
             })?;
             tone.payload = new_data.clone();
             tone.size = new_data.len() as i32;
         }
 
         {
-            let track = self
-                .tracks
-                .get_mut(track_pos)
-                .ok_or_else(|| Nus3bankError::InvalidFormat {
-                    reason: "Track index out of bounds".to_string(),
-                })?;
+            let track =
+                self.tracks
+                    .get_mut(track_pos)
+                    .ok_or_else(|| Nus3bankError::InvalidFormat {
+                        reason: "Track index out of bounds".to_string(),
+                    })?;
             track.audio_data = Some(new_data.clone());
             track.size = new_data.len() as u32;
             track.audio_format = if new_data.starts_with(b"RIFF") {
@@ -225,7 +253,11 @@ impl Nus3bankFile {
         Ok(())
     }
 
-    pub fn add_track(&mut self, name: String, audio_data: Vec<u8>) -> Result<String, Nus3bankError> {
+    pub fn add_track(
+        &mut self,
+        name: String,
+        audio_data: Vec<u8>,
+    ) -> Result<String, Nus3bankError> {
         if audio_data.is_empty() {
             return Err(Nus3bankError::InvalidFormat {
                 reason: "Audio data cannot be empty".to_string(),
@@ -254,6 +286,9 @@ impl Nus3bankFile {
         let mut new_tone = if let Some(t) = template {
             let mut cloned = t;
             cloned.name = name.clone();
+            cloned.raw_meta.clear();
+            cloned.pack_offset_field_pos = None;
+            cloned.pack_size_field_pos = None;
             cloned.payload = audio_data.clone();
             cloned.size = audio_data.len() as i32;
             cloned.offset = 0;
@@ -263,6 +298,9 @@ impl Nus3bankFile {
         } else {
             ToneMeta {
                 meta_prefix: Vec::new(),
+                raw_meta: Vec::new(),
+                pack_offset_field_pos: None,
+                pack_size_field_pos: None,
                 hash: 0,
                 unk1: 0,
                 name: name.clone(),
@@ -293,6 +331,29 @@ impl Nus3bankFile {
 
         self.tone.tones.push(new_tone);
 
+        if let Some(dton) = self.dton.as_mut() {
+            let template_dton = if let Some(track) = self
+                .tracks
+                .iter()
+                .find(|t| !self.tone.tones[t.tone_index].removed)
+            {
+                dton.tones.get(track.tone_index).cloned()
+            } else {
+                dton.tones.iter().next().cloned()
+            };
+
+            let mut new_dton = template_dton.unwrap_or_else(|| ToneDes {
+                hash: 0,
+                unk1: 0,
+                name: name.clone(),
+                data: Vec::new(),
+                raw_data: Vec::new(),
+                descriptor_words: Vec::new(),
+            });
+            new_dton.name = name.clone();
+            dton.tones.push(new_dton);
+        }
+
         // Rebuild UI track list (offsets will be recalculated during save).
         self.rebuild_tracks_view();
 
@@ -307,13 +368,11 @@ impl Nus3bankFile {
             })?
             .clone();
 
-        let tone = self
-            .tone
-            .tones
-            .get_mut(track.tone_index)
-            .ok_or_else(|| Nus3bankError::InvalidFormat {
+        let tone = self.tone.tones.get_mut(track.tone_index).ok_or_else(|| {
+            Nus3bankError::InvalidFormat {
                 reason: format!("Tone index out of bounds for track {}", hex_id),
-            })?;
+            }
+        })?;
 
         tone.removed = true;
         tone.payload.clear();

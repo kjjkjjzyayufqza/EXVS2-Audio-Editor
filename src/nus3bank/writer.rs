@@ -13,15 +13,11 @@ use super::{
 pub struct Nus3bankWriter;
 
 impl Nus3bankWriter {
-    pub fn write_file<P: AsRef<std::path::Path>>(file: &Nus3bankFile, path: P) -> Result<(), Nus3bankError> {
-        // Build active tones (skip removed).
-        let mut active_tones: Vec<ToneMeta> = file
-            .tone
-            .tones
-            .iter()
-            .filter(|t| !t.removed)
-            .cloned()
-            .collect();
+    pub fn write_file<P: AsRef<std::path::Path>>(
+        file: &Nus3bankFile,
+        path: P,
+    ) -> Result<(), Nus3bankError> {
+        let mut active_tones: Vec<ToneMeta> = file.tone.tones.clone();
 
         // Rebuild PACK and update each tone's offset/size (offset is relative to PACK payload start).
         let pack_payload = Self::build_pack_payload(&mut active_tones);
@@ -32,34 +28,49 @@ impl Nus3bankWriter {
         for TocEntry { magic, .. } in &toc {
             let payload = match &magic[..] {
                 b"PROP" => {
-                    let prop = file.prop.as_ref().ok_or_else(|| Nus3bankError::SectionValidation {
-                        section: "PROP section missing".to_string(),
-                    })?;
-                    Self::build_prop(prop)
+                    let prop =
+                        file.prop
+                            .as_ref()
+                            .ok_or_else(|| Nus3bankError::SectionValidation {
+                                section: "PROP section missing".to_string(),
+                            })?;
+                    Self::build_prop(prop)?
                 }
                 b"BINF" => {
-                    let binf = file.binf.as_ref().ok_or_else(|| Nus3bankError::SectionValidation {
-                        section: "BINF section missing".to_string(),
-                    })?;
+                    let binf =
+                        file.binf
+                            .as_ref()
+                            .ok_or_else(|| Nus3bankError::SectionValidation {
+                                section: "BINF section missing".to_string(),
+                            })?;
                     Self::build_binf(binf)
                 }
                 b"GRP " => {
-                    let grp = file.grp.as_ref().ok_or_else(|| Nus3bankError::SectionValidation {
-                        section: "GRP section missing".to_string(),
-                    })?;
+                    let grp =
+                        file.grp
+                            .as_ref()
+                            .ok_or_else(|| Nus3bankError::SectionValidation {
+                                section: "GRP section missing".to_string(),
+                            })?;
                     Self::build_grp(grp)
                 }
                 b"DTON" => {
-                    let dton = file.dton.as_ref().ok_or_else(|| Nus3bankError::SectionValidation {
-                        section: "DTON section missing".to_string(),
-                    })?;
+                    let dton =
+                        file.dton
+                            .as_ref()
+                            .ok_or_else(|| Nus3bankError::SectionValidation {
+                                section: "DTON section missing".to_string(),
+                            })?;
                     Self::build_dton(dton)
                 }
                 b"TONE" => Self::build_tone(&active_tones)?,
                 b"JUNK" => {
-                    let junk = file.junk.as_ref().ok_or_else(|| Nus3bankError::SectionValidation {
-                        section: "JUNK section missing".to_string(),
-                    })?;
+                    let junk =
+                        file.junk
+                            .as_ref()
+                            .ok_or_else(|| Nus3bankError::SectionValidation {
+                                section: "JUNK section missing".to_string(),
+                            })?;
                     junk.data.clone()
                 }
                 b"PACK" => pack_payload.clone(),
@@ -102,12 +113,19 @@ impl Nus3bankWriter {
         Ok(())
     }
 
-    fn find_unknown_section(file: &Nus3bankFile, magic: [u8; 4]) -> Result<&RawSection, Nus3bankError> {
-        file.unknown_sections.iter().find(|s| s.magic == magic).ok_or_else(|| {
-            Nus3bankError::SectionValidation {
-                section: format!("Unknown section {:?} missing", String::from_utf8_lossy(&magic)),
-            }
-        })
+    fn find_unknown_section(
+        file: &Nus3bankFile,
+        magic: [u8; 4],
+    ) -> Result<&RawSection, Nus3bankError> {
+        file.unknown_sections
+            .iter()
+            .find(|s| s.magic == magic)
+            .ok_or_else(|| Nus3bankError::SectionValidation {
+                section: format!(
+                    "Unknown section {:?} missing",
+                    String::from_utf8_lossy(&magic)
+                ),
+            })
     }
 
     fn build_pack_payload(tones: &mut [ToneMeta]) -> Vec<u8> {
@@ -124,9 +142,13 @@ impl Nus3bankWriter {
         pack
     }
 
-    fn build_prop(prop: &PropSection) -> Vec<u8> {
+    fn build_prop(prop: &PropSection) -> Result<Vec<u8>, Nus3bankError> {
+        if prop.layout == PropLayout::Bitmask {
+            return Self::build_bitmask_prop(prop);
+        }
+
         let mut b = Vec::new();
-        b.extend_from_slice(&BinaryReader::write_u32_le(0)); // padding
+        b.extend_from_slice(&BinaryReader::write_u32_le(prop.leading_u32));
         b.extend_from_slice(&BinaryReader::write_i32_le(prop.unk1));
         b.extend_from_slice(&BinaryReader::write_u16_le(prop.reserved_u16));
         b.extend_from_slice(&BinaryReader::write_u16_le(prop.unk2));
@@ -141,7 +163,7 @@ impl Nus3bankWriter {
         }
 
         if prop.layout == PropLayout::Minimal {
-            return b;
+            return Ok(b);
         }
 
         b.extend_from_slice(&BinaryReader::write_u16_le(prop.unk3));
@@ -158,7 +180,73 @@ impl Nus3bankWriter {
             b.push(0);
         }
 
-        b
+        Ok(b)
+    }
+
+    fn build_bitmask_prop(prop: &PropSection) -> Result<Vec<u8>, Nus3bankError> {
+        if prop.version & 0xFFFF_0000 != 0x0003_0000 {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!(
+                    "PROP bitmask version has unsupported major: 0x{:08X}",
+                    prop.version
+                ),
+            });
+        }
+
+        let mut presence_mask = prop.presence_mask | 1;
+        if !prop.project.is_empty() {
+            presence_mask |= 1 << 4;
+        }
+        if prop.bit5_u32.is_some() {
+            presence_mask |= 1 << 5;
+        }
+        if prop.bit6_u32.is_some() {
+            presence_mask |= 1 << 6;
+        }
+        if !prop.timestamp.is_empty() {
+            presence_mask |= 1 << 7;
+        }
+
+        let supported_mask = 0x0000_00F1u32;
+        if presence_mask & !supported_mask != 0 {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!(
+                    "PROP bitmask contains unsupported bits: 0x{:08X}",
+                    presence_mask
+                ),
+            });
+        }
+
+        let mut b = Vec::new();
+        b.extend_from_slice(&BinaryReader::write_u32_le(prop.leading_u32));
+        b.extend_from_slice(&BinaryReader::write_u32_le(presence_mask));
+        b.extend_from_slice(&BinaryReader::write_u32_le(prop.version));
+
+        if presence_mask & (1 << 4) != 0 {
+            Self::write_len_string(&mut b, &prop.project);
+        }
+        if presence_mask & (1 << 5) != 0 {
+            b.extend_from_slice(&BinaryReader::write_u32_le(prop.bit5_u32.unwrap_or(0)));
+        }
+        if presence_mask & (1 << 6) != 0 {
+            b.extend_from_slice(&BinaryReader::write_u32_le(prop.bit6_u32.unwrap_or(0)));
+        }
+        if presence_mask & (1 << 7) != 0 {
+            Self::write_len_string(&mut b, &prop.timestamp);
+        }
+
+        Ok(b)
+    }
+
+    fn write_len_string(out: &mut Vec<u8>, value: &str) {
+        let bytes = value.as_bytes();
+        let len = (bytes.len() + 1).min(255) as u8;
+        out.push(len);
+        out.extend_from_slice(&bytes[..(len as usize).saturating_sub(1)]);
+        out.push(0);
+        while out.len() % 4 != 0 {
+            out.push(0);
+        }
     }
 
     fn build_binf(binf: &BinfSection) -> Vec<u8> {
@@ -243,9 +331,7 @@ impl Nus3bankWriter {
             while entry.len() % 4 != 0 {
                 entry.push(0);
             }
-            for f in &tone.data {
-                entry.extend_from_slice(&BinaryReader::write_f32_le(*f));
-            }
+            entry.extend_from_slice(&Self::build_dton_raw_data(tone));
 
             let entry_size = entry.len() as u32;
             offsets_and_sizes.push((entry_offset, entry_size));
@@ -259,6 +345,21 @@ impl Nus3bankWriter {
         payload.extend_from_slice(&BinaryReader::write_u32_le(0));
         payload.extend_from_slice(&data);
         payload
+    }
+
+    fn build_dton_raw_data(tone: &super::structures::ToneDes) -> Vec<u8> {
+        let mut data_bytes = Vec::with_capacity(tone.data.len() * 4);
+        for f in &tone.data {
+            data_bytes.extend_from_slice(&BinaryReader::write_f32_le(*f));
+        }
+
+        if tone.raw_data.len() >= data_bytes.len()
+            && tone.raw_data[..data_bytes.len()] == data_bytes[..]
+        {
+            return tone.raw_data.clone();
+        }
+
+        data_bytes
     }
 
     fn build_tone(tones: &[ToneMeta]) -> Result<Vec<u8>, Nus3bankError> {
@@ -288,6 +389,29 @@ impl Nus3bankWriter {
     }
 
     fn build_tone_meta(t: &ToneMeta) -> Result<Vec<u8>, Nus3bankError> {
+        if !t.raw_meta.is_empty() {
+            if let (Some(offset_pos), Some(size_pos)) =
+                (t.pack_offset_field_pos, t.pack_size_field_pos)
+            {
+                let mut raw = t.raw_meta.clone();
+                if offset_pos + 4 <= raw.len() && size_pos + 4 <= raw.len() {
+                    raw[offset_pos..offset_pos + 4]
+                        .copy_from_slice(&BinaryReader::write_i32_le(t.offset));
+                    raw[size_pos..size_pos + 4]
+                        .copy_from_slice(&BinaryReader::write_i32_le(t.size));
+                    return Ok(raw);
+                }
+                return Err(Nus3bankError::InvalidFormat {
+                    reason: format!(
+                        "TONE raw metadata patch position out of bounds for {}",
+                        t.name
+                    ),
+                });
+            }
+
+            return Ok(t.raw_meta.clone());
+        }
+
         let mut b = Vec::new();
         if !t.meta_prefix.is_empty() {
             b.extend_from_slice(&t.meta_prefix);
