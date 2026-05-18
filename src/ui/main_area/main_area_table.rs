@@ -147,7 +147,6 @@ impl MainArea {
             &mut self.selected_items,
             now_playing_key.as_deref(),
             self.striped,
-            self.clickable,
             self.show_grid_lines,
             available_height - 40.0, // Account for actions bar
             available_width,
@@ -232,7 +231,7 @@ impl MainArea {
 
         // Process all actions and collect toast messages
 
-        // Persistent selection is handled within the table renderer via checkboxes and row clicks
+        // Persistent row selection in the table uses checkboxes only (`selected_items`).
 
         // Handle "Add Audio" action if clicked
         if action_data.add_audio {

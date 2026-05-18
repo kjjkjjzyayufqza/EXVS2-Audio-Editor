@@ -41,7 +41,6 @@ pub struct MainArea {
     // Table configuration
     pub striped: bool,
     pub resizable: bool,
-    pub clickable: bool,
     #[serde(skip)]
     pub selected_rows: HashSet<usize>,
     // Persistent multi-selection across filtering/search, keyed by "name:id"
@@ -147,7 +146,6 @@ impl MainArea {
             // Set default table style
             striped: true,
             resizable: true,
-            clickable: true,
             selected_rows: HashSet::new(),
             selected_items: HashSet::new(),
             show_grid_lines: false,

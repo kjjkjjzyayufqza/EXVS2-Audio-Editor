@@ -464,10 +464,18 @@ impl AudioState {
                             self.should_play_next = true;
                         }
                         LoopMode::None => {
-                            // Stop playback at the end of the track
+                            // Sequential / shuffle playlist: advance to another track until the playlist ends (no wrap).
                             self.is_playing = false;
                             self.current_position = 0.0;
-                            // In None mode, just stop playing, don't auto-play next track
+                            let can_auto_advance = if self.shuffle {
+                                !self.playlist.is_empty()
+                            } else {
+                                let idx = self.current_track_index.unwrap_or(0);
+                                idx + 1 < self.playlist.len()
+                            };
+                            if can_auto_advance {
+                                self.should_play_next = true;
+                            }
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 use egui::{
-    Button, Color32, Grid, Layout, Rect, RichText, ScrollArea, Stroke, StrokeKind, TextWrapMode, Ui, Vec2, Direction,
+    Button, Color32, CornerRadius, Grid, Layout, Rect, RichText, ScrollArea, Stroke, StrokeKind,
+    TextWrapMode, Ui, Vec2, Direction,
 };
 use std::collections::HashSet;
 use super::audio_file_info::AudioFileInfo;
@@ -18,7 +19,6 @@ impl TableRenderer {
         persistent_selected: &mut HashSet<String>,
         now_playing_key: Option<&str>,
         striped: bool,
-        clickable: bool,
         show_grid_lines: bool,
         available_height: f32,
         available_width: f32,
@@ -87,6 +87,17 @@ impl TableRenderer {
             )
         };
 
+        // Total row width for full-row highlight (Grid horizontal spacing = 5 between the 7 columns).
+        const GRID_H_SPACING: f32 = 5.0;
+        let row_full_width = col_width_checkbox
+            + col_width_name
+            + col_width_id
+            + col_width_size
+            + col_width_filename
+            + col_width_type
+            + col_action
+            + GRID_H_SPACING * 6.0;
+
         // Header text size
         let heading_size = 17.0;
         let now_playing_bg = if ui.visuals().dark_mode {
@@ -118,7 +129,7 @@ impl TableRenderer {
             .num_columns(7)
             .spacing([5.0, 0.0])
             .show(ui, |ui| {
-                // Header with sort indicators and clickable functionality
+                // Header with sort indicators
                 // Column 0: Selection header with Select All checkbox for current filtered view (centered)
                 {
                     let all_selected = audio_files.iter().all(|f| {
@@ -298,22 +309,23 @@ impl TableRenderer {
                             .map(|current| current == key)
                             .unwrap_or(false);
 
-                        let row_rect = ui.available_rect_before_wrap();
-                        let row_size = Vec2::new(row_rect.width(), row_height);
+                        let row_cursor = ui.available_rect_before_wrap().min;
+                        let row_paint_rect =
+                            Rect::from_min_size(row_cursor, Vec2::new(row_full_width, row_height));
 
                         // Striped background
                         if striped && row_index % 2 == 1 {
                             ui.painter().rect_filled(
-                                Rect::from_min_size(row_rect.min, row_size),
-                                0.0,
+                                row_paint_rect,
+                                CornerRadius::ZERO,
                                 ui.visuals().faint_bg_color,
                             );
                         }
 
-                        if is_now_playing && !is_selected {
+                        if is_now_playing {
                             ui.painter().rect_filled(
-                                Rect::from_min_size(row_rect.min, row_size),
-                                0.0,
+                                row_paint_rect,
+                                CornerRadius::ZERO,
                                 now_playing_bg,
                             );
                         }
@@ -321,50 +333,24 @@ impl TableRenderer {
                         // Highlight selected row
                         if is_selected {
                             ui.painter().rect_filled(
-                                Rect::from_min_size(row_rect.min, row_size),
-                                0.0,
+                                row_paint_rect,
+                                CornerRadius::ZERO,
                                 ui.visuals().selection.bg_fill,
                             );
                         }
 
                         if is_now_playing {
-                            let rect = Rect::from_min_size(row_rect.min, row_size);
-                            let left_line_start = rect.min + Vec2::new(0.0, 2.0);
-                            let left_line_end = rect.min + Vec2::new(0.0, row_height - 2.0);
-                            ui.painter().line_segment(
-                                [left_line_start, left_line_end],
-                                Stroke::new(2.0, now_playing_accent),
-                            );
+                            let border_w = 2.5_f32;
+                            let border_color = ui.visuals().selection.stroke.color;
                             ui.painter().rect_stroke(
-                                rect.shrink(0.5),
-                                0.0,
-                                Stroke::new(1.0, now_playing_accent),
+                                row_paint_rect.shrink(border_w * 0.5),
+                                CornerRadius::same(4),
+                                Stroke::new(border_w, border_color),
                                 StrokeKind::Inside,
                             );
                         }
 
-                        // Create a responsive area that includes the entire row
-                        let sense = if clickable {
-                            egui::Sense::click()
-                        } else {
-                            egui::Sense::hover()
-                        };
-                        let row_response = ui.interact(
-                            Rect::from_min_size(row_rect.min, row_size),
-                            ui.id().with(row_index),
-                            sense,
-                        );
-
-                        // Handle row click events: toggle row selection only (checkbox controls persistent selection)
-                        if row_response.clicked() && clickable {
-                            if selected_rows.contains(&row_index) {
-                                selected_rows.remove(&row_index);
-                            } else {
-                                selected_rows.insert(row_index);
-                            }
-                        }
-
-                        // Column 0: Checkbox (centered)
+                        // Row selection is checkbox-only (`persistent_selected`); do not steal clicks from cells.
                         {
                             let mut checked = is_persist_selected;
                             let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_width_checkbox, row_height));
@@ -665,8 +651,8 @@ impl TableRenderer {
 
                         // Add grid lines
                         if show_grid_lines && row_index < audio_files.len() - 1 {
-                            let line_start = row_rect.min + Vec2::new(0.0, row_height);
-                            let line_end = line_start + Vec2::new(row_rect.width(), 0.0);
+                            let line_start = row_paint_rect.min + Vec2::new(0.0, row_height);
+                            let line_end = line_start + Vec2::new(row_full_width, 0.0);
                             ui.painter().line_segment(
                                 [line_start, line_end],
                                 Stroke::new(

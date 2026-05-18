@@ -1,5 +1,5 @@
 use crate::i18n::I18n;
-use egui::{Align, Button, Color32, Layout, RichText, ScrollArea, Ui};
+use egui::{Align, Button, Color32, CursorIcon, Layout, Rect, RichText, ScrollArea, Ui};
 use egui_phosphor::regular;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -239,20 +239,32 @@ impl FileList {
                                             ui.visuals().selection.bg_fill;
                                     }
 
-                                    // Allocate the specific space for this row to ensure height matches
                                     let row_width = ui.available_width();
-                                    let (id, rect) =
+                                    let (_id, rect) =
                                         ui.allocate_space(egui::vec2(row_width, row_height));
-                                    
-                                    // Custom rendering for list item
+
+                                    let ptr_pos = ui
+                                        .ctx()
+                                        .input(|i| i.pointer.hover_pos())
+                                        .or(ui.ctx().pointer_interact_pos());
+
+                                    let hovered_row = ptr_pos
+                                        .map(|p| rect.contains(p))
+                                        .unwrap_or(false);
+
+                                    let row_pick = ui.interact(
+                                        rect,
+                                        ui.id().with(("file_list_row_pick", file.path.as_str())),
+                                        egui::Sense::CLICK | egui::Sense::HOVER,
+                                    );
+
                                     let painter = ui.painter();
                                     let rounding = 4.0;
 
-                                    // Determine if row is hovered (we'll check button hover separately)
-                                    let row_response = ui.interact(rect, id, egui::Sense::click());
-                                    let is_row_hovered = row_response.hovered();
+                                    let mut label_rect = Rect::NOTHING;
+                                    let mut remove_clicked = false;
 
-                                    if is_row_hovered || is_selected {
+                                    if hovered_row || is_selected {
                                         let bg_color = if is_selected {
                                             ui.visuals().selection.bg_fill
                                         } else {
@@ -261,69 +273,101 @@ impl FileList {
                                         painter.rect_filled(rect, rounding, bg_color);
                                     }
 
-                                    // Layout content within the allocated rect with vertical centering
-                                    let ui_builder = egui::UiBuilder::new()
-                                        .max_rect(rect)
-                                        .layout(egui::Layout::left_to_right(egui::Align::Center));
-                                    
-                                    let mut remove_clicked = false;
-                                    ui.scope_builder(ui_builder, |ui| {
-                                        ui.add_space(8.0);
+                                    ui.scope_builder(
+                                        egui::UiBuilder::new()
+                                            .max_rect(rect)
+                                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                                        |ui| {
+                                            ui.add_space(8.0);
 
-                                        // File icon
-                                        let icon = if file.path.to_lowercase().ends_with(".nus3audio")
-                                            || file.path.to_lowercase().ends_with(".nus3bank")
-                                        {
+                                            let icon = if file.path.to_lowercase().ends_with(".nus3audio")
+                                                || file.path.to_lowercase().ends_with(".nus3bank")
+                                            {
                                                 regular::MUSIC_NOTES
                                             } else {
                                                 regular::FILE
                                             };
-                                        ui.label(RichText::new(icon).weak());
+                                            ui.label(RichText::new(icon).weak());
 
-                                        // Filename
-                                        ui.style_mut().wrap_mode =
-                                            Some(egui::TextWrapMode::Truncate);
-                                        let text_color = if is_selected {
-                                            ui.visuals().selection.stroke.color
-                                        } else {
-                                            ui.visuals().widgets.inactive.text_color()
-                                        };
-                                        ui.label(RichText::new(&file.name).color(text_color));
+                                            let text_color = if is_selected {
+                                                ui.visuals().selection.stroke.color
+                                            } else {
+                                                ui.visuals().widgets.inactive.text_color()
+                                            };
 
-                                        // Remove button (only show on hover or if selected)
-                                        ui.with_layout(
-                                            Layout::right_to_left(Align::Center),
-                                            |ui| {
-                                                ui.add_space(4.0);
-                                                if is_row_hovered || is_selected {
-                                                    let remove_btn = Button::new(
-                                                        RichText::new(regular::X).size(12.0),
-                                                    )
-                                                    .frame(false);
-                                                    if ui
-                                                        .add(remove_btn)
-                                                        .on_hover_text(t.remove_from_list_tooltip())
-                                                        .clicked()
-                                                    {
-                                                        remove_clicked = true;
+                                            ui.style_mut().wrap_mode =
+                                                Some(egui::TextWrapMode::Truncate);
+
+                                            let name_label_response = ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(&file.name).color(text_color),
+                                                )
+                                                .truncate()
+                                                .selectable(true),
+                                            );
+                                            label_rect = name_label_response.rect;
+                                            name_label_response.on_hover_text(&file.path);
+
+                                            ui.with_layout(
+                                                Layout::right_to_left(Align::Center),
+                                                |ui| {
+                                                    ui.add_space(4.0);
+                                                    if hovered_row || is_selected {
+                                                        let remove_btn = Button::new(
+                                                            RichText::new(regular::X).size(12.0),
+                                                        )
+                                                        .frame(false);
+                                                        if ui
+                                                            .add(remove_btn)
+                                                            .on_hover_text(
+                                                                t.remove_from_list_tooltip(),
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            remove_clicked = true;
+                                                        }
                                                     }
-                                                }
-                                            },
-                                        );
-                                    });
+                                                },
+                                            );
+                                        },
+                                    );
 
-                                    // Handle clicks: prioritize remove button, then row selection
+                                    if hovered_row {
+                                        if let Some(p) = ptr_pos {
+                                            if rect.contains(p)
+                                                && label_rect.is_positive()
+                                                && label_rect.expand(2.0).contains(p)
+                                            {
+                                                ui.ctx().set_cursor_icon(CursorIcon::Text);
+                                            } else if rect.contains(p) {
+                                                ui.ctx()
+                                                    .set_cursor_icon(CursorIcon::PointingHand);
+                                            }
+                                        }
+                                    }
+
                                     if remove_clicked {
                                         action_path = Some(file.path.clone());
                                         is_remove_action = true;
                                         file_changed = true;
-                                    } else if row_response.clicked() {
-                                        action_path = Some(file.path.clone());
-                                        is_remove_action = false;
-                                        file_changed = true;
+                                    } else if row_pick.clicked() {
+                                        let clicked_on_filename = ui
+                                            .ctx()
+                                            .pointer_interact_pos()
+                                            .map(|p| {
+                                                label_rect.is_positive()
+                                                    && label_rect.expand(2.0).contains(p)
+                                            })
+                                            .unwrap_or(false);
+
+                                        if !clicked_on_filename {
+                                            action_path = Some(file.path.clone());
+                                            is_remove_action = false;
+                                            file_changed = true;
+                                        }
                                     }
 
-                                    row_response.on_hover_text(&file.path);
+                                    row_pick.on_hover_text(&file.path);
                                 });
                             }
                         },

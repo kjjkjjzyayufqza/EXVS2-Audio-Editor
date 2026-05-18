@@ -787,8 +787,8 @@ impl I18n {
 
     pub fn shuffle_tooltip(&self) -> &'static str {
         match self.locale {
-            Locale::En => "Shuffle",
-            Locale::Zh => "随机",
+            Locale::En => "Shuffle: pick a random next track (manual next or auto-advance)",
+            Locale::Zh => "随机：下一曲随机（按键切歌或自动连播下一首时）",
         }
     }
 
@@ -822,22 +822,22 @@ impl I18n {
 
     pub fn loop_off_tooltip(&self) -> &'static str {
         match self.locale {
-            Locale::En => "Loop: Off",
-            Locale::Zh => "循环：关",
+            Locale::En => "Repeat off: play in order until the last track, then stop (unless shuffle is on)",
+            Locale::Zh => "关循环：顺序播放到最后一曲后停止（开启随机时曲目结束仍会随机下一曲）",
         }
     }
 
     pub fn loop_all_tooltip(&self) -> &'static str {
         match self.locale {
-            Locale::En => "Loop: All",
-            Locale::Zh => "循环：全部",
+            Locale::En => "Repeat all: after the last track, go back to the first",
+            Locale::Zh => "列表循环：最后一曲后回到第一曲",
         }
     }
 
     pub fn loop_one_tooltip(&self) -> &'static str {
         match self.locale {
-            Locale::En => "Loop: One",
-            Locale::Zh => "循环：单曲",
+            Locale::En => "Repeat one: loop the current track",
+            Locale::Zh => "单曲循环：重复当前曲目",
         }
     }
 
