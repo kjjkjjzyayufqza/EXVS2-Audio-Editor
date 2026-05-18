@@ -1,5 +1,7 @@
 use egui::{Context, Window, Button, RichText, Color32};
 
+use crate::localized;
+
 pub struct ConfirmModal {
     pub open: bool,
     pub title: String,
@@ -26,9 +28,9 @@ impl ConfirmModal {
     }
     
     /// Open the confirm dialog
-    pub fn open(&mut self, title: &str, message: &str) {
-        self.title = title.to_string();
-        self.message = message.to_string();
+    pub fn open(&mut self, title: impl AsRef<str>, message: impl AsRef<str>) {
+        self.title = title.as_ref().to_string();
+        self.message = message.as_ref().to_string();
         self.open = true;
         self.confirmed = false;
         self.cancelled = false;
@@ -50,8 +52,6 @@ impl ConfirmModal {
         if !self.open {
             return;
         }
-
-        let t = crate::i18n::I18n::from_ctx(ctx);
         let available_rect = ctx.available_rect();
         let min_width = available_rect.width() * 0.3;
         let min_height = available_rect.height() * 0.2;
@@ -72,7 +72,7 @@ impl ConfirmModal {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Confirm button - red warning color
                             if ui.add(Button::new(
-                                RichText::new(t.confirm())
+                                RichText::new(localized::confirm())
                                     .color(Color32::from_rgb(255, 255, 255))
                             ).fill(Color32::from_rgb(220, 50, 50))).clicked() {
                                 self.confirmed = true;
@@ -82,7 +82,7 @@ impl ConfirmModal {
                             ui.add_space(10.0);
                             
                             // Cancel button
-                            if ui.button(t.cancel()).clicked() {
+                            if ui.button(localized::cancel()).clicked() {
                                 self.cancelled = true;
                                 self.open = false;
                             }

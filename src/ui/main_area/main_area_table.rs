@@ -1,4 +1,4 @@
-use crate::i18n::I18n;
+use crate::localized;
 use egui::{Color32, Ui, RichText};
 use egui_phosphor::regular;
 
@@ -18,7 +18,6 @@ impl MainArea {
         available_height: f32,
         available_width: f32,
     ) {
-        let t = I18n::from_ctx(ui.ctx());
         let selected_count = self.selected_items.len();
 
         // Use these variables to capture action information outside the immediate UI context
@@ -60,44 +59,44 @@ impl MainArea {
             ui.spacing_mut().item_spacing.x = 8.0;
             
             // Primary Actions Group
-            ui.label(RichText::new(t.actions_colon()).weak().size(11.0));
+            ui.label(RichText::new(localized::actions_colon()).weak().size(11.0));
             
-            if ui.button(RichText::new(format!("{} {}", regular::PLUS, t.add_audio_btn()))).on_hover_text(t.add_audio_tooltip()).clicked() {
+            if ui.button(RichText::new(format!("{} {}", regular::PLUS, localized::add_audio_btn()))).on_hover_text(localized::add_audio_tooltip()).clicked() {
                 action_data.add_audio = true;
             }
             
-            if ui.button(RichText::new(format!("{} {}", regular::EXPORT, t.export_all_btn()))).on_hover_text(t.export_all_tooltip()).clicked() {
+            if ui.button(RichText::new(format!("{} {}", regular::EXPORT, localized::export_all_btn()))).on_hover_text(localized::export_all_tooltip()).clicked() {
                 action_data.export_all_confirm = true;
             }
 
             ui.separator();
 
             // Edit Group
-            ui.label(RichText::new(t.edit_colon()).weak().size(11.0));
-            if ui.button("GRP").on_hover_text(t.edit_grp_tooltip()).clicked() {
+            ui.label(RichText::new(localized::edit_colon()).weak().size(11.0));
+            if ui.button("GRP").on_hover_text(localized::edit_grp_tooltip()).clicked() {
                 action_data.edit_grp_list = true;
             }
-            if ui.button("DTON").on_hover_text(t.edit_dton_tooltip()).clicked() {
+            if ui.button("DTON").on_hover_text(localized::edit_dton_tooltip()).clicked() {
                 action_data.edit_dton_tones = true;
             }
-            if ui.button("PROP").on_hover_text(t.edit_prop_tooltip()).clicked() {
+            if ui.button("PROP").on_hover_text(localized::edit_prop_tooltip()).clicked() {
                 action_data.edit_prop = true;
             }
 
             ui.separator();
 
             // Batch Operations Group
-            ui.label(RichText::new(t.batch_colon()).weak().size(11.0));
+            ui.label(RichText::new(localized::batch_colon()).weak().size(11.0));
             let batch_enabled = selected_count > 0;
             
             ui.add_enabled_ui(batch_enabled, |ui| {
-                if ui.button(RichText::new(format!("{} {}", regular::FILE_ARROW_UP, t.replace_btn()))).on_hover_text(t.replace_selected_tooltip()).clicked() {
+                if ui.button(RichText::new(format!("{} {}", regular::FILE_ARROW_UP, localized::replace_btn()))).on_hover_text(localized::replace_selected_tooltip()).clicked() {
                     action_data.replace_new = true;
                 }
-                if ui.button(RichText::new(format!("{} {}", regular::ERASER, t.clear_btn()))).on_hover_text(t.clear_wav_tooltip()).clicked() {
+                if ui.button(RichText::new(format!("{} {}", regular::ERASER, localized::clear_btn()))).on_hover_text(localized::clear_wav_tooltip()).clicked() {
                     action_data.replace_empty = true;
                 }
-                if ui.button(RichText::new(format!("{} {}", regular::TRASH, t.remove_btn()))).on_hover_text(t.remove_selected_tooltip()).clicked() {
+                if ui.button(RichText::new(format!("{} {}", regular::TRASH, localized::remove_btn()))).on_hover_text(localized::remove_selected_tooltip()).clicked() {
                     action_data.remove_selected = true;
                 }
             });
@@ -105,8 +104,8 @@ impl MainArea {
             ui.separator();
 
             // More Actions
-            ui.menu_button(t.more_menu(), |ui| {
-                if ui.button(t.debug_convert_all()).on_hover_text(t.debug_convert_tooltip()).clicked() {
+            ui.menu_button(localized::more_menu(), |ui| {
+                if ui.button(localized::debug_convert_all()).on_hover_text(localized::debug_convert_tooltip()).clicked() {
                     action_data.debug_convert_all_wav = true;
                     ui.close();
                 }
@@ -116,14 +115,14 @@ impl MainArea {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if selected_count > 0 {
                     ui.label(
-                        RichText::new(t.selected_count(selected_count))
+                        RichText::new(localized::selected_count(selected_count))
                             .color(Color32::from_rgb(100, 150, 255))
                             .strong()
                     );
                 }
                 
                 if !self.search_query.is_empty() {
-                    ui.label(RichText::new(t.found_count(files_count, self.file_count.unwrap_or(0))).weak());
+                    ui.label(RichText::new(localized::found_count(files_count, self.file_count.unwrap_or(0))).weak());
                 }
             });
         });
@@ -150,7 +149,6 @@ impl MainArea {
             self.show_grid_lines,
             available_height - 40.0, // Account for actions bar
             available_width,
-            &t,
             &mut |index| {
                 action_data.export_index = Some(index);
             },
@@ -186,7 +184,7 @@ impl MainArea {
                             self.pending_replace_new = true;
                         }
                         Err(e) => {
-                            self.add_toast(t.replace_failed(&e), Color32::RED);
+                            self.add_toast(localized::replace_failed(&e), Color32::RED);
                         }
                     }
                 }
@@ -196,16 +194,16 @@ impl MainArea {
         if action_data.replace_empty {
             self.pending_replace_empty = true;
             self.confirm_modal.open(
-                t.confirm_replace_empty_title(),
-                &t.confirm_replace_empty_body(selected_count),
+                &localized::confirm_replace_empty_title(),
+                &localized::confirm_replace_empty_body(selected_count),
             );
         }
 
         if action_data.remove_selected {
             self.pending_remove_selected = true;
             self.confirm_modal.open(
-                t.confirm_remove_selected_title(),
-                &t.confirm_remove_selected_body(selected_count),
+                &localized::confirm_remove_selected_title(),
+                &localized::confirm_remove_selected_body(selected_count),
             );
         }
 
@@ -214,12 +212,12 @@ impl MainArea {
                 if path.to_lowercase().ends_with(".nus3bank") {
                     self.pending_debug_convert_all_wav = true;
                     self.confirm_modal.open(
-                        t.debug_convert_all(),
-                        t.confirm_debug_convert_body(),
+                        &localized::debug_convert_all(),
+                        &localized::confirm_debug_convert_body(),
                     );
                 } else {
                     self.add_toast(
-                        t.debug_nus3bank_only().to_string(),
+                        localized::debug_nus3bank_only().to_string(),
                         Color32::GOLD,
                     );
                 }
@@ -242,16 +240,16 @@ impl MainArea {
                 match AddAudioUtils::add_with_file_dialog(
                     &mut self.add_audio_modal,
                     self.audio_files.clone(),
-                    t.locale,
+                    crate::locale_from_ctx(ui.ctx()),
                 ) {
                     Ok(_) => {
                         toasts_to_add.push((
-                            t.configure_new_audio_toast().to_string(),
+                            localized::configure_new_audio_toast().to_string(),
                             Color32::GOLD,
                         ));
                     }
                     Err(e) => {
-                        toasts_to_add.push((t.add_audio_failed(&e), Color32::RED));
+                        toasts_to_add.push((localized::add_audio_failed(&e), Color32::RED));
                     }
                 }
             }
@@ -261,15 +259,15 @@ impl MainArea {
         if action_data.edit_grp_list {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.grp_list_modal.open_for_file(&file_path, t.locale);
+                    self.grp_list_modal.open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
                 } else {
                     toasts_to_add.push((
-                        t.grp_nus3bank_only().to_string(),
+                        localized::grp_nus3bank_only().to_string(),
                         Color32::GOLD,
                     ));
                 }
             } else {
-                toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
+                toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
             }
         }
 
@@ -277,15 +275,15 @@ impl MainArea {
         if action_data.edit_dton_tones {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.dton_tones_modal.open_for_file(&file_path, t.locale);
+                    self.dton_tones_modal.open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
                 } else {
                     toasts_to_add.push((
-                        t.dton_nus3bank_only().to_string(),
+                        localized::dton_nus3bank_only().to_string(),
                         Color32::GOLD,
                     ));
                 }
             } else {
-                toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
+                toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
             }
         }
 
@@ -293,15 +291,15 @@ impl MainArea {
         if action_data.edit_prop {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.prop_edit_modal.open_for_file(&file_path, t.locale);
+                    self.prop_edit_modal.open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
                 } else {
                     toasts_to_add.push((
-                        t.prop_nus3bank_only().to_string(),
+                        localized::prop_nus3bank_only().to_string(),
                         Color32::GOLD,
                     ));
                 }
             } else {
-                toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
+                toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
             }
         }
 
@@ -317,8 +315,8 @@ impl MainArea {
             self.pending_export_all = true;
             
             self.confirm_modal.open(
-                t.confirm_export_all_title(),
-                &t.confirm_export_all_body(file_count),
+                &localized::confirm_export_all_title(),
+                &localized::confirm_export_all_body(file_count),
             );
         }
 
@@ -336,17 +334,17 @@ impl MainArea {
                         ) {
                             Ok(path) => {
                                 toasts_to_add.push((
-                                    t.exported_to(path),
+                                    localized::exported_to(path),
                                     Color32::GREEN,
                                 ));
                             }
                             Err(e) => {
-                                toasts_to_add.push((t.export_failed(&e), Color32::RED));
+                                toasts_to_add.push((localized::export_failed(&e), Color32::RED));
                             }
                         }
                     } else {
                         toasts_to_add.push((
-                            t.no_output_dir().to_string(),
+                            localized::no_output_dir().to_string(),
                             Color32::GOLD,
                         ));
                     }
@@ -382,30 +380,30 @@ impl MainArea {
                                 }
 
                                 toasts_to_add
-                                    .push((t.now_playing(&audio_name), Color32::GREEN));
+                                    .push((localized::now_playing(&audio_name), Color32::GREEN));
                                 log::info!("Successfully started playing: {}", audio_name);
                             }
                             Err(e) => {
-                                let error_msg = t.failed_load_audio(&audio_name, &e);
+                                let error_msg = localized::failed_load_audio(&audio_name, &e);
                                 log::error!("{}", error_msg);
                                 toasts_to_add
                                     .push((error_msg, Color32::RED));
                             }
                         }
                     } else {
-                        let error_msg = t.audio_player_not_initialized().to_string();
+                        let error_msg = localized::audio_player_not_initialized().to_string();
                         log::error!("{}", error_msg);
                         toasts_to_add
                             .push((error_msg, Color32::RED));
                     }
                 } else {
-                    let error_msg = t.no_file_for_playback().to_string();
+                    let error_msg = localized::no_file_for_playback().to_string();
                     log::error!("{}", error_msg);
                     toasts_to_add
                         .push((error_msg, Color32::RED));
                 }
             } else {
-                let error_msg = t.invalid_audio_index(idx, filtered_audio_files.len());
+                let error_msg = localized::invalid_audio_index(idx, filtered_audio_files.len());
                 log::error!("{}", error_msg);
                 toasts_to_add
                     .push((error_msg, Color32::RED));
@@ -438,12 +436,12 @@ impl MainArea {
                             // Don't update the display information yet
                             // Wait until the loop settings are confirmed before making any changes
                             toasts_to_add.push((
-                                t.configure_loop_for(&audio_info.name),
+                                localized::configure_loop_for(&audio_info.name),
                                 Color32::GOLD,
                             ));
                         }
                         Err(e) => {
-                            toasts_to_add.push((t.replace_failed(&e), Color32::RED));
+                            toasts_to_add.push((localized::replace_failed(&e), Color32::RED));
                         }
                     }
                 }
@@ -468,8 +466,8 @@ impl MainArea {
                     
                     // Open the confirm dialog
                     self.confirm_modal.open(
-                        t.confirm_title_default(),
-                        &t.confirm_delete_audio_body(&audio_info.name)
+                        &localized::confirm_title_default(),
+                        &localized::confirm_delete_audio_body(&audio_info.name),
                     );
                 }
             }
@@ -493,17 +491,17 @@ impl MainArea {
                         match ExportUtils::export_all_to_wav_unified(file_path, output_dir) {
                             Ok(paths) => {
                                 toasts_to_add.push((
-                                    t.exported_count_to(paths.len(), output_dir),
+                                    localized::exported_count_to(paths.len(), output_dir),
                                     Color32::GREEN,
                                 ));
                             }
                             Err(e) => {
-                                toasts_to_add.push((t.export_failed(&e), Color32::RED));
+                                toasts_to_add.push((localized::export_failed(&e), Color32::RED));
                             }
                         }
                     } else {
                         toasts_to_add.push((
-                            t.no_output_dir().to_string(),
+                            localized::no_output_dir().to_string(),
                             Color32::GOLD,
                         ));
                     }
@@ -533,7 +531,7 @@ impl MainArea {
                                         replaced += 1;
                                     }
                                     Err(e) => {
-                                        toasts_to_add.push((t.failed_replace_key(&key, &e), Color32::RED));
+                                        toasts_to_add.push((localized::failed_replace_key(&key, &e), Color32::RED));
                                     }
                                 }
                             }
@@ -546,11 +544,11 @@ impl MainArea {
                             self.selected_items.clear();
                             
                             toasts_to_add.push((
-                                t.replaced_empty_wav(replaced),
+                                localized::replaced_empty_wav(replaced),
                                 Color32::GREEN,
                             ));
                         } else {
-                            toasts_to_add.push((t.no_matching_replace().to_string(), Color32::GOLD));
+                            toasts_to_add.push((localized::no_matching_replace().to_string(), Color32::GOLD));
                         }
                     }
                 }
@@ -562,14 +560,14 @@ impl MainArea {
                 let selected_file_path = match self.selected_file.as_deref() {
                     Some(p) => p,
                     None => {
-                        toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
+                        toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
                         return;
                     }
                 };
 
                 if !selected_file_path.to_lowercase().ends_with(".nus3bank") {
                     toasts_to_add.push((
-                        t.debug_convert_bank_only().to_string(),
+                        localized::debug_convert_bank_only().to_string(),
                         Color32::GOLD,
                     ));
                     return;
@@ -579,7 +577,7 @@ impl MainArea {
                 let bank = match crate::nus3bank::structures::Nus3bankFile::open(selected_file_path) {
                     Ok(f) => f,
                     Err(e) => {
-                        toasts_to_add.push((t.failed_open_bank(&e), Color32::RED));
+                        toasts_to_add.push((localized::failed_open_bank(&e), Color32::RED));
                         return;
                     }
                 };
@@ -645,14 +643,14 @@ impl MainArea {
                             }
                             Err(e) => {
                                 failed += 1;
-                                toasts_to_add.push((t.convert_failed_for(&info.name, &e), Color32::RED));
+                                toasts_to_add.push((localized::convert_failed_for(&info.name, &e), Color32::RED));
                             }
                         }
                     }
                 }
 
                 toasts_to_add.push((
-                    t.debug_convert_done(converted, skipped, failed),
+                    localized::debug_convert_done(converted, skipped, failed),
                     if failed == 0 { Color32::GREEN } else { Color32::GOLD },
                 ));
             }
@@ -663,7 +661,7 @@ impl MainArea {
                 let selected_file_path = match self.selected_file.as_deref() {
                     Some(p) => p,
                     None => {
-                        toasts_to_add.push((t.no_file_selected().to_string(), Color32::GOLD));
+                        toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
                         return;
                     }
                 };
@@ -695,7 +693,7 @@ impl MainArea {
                                 }
                             }
                             Err(e) => {
-                                toasts_to_add.push((t.failed_mark_deletion(&e), Color32::RED));
+                                toasts_to_add.push((localized::failed_mark_deletion(&e), Color32::RED));
                             }
                         }
                     }
@@ -708,14 +706,14 @@ impl MainArea {
 
                     if removed_count > 0 {
                         toasts_to_add.push((
-                            t.marked_for_deletion_count(removed_count),
+                            localized::marked_for_deletion_count(removed_count),
                             Color32::GREEN,
                         ));
                     } else {
-                        toasts_to_add.push((t.no_matching_in_list().to_string(), Color32::GOLD));
+                        toasts_to_add.push((localized::no_matching_in_list().to_string(), Color32::GOLD));
                     }
                 } else {
-                    toasts_to_add.push((t.no_audio_list().to_string(), Color32::GOLD));
+                    toasts_to_add.push((localized::no_audio_list().to_string(), Color32::GOLD));
                 }
             }
             // If there is an audio to be removed, perform the removal
@@ -745,14 +743,14 @@ impl MainArea {
                                     self.selected_items.remove(&key);
                                     
                                     toasts_to_add.push((
-                                        t.marked_deleted_one(&audio_info.name),
+                                        localized::marked_deleted_one(&audio_info.name),
                                         Color32::GREEN,
                                     ));
                                 }
                             }
                         }
                         Err(e) => {
-                            toasts_to_add.push((t.failed_mark_deletion(&e), Color32::RED));
+                            toasts_to_add.push((localized::failed_mark_deletion(&e), Color32::RED));
                         }
                     }
                     
@@ -789,7 +787,7 @@ impl MainArea {
                 let original_file_path = match &self.add_audio_modal.settings.file_path {
                     Some(path) => path,
                     None => {
-                        toasts_to_add.push((t.no_audio_path().to_string(), Color32::RED));
+                        toasts_to_add.push((localized::no_audio_path().to_string(), Color32::RED));
                         return;
                     }
                 };
@@ -799,7 +797,7 @@ impl MainArea {
                 let is_nus3bank = selected_file_path.to_lowercase().ends_with(".nus3bank");
                 
                 // 处理新音频文件
-                match AddAudioUtils::process_new_audio(&self.add_audio_modal, is_nus3bank, t.locale)
+                match AddAudioUtils::process_new_audio(&self.add_audio_modal, is_nus3bank, crate::locale_from_ctx(ui.ctx()))
                 {
                     Ok(new_audio_info) => {
                         // 3. 尝试将音频转换为WAV格式
@@ -820,13 +818,13 @@ impl MainArea {
                                             audio_files.push(new_audio_info.clone());
                                             self.file_count = Some(audio_files.len());
                                             toasts_to_add.push((
-                                                t.added_wav(&new_audio_info.name),
+                                                localized::added_wav(&new_audio_info.name),
                                                 Color32::GREEN,
                                             ));
                                         }
                                     },
                                     Err(e) => {
-                                        toasts_to_add.push((t.register_wav_failed(&e), Color32::RED));
+                                        toasts_to_add.push((localized::register_wav_failed(&e), Color32::RED));
                                     }
                                 }
                             },
@@ -849,23 +847,23 @@ impl MainArea {
                                                 audio_files.push(new_audio_info.clone());
                                                 self.file_count = Some(audio_files.len());
                                                 toasts_to_add.push((
-                                                    t.added_original(&new_audio_info.name),
+                                                    localized::added_original(&new_audio_info.name),
                                                     Color32::GREEN,
                                                 ));
                                             }
                                         },
                                         Err(e) => {
-                                            toasts_to_add.push((t.failed_add_audio(&e), Color32::RED));
+                                            toasts_to_add.push((localized::failed_add_audio(&e), Color32::RED));
                                         }
                                     }
                                 } else {
-                                    toasts_to_add.push((t.no_audio_data().to_string(), Color32::RED));
+                                    toasts_to_add.push((localized::no_audio_data().to_string(), Color32::RED));
                                 }
                             }
                         }
                     },
                     Err(e) => {
-                        toasts_to_add.push((t.failed_process_new_audio(&e), Color32::RED));
+                        toasts_to_add.push((localized::failed_process_new_audio(&e), Color32::RED));
                     }
                 }
             }
@@ -901,7 +899,7 @@ impl MainArea {
                         // Retrieve the file path chosen during the dialog (from representative)
                         let rep_path_opt = ReplaceUtils::get_replacement_path(&audio_info.name, &audio_info.id);
                         if rep_path_opt.is_none() {
-                            toasts_to_add.push((t.no_replacement_path().to_string(), Color32::RED));
+                            toasts_to_add.push((localized::no_replacement_path().to_string(), Color32::RED));
                             return;
                         }
                         let rep_path = rep_path_opt.unwrap();
@@ -932,7 +930,7 @@ impl MainArea {
                                             replaced_count += 1;
                                         }
                                         Err(e) => {
-                                            toasts_to_add.push((t.failed_process_replacement_key(&key, &e), Color32::RED));
+                                            toasts_to_add.push((localized::failed_process_replacement_key(&key, &e), Color32::RED));
                                         }
                                     }
                                 }
@@ -941,11 +939,11 @@ impl MainArea {
                             self.file_count = Some(audio_files.len());
 
                             let loop_message = if use_custom_loop {
-                                let start_str = loop_start.map_or(t.loop_word_start().to_string(), |s| format!("{:.2}s", s));
-                                let end_str = loop_end.map_or(t.loop_word_end().to_string(), |e| format!("{:.2}s", e));
-                                t.loop_parenthetical_range(&start_str, &end_str)
+                                let start_str = loop_start.map_or(localized::loop_word_start().to_string(), |s| format!("{:.2}s", s));
+                                let end_str = loop_end.map_or(localized::loop_word_end().to_string(), |e| format!("{:.2}s", e));
+                                localized::loop_parenthetical_range(&start_str, &end_str)
                             } else {
-                                t.loop_parenthetical_full().to_string()
+                                localized::loop_parenthetical_full().to_string()
                             };
 
                             if replaced_count > 0 {
@@ -978,7 +976,7 @@ impl MainArea {
                                         Err(e) => {
                                             log::error!("Failed to prepare playback audio: {}", e);
                                             toasts_to_add.push((
-                                                t.prepare_playback_audio_failed().to_string(),
+                                                localized::prepare_playback_audio_failed().to_string(),
                                                 Color32::RED,
                                             ));
                                         }
@@ -989,11 +987,11 @@ impl MainArea {
                                 self.selected_items.clear();
 
                                 toasts_to_add.push((
-                                    t.replaced_in_memory_count(replaced_count, &loop_message),
+                                    localized::replaced_in_memory_count(replaced_count, &loop_message),
                                     Color32::GREEN,
                                 ));
                             } else {
-                                toasts_to_add.push((t.no_matching_replace().to_string(), Color32::GOLD));
+                                toasts_to_add.push((localized::no_matching_replace().to_string(), Color32::GOLD));
                             }
                         }
                     } else {
@@ -1058,7 +1056,7 @@ impl MainArea {
                                                 Err(e) => {
                                                     log::error!("Failed to prepare playback audio: {}", e);
                                                     toasts_to_add.push((
-                                                        t.prepare_playback_audio_failed().to_string(),
+                                                        localized::prepare_playback_audio_failed().to_string(),
                                                         Color32::RED,
                                                     ));
                                                 }
@@ -1067,16 +1065,16 @@ impl MainArea {
 
                                         let loop_message = if use_custom_loop {
                                             let start_str = loop_start
-                                                .map_or(t.loop_word_start().to_string(), |s| format!("{:.2}s", s));
+                                                .map_or(localized::loop_word_start().to_string(), |s| format!("{:.2}s", s));
                                             let end_str = loop_end
-                                                .map_or(t.loop_word_end().to_string(), |e| format!("{:.2}s", e));
-                                            t.loop_parenthetical_range(&start_str, &end_str)
+                                                .map_or(localized::loop_word_end().to_string(), |e| format!("{:.2}s", e));
+                                            localized::loop_parenthetical_range(&start_str, &end_str)
                                         } else {
-                                            t.loop_parenthetical_full().to_string()
+                                            localized::loop_parenthetical_full().to_string()
                                         };
 
                                         toasts_to_add.push((
-                                            t.replaced_in_memory_one(&audio_info.name, &loop_message),
+                                            localized::replaced_in_memory_one(&audio_info.name, &loop_message),
                                             Color32::GREEN,
                                         ));
                                     }
@@ -1084,7 +1082,7 @@ impl MainArea {
                             }
                             Err(e) => {
                                 toasts_to_add.push((
-                                    t.failed_process_replacement(&e),
+                                    localized::failed_process_replacement(&e),
                                     Color32::RED,
                                 ));
 
@@ -1117,7 +1115,6 @@ impl MainArea {
     }
 
     fn play_next_track(&mut self) {
-        let t = I18n::new(self.ui_locale);
         let (next_index, playlist) = {
             let player = match self.audio_player.as_ref() {
                 Some(p) => p,
@@ -1175,14 +1172,13 @@ impl MainArea {
                     let mut state = state.lock().unwrap();
                     state.current_track_index = Some(next_index);
                     // load_audio already starts playback via set_audio, no need to toggle again
-                    self.add_toast(t.now_playing(&next_track.name), Color32::GREEN);
+                    self.add_toast(localized::now_playing(&next_track.name), Color32::GREEN);
                 }
             }
         }
     }
 
     fn play_previous_track(&mut self) {
-        let t = I18n::new(self.ui_locale);
         let (prev_index, playlist) = {
             let player = match self.audio_player.as_ref() {
                 Some(p) => p,
@@ -1221,7 +1217,7 @@ impl MainArea {
                     let mut state = state.lock().unwrap();
                     state.current_track_index = Some(prev_index);
                     // load_audio already starts playback via set_audio, no need to toggle again
-                    self.add_toast(t.now_playing(&prev_track.name), Color32::GREEN);
+                    self.add_toast(localized::now_playing(&prev_track.name), Color32::GREEN);
                 }
             }
         }

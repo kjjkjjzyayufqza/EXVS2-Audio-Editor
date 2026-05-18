@@ -1,6 +1,6 @@
 use egui::{Color32, Context, ScrollArea, Ui, Window};
 
-use crate::i18n::{I18n, Locale};
+use crate::{localized, Locale};
 use crate::nus3bank::structures::{GrpSection, Nus3bankFile};
 
 use super::{grp_pending, grp_template};
@@ -71,14 +71,14 @@ impl GrpListModal {
     }
 
     pub fn show(&mut self, ctx: &Context) {
-        self.locale = I18n::from_ctx(ctx).locale;
+        self.locale = crate::locale_from_ctx(ctx);
         let mut open = self.open;
         let was_open = open;
         let available_rect = ctx.available_rect();
         let min_width = available_rect.width() * 0.7;
         let min_height = available_rect.height() * 0.7;
 
-        Window::new(I18n::new(self.locale).edit_grp_list_title())
+        Window::new(localized::edit_grp_list_title())
             .open(&mut open)
             .min_width(min_width)
             .min_height(min_height)
@@ -97,15 +97,14 @@ impl GrpListModal {
     }
 
     fn render(&mut self, ui: &mut Ui) {
-        let t = I18n::new(self.locale);
         ui.vertical_centered(|ui| {
-            ui.heading(t.grp_names_editor());
+            ui.heading(localized::grp_names_editor());
         });
 
         if let Some(path) = self.file_path.as_deref() {
-            ui.label(t.file_label_fmt(path));
+            ui.label(localized::file_label_fmt(path));
         } else {
-            ui.colored_label(Color32::RED, t.no_file_selected_short());
+            ui.colored_label(Color32::RED, localized::no_file_selected_short());
             return;
         }
 
@@ -119,13 +118,13 @@ impl GrpListModal {
 
         let search_changed = ui
             .horizontal(|ui| {
-                ui.label(t.search_label());
+                ui.label(localized::search_label());
                 let resp = ui.text_edit_singleline(&mut self.search_query);
 
                 ui.add_space(12.0);
-                ui.label(t.total_label(self.names.len()));
+                ui.label(localized::total_label(self.names.len()));
                 ui.add_space(12.0);
-                ui.label(t.visible_label(self.visible_indices_cache.len()));
+                ui.label(localized::visible_label(self.visible_indices_cache.len()));
 
                 resp.changed()
             })
@@ -138,12 +137,12 @@ impl GrpListModal {
         ui.add_space(8.0);
 
         ui.horizontal(|ui| {
-            ui.label(t.find_label());
+            ui.label(localized::find_label());
             ui.text_edit_singleline(&mut self.find_text);
-            ui.label(t.replace_label());
+            ui.label(localized::replace_label());
             ui.text_edit_singleline(&mut self.replace_text);
 
-            if ui.button(t.replace_in_visible()).clicked() {
+            if ui.button(localized::replace_in_visible()).clicked() {
                 self.replace_in_visible();
                 self.dirty = true;
             }
@@ -151,17 +150,17 @@ impl GrpListModal {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button(t.add_row()).clicked() {
+            if ui.button(localized::add_row()).clicked() {
                 self.names.push(String::new());
                 self.update_visible_indices_cache();
                 self.dirty = true;
             }
-            if ui.button(t.replace_with_template()).clicked() {
+            if ui.button(localized::replace_with_template()).clicked() {
                 self.replace_with_template();
                 self.update_visible_indices_cache();
                 self.dirty = true;
             }
-            if ui.button(t.reload_from_file()).clicked() {
+            if ui.button(localized::reload_from_file()).clicked() {
                 self.reload_from_file();
                 self.update_visible_indices_cache();
                 self.dirty = false;
@@ -204,7 +203,6 @@ impl GrpListModal {
     }
 
     fn render_virtual_list(&mut self, ui: &mut Ui, needs_flush: &mut bool) {
-        let t = I18n::new(self.locale);
         const ROW_HEIGHT: f32 = 28.0;
         const OVERSCAN: usize = 5;
 
@@ -246,7 +244,7 @@ impl GrpListModal {
                             *needs_flush = true;
                         }
 
-                        if ui.button(t.clear_cell()).clicked() {
+                        if ui.button(localized::clear_cell()).clicked() {
                             self.names[i].clear();
                             self.dirty = true;
                             *needs_flush = true;
@@ -262,10 +260,9 @@ impl GrpListModal {
     }
 
     fn replace_in_visible(&mut self) {
-        let t = I18n::new(self.locale);
         let find = self.find_text.clone();
         if find.is_empty() {
-            self.error = Some(t.grp_find_text_empty().to_string());
+            self.error = Some(localized::grp_find_text_empty().to_string());
             return;
         }
 
@@ -281,13 +278,12 @@ impl GrpListModal {
     }
 
     fn flush_pending(&mut self) {
-        let t = I18n::new(self.locale);
         if !self.dirty {
             return;
         }
 
         let Some(path) = self.file_path.as_deref() else {
-            self.error = Some(t.grp_no_file_for_edit().to_string());
+            self.error = Some(localized::grp_no_file_for_edit().to_string());
             return;
         };
 
@@ -301,19 +297,17 @@ impl GrpListModal {
     }
 
     fn load_names_for_file(&self, file_path: &str) -> Result<Vec<String>, String> {
-        let t = I18n::new(self.locale);
         if let Some(pending) = grp_pending::get(file_path) {
             return Ok(pending);
         }
 
-        let file = Nus3bankFile::open(file_path).map_err(|e| t.nus3bank_open_failed(e))?;
+        let file = Nus3bankFile::open(file_path).map_err(|e| localized::nus3bank_open_failed(e))?;
         Ok(file.grp.map(|g| g.names).unwrap_or_default())
     }
 
     fn reload_from_file(&mut self) {
-        let t = I18n::new(self.locale);
         let Some(path) = self.file_path.as_deref() else {
-            self.error = Some(t.grp_no_file_for_edit().to_string());
+            self.error = Some(localized::grp_no_file_for_edit().to_string());
             return;
         };
         self.error = None;
@@ -323,15 +317,14 @@ impl GrpListModal {
                 self.names = file.grp.map(|g| g.names).unwrap_or_default();
                 self.update_visible_indices_cache();
             }
-            Err(e) => self.error = Some(t.nus3bank_open_failed(e)),
+            Err(e) => self.error = Some(localized::nus3bank_open_failed(e)),
         }
     }
 
     fn replace_with_template(&mut self) {
-        let t = I18n::new(self.locale);
         let template = grp_template::grp_template_names();
         if template.is_empty() {
-            self.error = Some(t.grp_template_empty().to_string());
+            self.error = Some(localized::grp_template_empty().to_string());
             return;
         }
 

@@ -1,5 +1,5 @@
-use crate::i18n::I18n;
-use crate::i18n::Locale;
+use crate::localized;
+use crate::Locale;
 use crate::ui::main_area::Nus3audioFileUtils;
 use crate::version_check;
 use egui::{Context, Id};
@@ -22,11 +22,11 @@ struct ModalInfo {
 static MODAL_INFO: Lazy<Mutex<ModalInfo>> = Lazy::new(|| Mutex::new(ModalInfo::default()));
 
 // Helper functions to manage the modal state
-fn show_modal(title: &str, message: &str, is_error: bool) {
+fn show_modal(title: impl AsRef<str>, message: impl AsRef<str>, is_error: bool) {
     if let Ok(mut modal) = MODAL_INFO.lock() {
         modal.open = true;
-        modal.title = title.to_string();
-        modal.message = message.to_string();
+        modal.title = title.as_ref().to_string();
+        modal.message = message.as_ref().to_string();
         modal.is_error = is_error;
         modal.has_link = false;
         modal.link_text = String::new();
@@ -35,20 +35,20 @@ fn show_modal(title: &str, message: &str, is_error: bool) {
 }
 
 fn show_modal_with_link(
-    title: &str,
-    message: &str,
-    link_text: &str,
-    link_url: &str,
+    title: impl AsRef<str>,
+    message: impl AsRef<str>,
+    link_text: impl AsRef<str>,
+    link_url: impl AsRef<str>,
     is_error: bool,
 ) {
     if let Ok(mut modal) = MODAL_INFO.lock() {
         modal.open = true;
-        modal.title = title.to_string();
-        modal.message = message.to_string();
+        modal.title = title.as_ref().to_string();
+        modal.message = message.as_ref().to_string();
         modal.is_error = is_error;
         modal.has_link = true;
-        modal.link_text = link_text.to_string();
-        modal.link_url = link_url.to_string();
+        modal.link_text = link_text.as_ref().to_string();
+        modal.link_url = link_url.as_ref().to_string();
     }
 }
 
@@ -58,7 +58,6 @@ pub struct TopPanel;
 impl TopPanel {
     /// Display the top menu panel
     pub fn show(ctx: &Context, mut app: Option<&mut crate::TemplateApp>) {
-        let t = I18n::from_ctx(ctx);
         TopPanel::check_for_updates(ctx);
 
         // Show modal dialog if needed
@@ -87,7 +86,7 @@ impl TopPanel {
 
                     ui.add_space(8.0);
 
-                    if ui.button(t.ok()).clicked() {
+                    if ui.button(localized::ok()).clicked() {
                         should_close_modal = true;
                     }
                 });
@@ -105,8 +104,8 @@ impl TopPanel {
                 // Don't show Quit button in web environment
                 let is_web = cfg!(target_arch = "wasm32");
                 if !is_web {
-                    ui.menu_button(t.file_menu(), |ui| {
-                        if ui.button(t.save_changes()).clicked() {
+                    ui.menu_button(localized::file_menu(), |ui| {
+                        if ui.button(localized::save_changes()).clicked() {
                             // Save pending changes to the current nus3audio file
                             ui.ctx().request_repaint();
 
@@ -125,10 +124,9 @@ impl TopPanel {
 
                             if selected_file_path.is_none() {
                                 println!("No file selected to save changes");
-                                let t = I18n::from_ctx(ui.ctx());
                                 show_modal(
-                                    t.save_failed_title(),
-                                    t.no_file_selected_save(),
+                                    localized::save_failed_title(),
+                                    localized::no_file_selected_save(),
                                     true,
                                 );
                                 return;
@@ -137,10 +135,9 @@ impl TopPanel {
                             // Check if there are any pending changes
                             if !Nus3audioFileUtils::has_pending_changes() {
                                 println!("No pending changes to save");
-                                let t = I18n::from_ctx(ui.ctx());
                                 show_modal(
-                                    t.no_changes_title(),
-                                    t.no_pending_changes(),
+                                    localized::no_changes_title(),
+                                    localized::no_pending_changes(),
                                     false,
                                 );
                                 return;
@@ -151,11 +148,9 @@ impl TopPanel {
                                 match Nus3audioFileUtils::save_changes_to_file(&file_path) {
                                     Ok(_) => {
                                         println!("Changes saved successfully to: {}", file_path);
-
-                                        let t = I18n::from_ctx(ui.ctx());
                                         show_modal(
-                                            t.save_successful_title(),
-                                            &t.save_success_body(
+                                            localized::save_successful_title(),
+                                            &localized::save_success_body(
                                                 Nus3audioFileUtils::get_pending_changes_count(),
                                                 &file_path,
                                             ),
@@ -171,11 +166,9 @@ impl TopPanel {
                                     }
                                     Err(e) => {
                                         println!("Failed to save changes: {}", e);
-
-                                        let t = I18n::from_ctx(ui.ctx());
                                         show_modal(
-                                            t.save_failed_title(),
-                                            &t.save_failed_msg(&e.to_string()),
+                                            localized::save_failed_title(),
+                                            &localized::save_failed_msg(&e.to_string()),
                                             true,
                                         );
                                     }
@@ -192,16 +185,14 @@ impl TopPanel {
                                     selected_file_path = Some(path.to_string());
                                 }
                             }
-
-                            let t = I18n::from_ctx(ctx);
                             if let Some(ref path) = selected_file_path {
                                 if path.to_lowercase().ends_with(".nus3bank") {
-                                    (t.save_nus3bank(), "nus3bank", "NUS3BANK")
+                                    (localized::save_nus3bank(), "nus3bank", "NUS3BANK")
                                 } else {
-                                    (t.save_nus3audio(), "nus3audio", "NUS3AUDIO")
+                                    (localized::save_nus3audio(), "nus3audio", "NUS3AUDIO")
                                 }
                             } else {
-                                (t.save_file_generic(), "nus3audio", "NUS3AUDIO")
+                                (localized::save_file_generic(), "nus3audio", "NUS3AUDIO")
                             }
                         };
 
@@ -224,10 +215,9 @@ impl TopPanel {
 
                             if selected_file_path.is_none() {
                                 println!("No file selected to save");
-                                let t = I18n::from_ctx(ui.ctx());
                                 show_modal(
-                                    t.save_failed_title(),
-                                    t.no_file_selected_save_as(),
+                                    localized::save_failed_title(),
+                                    localized::no_file_selected_save_as(),
                                     true,
                                 );
                                 return;
@@ -255,32 +245,30 @@ impl TopPanel {
                     });
                 }
 
-                ui.menu_button(t.settings_menu(), |ui| {
-                    if ui.button(t.reset_layout()).clicked() {
+                ui.menu_button(localized::settings_menu(), |ui| {
+                    if ui.button(localized::reset_layout()).clicked() {
                         TopPanel::reset_layout(ctx);
-                        let t2 = I18n::from_ctx(ctx);
-                        show_modal(t2.layout_reset_title(), t2.layout_reset_msg(), false);
+                        show_modal(localized::layout_reset_title(), localized::layout_reset_msg(), false);
                         ui.close();
                     }
 
                     ui.separator();
-                    ui.label(t.language());
+                    ui.label(localized::language());
                     if let Some(app) = app.as_mut() {
-                        ui.radio_value(&mut app.locale, Locale::En, t.language_english());
-                        ui.radio_value(&mut app.locale, Locale::Zh, t.language_chinese());
+                        ui.radio_value(&mut app.locale, Locale::En, localized::language_english());
+                        ui.radio_value(&mut app.locale, Locale::Zh, localized::language_chinese());
                     } else {
-                        ui.label(t.language_english());
-                        ui.label(t.language_chinese());
+                        ui.label(localized::language_english());
+                        ui.label(localized::language_chinese());
                     }
                 });
 
-                ui.menu_button(t.help_menu(), |ui| {
-                    if ui.button(t.about()).clicked() {
-                        let t2 = I18n::from_ctx(ctx);
+                ui.menu_button(localized::help_menu(), |ui| {
+                    if ui.button(localized::about()).clicked() {
                         show_modal_with_link(
-                            t2.about_title(),
-                            &t2.about_body(env!("CARGO_PKG_VERSION")),
-                            t2.source_link_label(),
+                            localized::about_title(),
+                            &localized::about_body(env!("CARGO_PKG_VERSION")),
+                            localized::source_link_label(),
                             "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor",
                             false,
                         );
@@ -291,7 +279,7 @@ impl TopPanel {
     }
 
     /// Check for updates and show notification if a new version is available
-    fn check_for_updates(ctx: &Context) {
+    fn check_for_updates(_ctx: &Context) {
         // Only show update notice once per session
         static SHOWN_UPDATE_NOTICE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
@@ -330,11 +318,10 @@ impl TopPanel {
 
         // Show the update notice if we have the data
         if let Some((current_version, latest_version, download_url)) = check_result {
-            let t = I18n::from_ctx(ctx);
             show_modal_with_link(
-                t.update_available_title(),
-                &t.update_available_body(&current_version, &latest_version),
-                t.download_latest(),
+                localized::update_available_title(),
+                &localized::update_available_body(&current_version, &latest_version),
+                localized::download_latest(),
                 &download_url,
                 false,
             );
@@ -347,8 +334,7 @@ impl TopPanel {
     }
 
     /// Save current audio files to a new file (supports both NUS3AUDIO and NUS3BANK)
-    fn save_nus3audio_file(ctx: &Context, original_path: &str, save_path: &str) {
-        let t = I18n::from_ctx(ctx);
+    fn save_nus3audio_file(_ctx: &Context, original_path: &str, save_path: &str) {
         // Use unified method to support both NUS3AUDIO and NUS3BANK files
         match crate::ui::main_area::ReplaceUtils::apply_replacements_and_save_unified(
             original_path,
@@ -359,8 +345,8 @@ impl TopPanel {
 
                 // Show success modal dialog
                 show_modal(
-                    t.save_success_export_title(),
-                    &t.save_success_export_body(save_path),
+                    localized::save_success_export_title(),
+                    &localized::save_success_export_body(save_path),
                     false,
                 );
             }
@@ -369,8 +355,8 @@ impl TopPanel {
 
                 // Show error dialog
                 show_modal(
-                    t.save_failed_title(),
-                    &t.save_failed_export(&e.to_string()),
+                    localized::save_failed_title(),
+                    &localized::save_failed_export(&e.to_string()),
                     true,
                 );
             }

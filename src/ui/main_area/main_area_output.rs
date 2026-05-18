@@ -1,4 +1,4 @@
-use crate::i18n::I18n;
+use crate::localized;
 use egui::{Color32, Ui, RichText};
 use egui_phosphor::regular;
 
@@ -7,7 +7,6 @@ use super::main_area_core::MainArea;
 impl MainArea {
     /// Render output path selection in a compact way for the toolbar
     pub fn render_output_path_compact(&mut self, ui: &mut Ui) {
-        let t = I18n::from_ctx(ui.ctx());
         ui.horizontal(|ui| {
             let path_text = match &self.output_path {
                 Some(path) => {
@@ -28,7 +27,7 @@ impl MainArea {
                         path.clone()
                     }
                 },
-                None => t.output_folder_not_set().to_string(),
+                None => localized::output_folder_not_set().to_string(),
             };
             
             let color = if self.output_path.is_none() {
@@ -37,18 +36,18 @@ impl MainArea {
                 ui.visuals().strong_text_color()
             };
 
-            ui.label(RichText::new(t.export_to()).weak().size(11.0));
+            ui.label(RichText::new(localized::export_to()).weak().size(11.0));
 
             let label_resp = ui.label(RichText::new(path_text).color(color));
             if let Some(path) = &self.output_path {
                 label_resp.on_hover_text(path);
             } else {
-                label_resp.on_hover_text(t.output_folder_hover());
+                label_resp.on_hover_text(localized::output_folder_hover());
             }
 
-            if ui.button(format!("{} {}", regular::FOLDER_OPEN, t.browse())).clicked() {
+            if ui.button(format!("{} {}", regular::FOLDER_OPEN, localized::browse())).clicked() {
                 if let Some(path) = rfd::FileDialog::new()
-                    .set_title(t.select_output_directory())
+                    .set_title(localized::select_output_directory())
                     .set_directory(self.output_path.clone().unwrap_or_else(|| ".".to_string()))
                     .pick_folder() 
                 {
@@ -59,7 +58,7 @@ impl MainArea {
             }
 
             if self.output_path.is_some() {
-                if ui.button(RichText::new(regular::X.to_string()).color(Color32::GRAY)).on_hover_text(t.clear_output_path_tooltip()).clicked() {
+                if ui.button(RichText::new(regular::X.to_string()).color(Color32::GRAY)).on_hover_text(localized::clear_output_path_tooltip()).clicked() {
                     self.output_path = None;
                 }
             }

@@ -1,6 +1,6 @@
 use egui::{Color32, Context, ScrollArea, Ui, Window};
 
-use crate::i18n::{I18n, Locale};
+use crate::{localized, Locale};
 use crate::nus3bank::structures::{DtonSection, Nus3bankFile, ToneDes};
 
 use super::dton_pending;
@@ -76,14 +76,14 @@ impl DtonTonesModal {
     }
 
     pub fn show(&mut self, ctx: &Context) {
-        self.locale = I18n::from_ctx(ctx).locale;
+        self.locale = crate::locale_from_ctx(ctx);
         let mut open = self.open;
         let was_open = open;
         let available_rect = ctx.available_rect();
         let default_width = available_rect.width() * 0.7;
         let default_height = available_rect.height() * 0.7;
 
-        Window::new(I18n::new(self.locale).edit_dton_title())
+        Window::new(localized::edit_dton_title())
             .open(&mut open)
             .default_width(default_width)
             .default_height(default_height)
@@ -102,17 +102,16 @@ impl DtonTonesModal {
     }
 
     fn render(&mut self, ui: &mut Ui) {
-        let t = I18n::new(self.locale);
         ui.vertical_centered(|ui| {
-            ui.heading(t.dton_editor_heading());
+            ui.heading(localized::dton_editor_heading());
         });
 
         let Some(path) = self.file_path.as_deref() else {
-            ui.colored_label(Color32::RED, t.no_file_selected_short());
+            ui.colored_label(Color32::RED, localized::no_file_selected_short());
             return;
         };
 
-        ui.label(t.file_label_fmt(path));
+        ui.label(localized::file_label_fmt(path));
         if let Some(err) = self.error.as_deref() {
             ui.add_space(6.0);
             ui.colored_label(Color32::RED, err);
@@ -123,19 +122,19 @@ impl DtonTonesModal {
         ui.add_space(8.0);
 
         ui.horizontal(|ui| {
-            ui.label(t.search_label());
+            ui.label(localized::search_label());
             ui.text_edit_singleline(&mut self.search_query);
             ui.add_space(12.0);
-            ui.label(t.total_label(self.tones.len()));
+            ui.label(localized::total_label(self.tones.len()));
         });
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button(t.reload_from_file()).clicked() {
+            if ui.button(localized::reload_from_file()).clicked() {
                 self.reload_from_file();
             }
-            ui.checkbox(&mut self.keep_original_length, t.keep_original_length());
-            ui.checkbox(&mut self.advanced_fields, t.enable_advanced_fields());
+            ui.checkbox(&mut self.keep_original_length, localized::keep_original_length());
+            ui.checkbox(&mut self.advanced_fields, localized::enable_advanced_fields());
         });
 
         ui.add_space(8.0);
@@ -144,15 +143,15 @@ impl DtonTonesModal {
 
         let available_height = ui.available_height();
         ui.columns(2, |cols| {
-            self.render_left_list(&mut cols[0], available_height, &t);
-            self.render_right_details(&mut cols[1], available_height, &t);
+            self.render_left_list(&mut cols[0], available_height);
+            self.render_right_details(&mut cols[1], available_height);
         });
 
         self.flush_pending();
     }
 
-    fn render_left_list(&mut self, ui: &mut Ui, available_height: f32, t: &I18n) {
-        ui.heading(t.tones_heading());
+    fn render_left_list(&mut self, ui: &mut Ui, available_height: f32) {
+        ui.heading(localized::tones_heading());
         ui.add_space(6.0);
 
         let indices = self.visible_indices();
@@ -168,7 +167,7 @@ impl DtonTonesModal {
                     let name = self.tones.get(idx).map(|t| t.name.as_str()).unwrap_or("");
                     let len = self.tones.get(idx).map(|t| t.data.len()).unwrap_or(0);
                     let selected = self.selected_index == Some(idx);
-                    let label = format!("{:3}  {:<24}  {}", idx, name, t.dton_len_label(len));
+                    let label = format!("{:3}  {:<24}  {}", idx, name, localized::dton_len_label(len));
                     if ui.selectable_label(selected, label).clicked() {
                         self.selected_index = Some(idx);
                         self.sync_data_text_from_selected();
@@ -178,35 +177,35 @@ impl DtonTonesModal {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button(t.add_audio_btn()).clicked() {
+            if ui.button(localized::add_audio_btn()).clicked() {
                 self.add_new_tone();
             }
-            if ui.button(t.duplicate_row()).clicked() {
+            if ui.button(localized::duplicate_row()).clicked() {
                 self.duplicate_selected();
             }
-            if ui.button(t.delete_row()).clicked() {
+            if ui.button(localized::delete_row()).clicked() {
                 self.delete_selected();
             }
         });
     }
 
-    fn render_right_details(&mut self, ui: &mut Ui, available_height: f32, t: &I18n) {
-        ui.heading(t.details_heading());
+    fn render_right_details(&mut self, ui: &mut Ui, available_height: f32) {
+        ui.heading(localized::details_heading());
         ui.add_space(6.0);
 
         let Some(idx) = self.selected_index else {
-            ui.label(t.select_tone_left());
+            ui.label(localized::select_tone_left());
             return;
         };
         if idx >= self.tones.len() {
-            ui.colored_label(Color32::RED, t.index_out_of_range());
+            ui.colored_label(Color32::RED, localized::index_out_of_range());
             return;
         }
 
         let tone = &mut self.tones[idx];
 
         ui.horizontal(|ui| {
-            ui.label(t.name_label());
+            ui.label(localized::name_label());
             let resp = ui.text_edit_singleline(&mut tone.name);
             if resp.changed() {
                 self.dirty = true;
@@ -214,7 +213,7 @@ impl DtonTonesModal {
         });
 
         ui.horizontal(|ui| {
-            ui.label(t.data_length_label());
+            ui.label(localized::data_length_label());
             ui.label(format!("{}", tone.data.len()));
             if self.keep_original_length {
                 let orig = self
@@ -223,21 +222,21 @@ impl DtonTonesModal {
                     .copied()
                     .unwrap_or(tone.data.len());
                 ui.add_space(8.0);
-                ui.label(t.dton_original_len(orig));
+                ui.label(localized::dton_original_len(orig));
             }
         });
 
         if self.advanced_fields {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(t.dton_field_hash());
+                ui.label(localized::dton_field_hash());
                 let resp = ui.add(egui::DragValue::new(&mut tone.hash));
                 if resp.changed() {
                     self.dirty = true;
                 }
             });
             ui.horizontal(|ui| {
-                ui.label(t.dton_field_unk1());
+                ui.label(localized::dton_field_unk1());
                 let resp = ui.add(egui::DragValue::new(&mut tone.unk1));
                 if resp.changed() {
                     self.dirty = true;
@@ -257,7 +256,7 @@ impl DtonTonesModal {
         ui.separator();
         ui.add_space(10.0);
 
-        ui.label(t.data_floats_label());
+        ui.label(localized::data_floats_label());
         ui.add_space(4.0);
 
         ui.push_id(format!("dton_data_text_{}", idx), |ui| {
@@ -317,13 +316,12 @@ impl DtonTonesModal {
     }
 
     fn try_apply_data_text(&mut self, idx: usize) {
-        let t = I18n::new(self.locale);
         if idx >= self.tones.len() {
-            self.data_parse_error = Some(t.index_out_of_range().to_string());
+            self.data_parse_error = Some(localized::index_out_of_range().to_string());
             return;
         }
 
-        match parse_f32_list(&self.data_text, &t) {
+        match parse_f32_list(&self.data_text) {
             Ok(values) => {
                 if self.keep_original_length {
                     let expected = self
@@ -333,7 +331,7 @@ impl DtonTonesModal {
                         .unwrap_or(values.len());
                     if values.len() != expected {
                         self.data_parse_error =
-                            Some(t.data_length_mismatch(values.len(), expected));
+                            Some(localized::data_length_mismatch(values.len(), expected));
                         return;
                     }
                 }
@@ -410,7 +408,6 @@ impl DtonTonesModal {
     }
 
     fn flush_pending(&mut self) {
-        let t = I18n::new(self.locale);
         if !self.dirty {
             return;
         }
@@ -418,7 +415,7 @@ impl DtonTonesModal {
             return;
         }
         let Some(path) = self.file_path.as_deref() else {
-            self.error = Some(t.dton_no_file_for_edit().to_string());
+            self.error = Some(localized::dton_no_file_for_edit().to_string());
             return;
         };
         if let Err(e) = dton_pending::set(path, self.tones.clone()) {
@@ -430,19 +427,17 @@ impl DtonTonesModal {
     }
 
     fn load_tones_for_file(&self, file_path: &str) -> Result<Vec<ToneDes>, String> {
-        let t = I18n::new(self.locale);
         if let Some(pending) = dton_pending::get(file_path) {
             return Ok(pending);
         }
 
-        let file = Nus3bankFile::open(file_path).map_err(|e| t.nus3bank_open_failed(e))?;
+        let file = Nus3bankFile::open(file_path).map_err(|e| localized::nus3bank_open_failed(e))?;
         Ok(file.dton.map(|d| d.tones).unwrap_or_else(|| Vec::new()))
     }
 
     fn reload_from_file(&mut self) {
-        let t = I18n::new(self.locale);
         let Some(path) = self.file_path.as_deref() else {
-            self.error = Some(t.dton_no_file_for_edit().to_string());
+            self.error = Some(localized::dton_no_file_for_edit().to_string());
             return;
         };
         self.error = None;
@@ -457,7 +452,7 @@ impl DtonTonesModal {
                 self.dirty = false;
                 self.data_parse_error = None;
             }
-            Err(e) => self.error = Some(t.nus3bank_open_failed(e)),
+            Err(e) => self.error = Some(localized::nus3bank_open_failed(e)),
         }
     }
 }
@@ -466,7 +461,7 @@ pub fn apply_dton_tones_to_file(file: &mut Nus3bankFile, tones: Vec<ToneDes>) {
     file.dton = Some(DtonSection { tones });
 }
 
-fn parse_f32_list(text: &str, t: &I18n) -> Result<Vec<f32>, String> {
+fn parse_f32_list(text: &str) -> Result<Vec<f32>, String> {
     let mut out = Vec::new();
     for (i, tok) in text
         .split(|c: char| c == ',' || c.is_whitespace())
@@ -475,7 +470,7 @@ fn parse_f32_list(text: &str, t: &I18n) -> Result<Vec<f32>, String> {
     {
         let v: f32 = tok
             .parse()
-            .map_err(|_| t.parse_float_token_failed(i, tok))?;
+            .map_err(|_| localized::parse_float_token_failed(i, tok))?;
         out.push(v);
     }
     Ok(out)

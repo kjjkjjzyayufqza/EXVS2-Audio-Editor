@@ -1,4 +1,4 @@
-use crate::i18n::{Locale, locale_ctx_id};
+use crate::{locale_ctx_id, sync_rust_i18n_locale, Locale};
 use crate::ui::{FileList, MainArea, TopPanel};
 use crate::version_check;
 
@@ -69,10 +69,9 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.data_mut(|d| d.insert_temp(locale_ctx_id(), self.locale));
+        sync_rust_i18n_locale(self.locale);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-            crate::i18n::I18n::new(self.locale)
-                .window_title()
-                .to_owned(),
+            crate::localized::window_title(),
         ));
 
         self.main_area.sync_locale(self.locale);

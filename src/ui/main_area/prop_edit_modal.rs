@@ -1,6 +1,6 @@
 use egui::{Color32, Context, ScrollArea, Ui, Window};
 
-use crate::i18n::{I18n, Locale};
+use crate::{localized, Locale};
 use crate::nus3bank::structures::{Nus3bankFile, PropLayout, PropSection};
 
 use super::prop_pending;
@@ -104,14 +104,14 @@ impl PropEditModal {
     }
 
     pub fn show(&mut self, ctx: &Context) {
-        self.locale = I18n::from_ctx(ctx).locale;
+        self.locale = crate::locale_from_ctx(ctx);
         let mut open = self.open;
         let was_open = open;
         let available_rect = ctx.available_rect();
         let min_width = available_rect.width() * 0.7;
         let min_height = available_rect.height() * 0.7;
 
-        Window::new(I18n::new(self.locale).edit_prop_title())
+        Window::new(localized::edit_prop_title())
             .open(&mut open)
             .min_width(min_width)
             .min_height(min_height)
@@ -128,17 +128,16 @@ impl PropEditModal {
     }
 
     fn render(&mut self, ui: &mut Ui) {
-        let t = I18n::new(self.locale);
         ui.vertical_centered(|ui| {
-            ui.heading(t.prop_section_editor());
+            ui.heading(localized::prop_section_editor());
         });
 
         let Some(path) = self.file_path.as_deref() else {
-            ui.colored_label(Color32::RED, t.no_file_selected_short());
+            ui.colored_label(Color32::RED, localized::no_file_selected_short());
             return;
         };
 
-        ui.label(t.file_label_fmt(path));
+        ui.label(localized::file_label_fmt(path));
         if let Some(err) = self.error.as_deref() {
             ui.add_space(6.0);
             ui.colored_label(Color32::RED, err);
@@ -148,7 +147,7 @@ impl PropEditModal {
         ui.separator();
         ui.add_space(8.0);
 
-        if ui.button(t.reload_from_file()).clicked() {
+        if ui.button(localized::reload_from_file()).clicked() {
             self.reload_from_file();
         }
 
@@ -157,24 +156,24 @@ impl PropEditModal {
         ui.add_space(8.0);
 
         if self.prop.is_none() {
-            ui.colored_label(Color32::YELLOW, t.no_prop_section());
+            ui.colored_label(Color32::YELLOW, localized::no_prop_section());
             ui.add_space(8.0);
-            if ui.button(t.create_new_prop()).clicked() {
+            if ui.button(localized::create_new_prop()).clicked() {
                 self.create_default_prop();
             }
             return;
         }
 
         // Preset selector
-        self.render_presets(ui, &t);
+        self.render_presets(ui);
 
         // Main editor
-        self.render_prop_editor(ui, &t);
+        self.render_prop_editor(ui);
     }
 
-    fn render_presets(&mut self, ui: &mut Ui, t: &I18n) {
+    fn render_presets(&mut self, ui: &mut Ui) {
         ui.group(|ui| {
-            ui.heading(t.presets_heading());
+            ui.heading(localized::presets_heading());
             ui.add_space(6.0);
 
             let preset_list_height = ui.available_height() * 0.3;
@@ -184,7 +183,7 @@ impl PropEditModal {
                 .show(ui, |ui| {
                     for (idx, preset) in self.presets.iter().enumerate() {
                         let selected = self.selected_preset == Some(idx);
-                        let label = preset_label(idx, preset, t);
+                        let label = preset_label(idx, preset);
                         if ui.selectable_label(selected, label).clicked() {
                             self.selected_preset = Some(idx);
                         }
@@ -193,11 +192,11 @@ impl PropEditModal {
 
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.button(t.apply_selected_preset()).clicked() {
+                if ui.button(localized::apply_selected_preset()).clicked() {
                     self.apply_preset();
                 }
-                if ui.button(t.save_current_as_preset()).clicked() {
-                    self.save_as_preset(t);
+                if ui.button(localized::save_current_as_preset()).clicked() {
+                    self.save_as_preset();
                 }
             });
         });
@@ -207,7 +206,7 @@ impl PropEditModal {
         ui.add_space(12.0);
     }
 
-    fn render_prop_editor(&mut self, ui: &mut Ui, t: &I18n) {
+    fn render_prop_editor(&mut self, ui: &mut Ui) {
         let Some(prop) = self.prop.as_mut() else {
             return;
         };
@@ -219,11 +218,11 @@ impl PropEditModal {
                 .max_height(editor_height)
                 .show(ui, |ui| {
                     ui.group(|ui| {
-                        ui.heading(t.basic_fields());
+                        ui.heading(localized::basic_fields());
                         ui.add_space(6.0);
 
                         ui.horizontal(|ui| {
-                            ui.label(t.project_label());
+                            ui.label(localized::project_label());
                             let resp = ui.text_edit_singleline(&mut prop.project);
                             if resp.changed() {
                                 self.dirty = true;
@@ -231,7 +230,7 @@ impl PropEditModal {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label(t.timestamp_label());
+                            ui.label(localized::timestamp_label());
                             let resp = ui.text_edit_singleline(&mut prop.timestamp);
                             if resp.changed() {
                                 self.dirty = true;
@@ -242,16 +241,16 @@ impl PropEditModal {
                         ui.separator();
                         ui.add_space(8.0);
 
-                        ui.heading(t.layout_heading());
+                        ui.heading(localized::layout_heading());
                         ui.horizontal(|ui| {
-                            ui.label(t.layout_type_label());
+                            ui.label(localized::layout_type_label());
                             let layout_minimal = prop.layout == PropLayout::Minimal;
-                            if ui.radio(layout_minimal, t.layout_minimal()).clicked() {
+                            if ui.radio(layout_minimal, localized::layout_minimal()).clicked() {
                                 prop.layout = PropLayout::Minimal;
                                 self.dirty = true;
                             }
                             if ui
-                                .radio(prop.layout == PropLayout::Extended, t.layout_extended())
+                                .radio(prop.layout == PropLayout::Extended, localized::layout_extended())
                                 .clicked()
                             {
                                 prop.layout = PropLayout::Extended;
@@ -274,11 +273,11 @@ impl PropEditModal {
                         ui.separator();
                         ui.add_space(8.0);
 
-                        ui.heading(t.advanced_fields());
+                        ui.heading(localized::advanced_fields());
                         ui.add_space(6.0);
 
                         ui.horizontal(|ui| {
-                            ui.label(t.prop_field_unk1());
+                            ui.label(localized::prop_field_unk1());
                             let resp = ui.add(egui::DragValue::new(&mut prop.unk1));
                             if resp.changed() {
                                 self.dirty = true;
@@ -289,7 +288,7 @@ impl PropEditModal {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label(t.prop_field_reserved_u16());
+                            ui.label(localized::prop_field_reserved_u16());
                             let mut temp_i32 = prop.reserved_u16 as i32;
                             let resp = ui.add(egui::DragValue::new(&mut temp_i32).range(0..=65535));
                             if resp.changed() {
@@ -299,7 +298,7 @@ impl PropEditModal {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label(t.prop_field_unk2());
+                            ui.label(localized::prop_field_unk2());
                             let mut temp_i32 = prop.unk2 as i32;
                             let resp = ui.add(egui::DragValue::new(&mut temp_i32).range(0..=65535));
                             if resp.changed() {
@@ -309,7 +308,7 @@ impl PropEditModal {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label(t.prop_field_unk3());
+                            ui.label(localized::prop_field_unk3());
                             let mut temp_i32 = prop.unk3 as i32;
                             let resp = ui.add(egui::DragValue::new(&mut temp_i32).range(0..=65535));
                             if resp.changed() {
@@ -385,7 +384,7 @@ impl PropEditModal {
 
         ui.horizontal(|ui| {
             if self.dirty {
-                ui.colored_label(Color32::YELLOW, t.unsaved_changes());
+                ui.colored_label(Color32::YELLOW, localized::unsaved_changes());
             }
         });
     }
@@ -417,13 +416,17 @@ impl PropEditModal {
         self.error = None;
     }
 
-    fn save_as_preset(&mut self, t: &I18n) {
+    fn save_as_preset(&mut self) {
         let Some(prop) = self.prop.as_ref() else {
             return;
         };
 
-        let preset_name =
-            t.prop_custom_preset_name(&prop.project, prop.layout == PropLayout::Minimal);
+        let layout_label = if prop.layout == PropLayout::Minimal {
+            localized::layout_minimal()
+        } else {
+            localized::layout_extended()
+        };
+        let preset_name = localized::prop_custom_preset_name(&prop.project, &layout_label);
 
         let new_preset = DebugPreset {
             name: preset_name,
@@ -441,9 +444,8 @@ impl PropEditModal {
     }
 
     fn create_default_prop(&mut self) {
-        let t = I18n::new(self.locale);
         self.prop = Some(PropSection {
-            project: t.default_project_name().to_string(),
+            project: localized::default_project_name().to_string(),
             timestamp: String::new(),
             unk1: 241,
             reserved_u16: 0,
@@ -461,12 +463,11 @@ impl PropEditModal {
     }
 
     fn flush_pending(&mut self) {
-        let t = I18n::new(self.locale);
         if !self.dirty {
             return;
         }
         let Some(path) = self.file_path.as_deref() else {
-            self.error = Some(t.prop_no_file_for_edit().to_string());
+            self.error = Some(localized::prop_no_file_for_edit().to_string());
             return;
         };
         let Some(prop) = self.prop.as_ref() else {
@@ -482,19 +483,17 @@ impl PropEditModal {
     }
 
     fn load_prop_for_file(&self, file_path: &str) -> Result<Option<PropSection>, String> {
-        let t = I18n::new(self.locale);
         if let Some(pending) = prop_pending::get(file_path) {
             return Ok(Some(pending));
         }
 
-        let file = Nus3bankFile::open(file_path).map_err(|e| t.nus3bank_open_failed(e))?;
+        let file = Nus3bankFile::open(file_path).map_err(|e| localized::nus3bank_open_failed(e))?;
         Ok(file.prop)
     }
 
     fn reload_from_file(&mut self) {
-        let t = I18n::new(self.locale);
         let Some(path) = self.file_path.as_deref() else {
-            self.error = Some(t.prop_no_file_for_edit().to_string());
+            self.error = Some(localized::prop_no_file_for_edit().to_string());
             return;
         };
         self.error = None;
@@ -506,17 +505,17 @@ impl PropEditModal {
                 self.dirty = false;
                 self.selected_preset = None;
             }
-            Err(e) => self.error = Some(t.nus3bank_open_failed(e)),
+            Err(e) => self.error = Some(localized::nus3bank_open_failed(e)),
         }
     }
 }
 
-fn preset_label<'a>(idx: usize, preset: &'a DebugPreset, t: &I18n) -> &'a str {
+fn preset_label(idx: usize, preset: &DebugPreset) -> String {
     match idx {
-        0 => t.prop_preset_1(),
-        1 => t.prop_preset_2(),
-        2 => t.prop_preset_3(),
-        _ => preset.name.as_str(),
+        0 => localized::prop_preset_1(),
+        1 => localized::prop_preset_2(),
+        2 => localized::prop_preset_3(),
+        _ => preset.name.clone(),
     }
 }
 

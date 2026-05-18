@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::i18n::Locale;
+use crate::Locale;
 
 /// Enum to represent the column to search in
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
@@ -14,31 +14,27 @@ pub enum SearchColumn {
 }
 
 impl SearchColumn {
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> String {
         self.display_name_for_locale(Locale::En)
     }
 
-    pub fn display_name_for_locale(&self, loc: Locale) -> &'static str {
-        match (self, loc) {
-            (SearchColumn::All, Locale::En) => "All Columns",
-            (SearchColumn::All, Locale::Zh) => "全部列",
-            (SearchColumn::Name, Locale::En) => "Name",
-            (SearchColumn::Name, Locale::Zh) => "名称",
-            (SearchColumn::Id, _) => "ID",
-            (SearchColumn::Size, Locale::En) => "Size",
-            (SearchColumn::Size, Locale::Zh) => "大小",
-            (SearchColumn::Filename, Locale::En) => "Filename",
-            (SearchColumn::Filename, Locale::Zh) => "文件名",
-            (SearchColumn::Type, Locale::En) => "Type",
-            (SearchColumn::Type, Locale::Zh) => "类型",
+    pub fn display_name_for_locale(&self, loc: Locale) -> String {
+        let tag = loc.as_rust_i18n_locale();
+        match self {
+            SearchColumn::All => rust_i18n::t!("search_column_all", locale = tag).to_string(),
+            SearchColumn::Name => rust_i18n::t!("search_column_name", locale = tag).to_string(),
+            SearchColumn::Id => rust_i18n::t!("search_column_id", locale = tag).to_string(),
+            SearchColumn::Size => rust_i18n::t!("search_column_size", locale = tag).to_string(),
+            SearchColumn::Filename => rust_i18n::t!("search_column_filename", locale = tag).to_string(),
+            SearchColumn::Type => rust_i18n::t!("search_column_type", locale = tag).to_string(),
         }
     }
-    
+
     pub fn all_columns() -> Vec<SearchColumn> {
         vec![
             SearchColumn::All,
             SearchColumn::Name,
-            SearchColumn::Id, 
+            SearchColumn::Id,
             SearchColumn::Size,
             SearchColumn::Filename,
             SearchColumn::Type,

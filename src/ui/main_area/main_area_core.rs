@@ -121,7 +121,7 @@ pub struct MainArea {
 
     /// Current UI language (synced from [`crate::TemplateApp`] each frame).
     #[serde(skip)]
-    pub ui_locale: crate::i18n::Locale,
+    pub ui_locale: crate::Locale,
 
     #[serde(skip)]
     pub file_load_receiver: Option<mpsc::Receiver<FileLoadResult>>,
@@ -201,14 +201,14 @@ impl MainArea {
             // Initialize pending debug convert all wav
             pending_debug_convert_all_wav: false,
 
-            ui_locale: crate::i18n::Locale::En,
+            ui_locale: crate::Locale::En,
 
             file_load_receiver: None,
         }
     }
 
     /// Sync language from app for toasts / player actions without egui `Context`.
-    pub fn sync_locale(&mut self, locale: crate::i18n::Locale) {
+    pub fn sync_locale(&mut self, locale: crate::Locale) {
         self.ui_locale = locale;
     }
 

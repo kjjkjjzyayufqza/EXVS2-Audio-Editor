@@ -1,5 +1,5 @@
 use super::audio_state::{AudioState, LoopMode};
-use crate::i18n::I18n;
+use crate::localized;
 use egui::{Align, Color32, CornerRadius, Frame, Layout, RichText, Ui, widgets::Slider};
 use egui_phosphor::regular;
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,6 @@ impl AudioControls {
 
     /// Render the audio controls UI
     pub fn render(&mut self, ui: &mut Ui) {
-        let t = I18n::from_ctx(ui.ctx());
         // Get a clone of the audio state to avoid holding the mutex lock during UI rendering
         let state_copy = {
             let state = self.audio_state.lock().unwrap();
@@ -95,7 +94,7 @@ impl AudioControls {
                                                 .color(ui.visuals().weak_text_color()),
                                         );
                                         ui.label(
-                                            RichText::new(t.no_track_selected())
+                                            RichText::new(localized::no_track_selected())
                                                 .color(ui.visuals().weak_text_color())
                                                 .italics()
                                                 .size(14.0),
@@ -176,7 +175,7 @@ impl AudioControls {
                                 )
                                 .frame(false),
                             );
-                            if shuffle_btn.on_hover_text(t.shuffle_tooltip()).clicked() {
+                            if shuffle_btn.on_hover_text(localized::shuffle_tooltip()).clicked() {
                                 self.audio_state.lock().unwrap().toggle_shuffle();
                             }
 
@@ -188,7 +187,7 @@ impl AudioControls {
                                 )
                                 .frame(false),
                             );
-                            if prev_btn.on_hover_text(t.previous_track_tooltip()).clicked() {
+                            if prev_btn.on_hover_text(localized::previous_track_tooltip()).clicked() {
                                 self.audio_state.lock().unwrap().previous_track();
                             }
 
@@ -223,9 +222,9 @@ impl AudioControls {
                             );
                             if play_btn
                                 .on_hover_text(if state_copy.is_playing {
-                                    t.pause_tooltip()
+                                    localized::pause_tooltip()
                                 } else {
-                                    t.play_tooltip_player()
+                                    localized::play_tooltip_player()
                                 })
                                 .clicked()
                                 && has_audio
@@ -241,7 +240,7 @@ impl AudioControls {
                                 )
                                 .frame(false),
                             );
-                            if next_btn.on_hover_text(t.next_track_tooltip()).clicked() {
+                            if next_btn.on_hover_text(localized::next_track_tooltip()).clicked() {
                                 self.audio_state.lock().unwrap().next_track();
                             }
 
@@ -251,13 +250,13 @@ impl AudioControls {
                                     LoopMode::None => (
                                         regular::REPEAT,
                                         ui.visuals().widgets.noninteractive.fg_stroke.color,
-                                        t.loop_off_tooltip(),
+                                        localized::loop_off_tooltip(),
                                     ),
                                     LoopMode::All => {
-                                        (regular::REPEAT, accent_color, t.loop_all_tooltip())
+                                        (regular::REPEAT, accent_color, localized::loop_all_tooltip())
                                     }
                                     LoopMode::Single => {
-                                        (regular::REPEAT_ONCE, accent_color, t.loop_one_tooltip())
+                                        (regular::REPEAT_ONCE, accent_color, localized::loop_one_tooltip())
                                     }
                                 };
 
@@ -282,7 +281,7 @@ impl AudioControls {
                                 )
                                 .frame(false),
                             );
-                            if stop_btn.on_hover_text(t.stop_playback_tooltip()).clicked()
+                            if stop_btn.on_hover_text(localized::stop_playback_tooltip()).clicked()
                                 && has_audio
                             {
                                 self.audio_state.lock().unwrap().stop();

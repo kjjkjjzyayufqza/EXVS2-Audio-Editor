@@ -1,5 +1,5 @@
 use super::audio_file_info::AudioFileInfo;
-use crate::i18n::{I18n, Locale};
+use crate::{localized, Locale};
 use egui::{Context, ScrollArea, Ui, Window};
 use std::fs;
 use std::path::Path;
@@ -96,9 +96,8 @@ impl AddAudioModal {
         &mut self,
         file_path: &str,
         existing_audio_files: Option<Vec<AudioFileInfo>>,
-        locale: Locale,
+        _locale: Locale,
     ) {
-        let loc = I18n::new(locale);
         println!("Opening add audio modal with file: {}", file_path);
         
         self.existing_audio_files = existing_audio_files;
@@ -164,7 +163,7 @@ impl AddAudioModal {
             }
             Err(e) => {
                 println!("Failed to read audio file: {}", e);
-                self.error = Some(loc.failed_read_audio(&e));
+                self.error = Some(localized::failed_read_audio(&e));
                 self.file_data = None;
             }
         }
@@ -193,9 +192,7 @@ impl AddAudioModal {
         let available_rect = ctx.available_rect();
         let min_width = available_rect.width() * 0.5;
         let min_height = available_rect.height() * 0.5;
-
-        let t = I18n::from_ctx(ctx);
-        Window::new(t.add_new_audio_title())
+        Window::new(localized::add_new_audio_title())
             .min_width(min_width)
             .min_height(min_height)
             .resizable(true)
@@ -207,15 +204,14 @@ impl AddAudioModal {
 
     /// Render modal content
     fn render_content(&mut self, ui: &mut Ui) {
-        let t = I18n::from_ctx(ui.ctx());
         ui.vertical_centered(|ui| {
             ui.add_space(10.0);
-            ui.heading(t.add_new_audio_title());
+            ui.heading(localized::add_new_audio_title());
             ui.add_space(10.0);
         });
 
         if let Some(error) = &self.error {
-            ui.label(t.error_label());
+            ui.label(localized::error_label());
             ui.colored_label(egui::Color32::RED, error);
             ui.add_space(10.0);
             ui.separator();
@@ -226,14 +222,14 @@ impl AddAudioModal {
             ScrollArea::vertical().show(ui, |ui| {
                 // File information
                 ui.vertical_centered(|ui| {
-                    ui.heading(t.file_information());
+                    ui.heading(localized::file_information());
                     ui.add_space(10.0);
                 });
 
                 // Show file path
                 if let Some(file_path) = &self.settings.file_path {
                     ui.horizontal(|ui| {
-                        ui.label(t.selected_file_label());
+                        ui.label(localized::selected_file_label());
                         ui.label(file_path);
                     });
                 }
@@ -242,8 +238,8 @@ impl AddAudioModal {
 
                 // Duration (estimated or actual)
                 ui.horizontal(|ui| {
-                    ui.label(t.duration_label());
-                    ui.label(t.seconds_fmt(self.settings.estimated_duration));
+                    ui.label(localized::duration_label());
+                    ui.label(localized::seconds_fmt(self.settings.estimated_duration));
                 });
 
                 ui.add_space(20.0);
@@ -252,13 +248,13 @@ impl AddAudioModal {
 
                 // Audio metadata input fields
                 ui.vertical_centered(|ui| {
-                    ui.heading(t.audio_metadata());
+                    ui.heading(localized::audio_metadata());
                     ui.add_space(10.0);
                 });
 
                 // Name input
                 ui.horizontal(|ui| {
-                    ui.label(t.name_label());
+                    ui.label(localized::name_label());
                     ui.text_edit_singleline(&mut self.settings.name);
                 });
 
@@ -272,12 +268,12 @@ impl AddAudioModal {
                 };
 
                 if name_exists {
-                    ui.colored_label(egui::Color32::RED, t.name_exists_error());
+                    ui.colored_label(egui::Color32::RED, localized::name_exists_error());
                 }
 
                 // ID input
                 ui.horizontal(|ui| {
-                    ui.label(t.id_label());
+                    ui.label(localized::id_label());
                     ui.text_edit_singleline(&mut self.settings.id);
                 });
 
@@ -291,7 +287,7 @@ impl AddAudioModal {
                 };
 
                 if id_exists {
-                    ui.colored_label(egui::Color32::RED, t.id_exists_error());
+                    ui.colored_label(egui::Color32::RED, localized::id_exists_error());
                 }
 
                 ui.add_space(20.0);
@@ -303,7 +299,7 @@ impl AddAudioModal {
             // Control buttons
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(t.cancel()).clicked() {
+                    if ui.button(localized::cancel()).clicked() {
                         self.open = false;
                     }
 
@@ -329,7 +325,7 @@ impl AddAudioModal {
                                                self.settings.id.is_empty();
 
                     if ui
-                        .add_enabled(!has_validation_errors, egui::Button::new(t.confirm()))
+                        .add_enabled(!has_validation_errors, egui::Button::new(localized::confirm()))
                         .clicked()
                     {
                         self.confirmed = true;
@@ -339,7 +335,7 @@ impl AddAudioModal {
             });
         } else {
             // No file data
-            ui.label(t.no_audio_loaded());
+            ui.label(localized::no_audio_loaded());
 
             ui.add_space(20.0);
             ui.separator();
@@ -348,7 +344,7 @@ impl AddAudioModal {
             // Just show cancel button
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(t.cancel()).clicked() {
+                    if ui.button(localized::cancel()).clicked() {
                         self.open = false;
                     }
                 });
