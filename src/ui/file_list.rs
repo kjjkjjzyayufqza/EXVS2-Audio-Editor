@@ -186,7 +186,7 @@ impl FileList {
                             [available_width, 20.0],
                             egui::TextEdit::singleline(&mut self.search_query)
                                 .hint_text(localized::search_files_hint())
-                                .frame(false),
+                                .frame(egui::Frame::NONE),
                         );
 
                         if !self.search_query.is_empty() {

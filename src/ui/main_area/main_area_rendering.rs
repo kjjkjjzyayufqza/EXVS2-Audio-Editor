@@ -1,26 +1,27 @@
 use crate::localized;
-use egui::{Align, Align2, Color32, Context, Layout, RichText, Ui};
+use egui::{Align, Align2, Color32, Layout, RichText, Ui};
 use egui_phosphor::regular;
 
 use super::main_area_core::MainArea;
 
 impl MainArea {
     /// Display the main editing area
-    pub fn show(&mut self, ctx: &Context) {
-        self.poll_file_load(ctx);
+    pub fn show(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        self.poll_file_load(&ctx);
 
-        self.loop_settings_modal.show(ctx);
-        self.add_audio_modal.show(ctx);
-        self.confirm_modal.show(ctx);
-        self.grp_list_modal.show(ctx);
-        self.dton_tones_modal.show(ctx);
-        self.prop_edit_modal.show(ctx);
+        self.loop_settings_modal.show(&ctx);
+        self.add_audio_modal.show(&ctx);
+        self.confirm_modal.show(&ctx);
+        self.grp_list_modal.show(&ctx);
+        self.dton_tones_modal.show(&ctx);
+        self.prop_edit_modal.show(&ctx);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new()
-                .fill(ctx.style().visuals.window_fill) // 使用視窗背景色（深灰色）
+                .fill(ui.visuals().window_fill) // 使用視窗背景色（深灰色）
                 .inner_margin(egui::Margin::same(0)))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.render(ui);
             });
     }
@@ -217,7 +218,7 @@ impl MainArea {
         }
         
         // Calculate spacing from top
-        let available_rect = ui.ctx().available_rect();
+        let available_rect = ui.ctx().content_rect();
         let spacing = available_rect.height() * 0.08;
         let toast_offset = available_rect.height() * 0.06;
         

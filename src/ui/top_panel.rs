@@ -2,7 +2,7 @@ use crate::localized;
 use crate::Locale;
 use crate::ui::main_area::Nus3audioFileUtils;
 use crate::version_check;
-use egui::{Context, Id};
+use egui::{Context, Id, Ui};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
@@ -57,8 +57,9 @@ pub struct TopPanel;
 
 impl TopPanel {
     /// Display the top menu panel
-    pub fn show(ctx: &Context, mut app: Option<&mut crate::TemplateApp>) {
-        TopPanel::check_for_updates(ctx);
+    pub fn show(ui: &mut Ui, mut app: Option<&mut crate::TemplateApp>) {
+        let ctx = ui.ctx().clone();
+        TopPanel::check_for_updates(&ctx);
 
         // Show modal dialog if needed
         let mut should_close_modal = false;
@@ -77,7 +78,7 @@ impl TopPanel {
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
+                .show(&ctx, |ui| {
                     ui.label(&modal.message);
 
                     if modal.has_link {
@@ -99,7 +100,7 @@ impl TopPanel {
             }
         }
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        egui::Panel::top("top_panel").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 // Don't show Quit button in web environment
                 let is_web = cfg!(target_arch = "wasm32");
@@ -247,7 +248,7 @@ impl TopPanel {
 
                 ui.menu_button(localized::settings_menu(), |ui| {
                     if ui.button(localized::reset_layout()).clicked() {
-                        TopPanel::reset_layout(ctx);
+                        TopPanel::reset_layout(&ctx);
                         show_modal(localized::layout_reset_title(), localized::layout_reset_msg(), false);
                         ui.close();
                     }
@@ -366,9 +367,9 @@ impl TopPanel {
     /// Reset resizable panel layout to defaults
     fn reset_layout(ctx: &Context) {
         ctx.memory_mut(|mem| {
-            mem.data.remove::<egui::panel::PanelState>(Id::new("file_list_panel"));
+            mem.data.remove::<egui::PanelState>(Id::new("file_list_panel"));
             mem.data
-                .remove::<egui::panel::PanelState>(Id::new("audio_player_panel"));
+                .remove::<egui::PanelState>(Id::new("audio_player_panel"));
         });
         ctx.request_repaint();
     }

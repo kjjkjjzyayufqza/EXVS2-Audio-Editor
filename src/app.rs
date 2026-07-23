@@ -67,7 +67,8 @@ impl eframe::App for TemplateApp {
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         ctx.data_mut(|d| d.insert_temp(locale_ctx_id(), self.locale));
         sync_rust_i18n_locale(self.locale);
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(
@@ -83,25 +84,25 @@ impl eframe::App for TemplateApp {
         visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(27, 27, 27);
         ctx.set_visuals(visuals);
         // Display top menu panel
-        TopPanel::show(ctx, Some(self));
+        TopPanel::show(ui, Some(self));
 
         // Display audio player (if initialized)
         if let Some(audio_player) = &mut self.main_area.audio_player {
-            let action = audio_player.show(ctx);
+            let action = audio_player.show(ui);
             self.main_area.handle_audio_player_action(action);
             self.main_area.sync_audio_settings_from_player();
         }
 
-        let available_rect = ctx.available_rect();
+        let available_rect = ctx.content_rect();
         let side_panel_width = available_rect.width() * 0.20;
         let side_panel_min_width = available_rect.width() * 0.14;
 
         // First create the side panel with file list
-        egui::SidePanel::left("file_list_panel")
+        egui::Panel::left("file_list_panel")
             .resizable(true)
-            .min_width(side_panel_min_width)
-            .default_width(side_panel_width)
-            .show(ctx, |ui| {
+            .min_size(side_panel_min_width)
+            .default_size(side_panel_width)
+            .show(ui, |ui| {
                 // Display file list component
                 if self.file_list.show(ui) {
                     // If a file is selected, handle it here
@@ -114,6 +115,6 @@ impl eframe::App for TemplateApp {
             });
 
         // Display the main editing area
-        self.main_area.show(ctx);
+        self.main_area.show(ui);
     }
 }

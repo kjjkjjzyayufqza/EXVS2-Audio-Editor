@@ -107,7 +107,7 @@ impl PropEditModal {
         self.locale = crate::locale_from_ctx(ctx);
         let mut open = self.open;
         let was_open = open;
-        let available_rect = ctx.available_rect();
+        let available_rect = ctx.content_rect();
         let min_width = available_rect.width() * 0.7;
         let min_height = available_rect.height() * 0.7;
 

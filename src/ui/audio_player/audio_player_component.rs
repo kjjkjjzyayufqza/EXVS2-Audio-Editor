@@ -1,4 +1,4 @@
-use egui::{Context, Frame, Ui};
+use egui::{Frame, Ui};
 use nus3audio::Nus3audioFile;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -49,24 +49,24 @@ impl AudioPlayer {
 
     /// Show the audio player at the bottom of the screen
     /// Returns an action if a track transition is requested
-    pub fn show(&mut self, ctx: &Context) -> AudioPlayerAction {
+    pub fn show(&mut self, ui: &mut Ui) -> AudioPlayerAction {
         // Update playback position
         self.update_playback_position();
 
         // Handle track transitions (auto-play next, etc.)
         let action = self.check_for_transitions();
 
-        let available_rect = ctx.available_rect();
+        let available_rect = ui.ctx().content_rect();
         let panel_default_height = available_rect.height() * 0.20;
         let panel_min_height = available_rect.height() * 0.12;
 
         // Display audio player in a bottom panel with resizable height
-        egui::TopBottomPanel::bottom("audio_player_panel")
+        egui::Panel::bottom("audio_player_panel")
             .resizable(true)
-            .min_height(panel_min_height)
-            .default_height(panel_default_height)
-            .frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill))
-            .show(ctx, |ui| {
+            .min_size(panel_min_height)
+            .default_size(panel_default_height)
+            .frame(egui::Frame::new().fill(ui.visuals().panel_fill))
+            .show(ui, |ui| {
                 self.render(ui);
             });
             

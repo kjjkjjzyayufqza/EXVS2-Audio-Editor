@@ -157,7 +157,7 @@ impl LoopSettingsModal {
 
         if let Some(audio_info) = &self.audio_info {
             let title = localized::loop_settings_title(&audio_info.name);
-            let available_rect = ctx.available_rect();
+            let available_rect = ctx.content_rect();
             let min_width = available_rect.width() * 0.5;
             let min_height = available_rect.height() * 0.5;
 

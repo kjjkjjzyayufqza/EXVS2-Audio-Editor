@@ -52,7 +52,7 @@ impl ConfirmModal {
         if !self.open {
             return;
         }
-        let available_rect = ctx.available_rect();
+        let available_rect = ctx.content_rect();
         let min_width = available_rect.width() * 0.3;
         let min_height = available_rect.height() * 0.2;
 

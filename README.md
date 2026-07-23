@@ -118,7 +118,7 @@ Supported NUS3BANK features:
 ### Building from Source
 
 Prerequisites:
-- Rust 1.88 or newer
+- Rust 1.97 or newer
 - Cargo package manager
 
 ```bash

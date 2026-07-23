@@ -189,7 +189,7 @@ impl AddAudioModal {
         if !self.open {
             return;
         }
-        let available_rect = ctx.available_rect();
+        let available_rect = ctx.content_rect();
         let min_width = available_rect.width() * 0.5;
         let min_height = available_rect.height() * 0.5;
         Window::new(localized::add_new_audio_title())
