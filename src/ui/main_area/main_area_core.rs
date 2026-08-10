@@ -244,4 +244,15 @@ impl MainArea {
             self.audio_settings = state.settings();
         }
     }
+
+    /// Pause the bottom player so the replace modal preview can own the audio device.
+    pub fn pause_main_player_for_preview(&mut self) {
+        if let Some(audio_player) = &self.audio_player {
+            let audio_state = audio_player.get_audio_state();
+            let mut state = audio_state.lock().unwrap();
+            if state.is_playing {
+                state.toggle_play(); // pause
+            }
+        }
+    }
 }

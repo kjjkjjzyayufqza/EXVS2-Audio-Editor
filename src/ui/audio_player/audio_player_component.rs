@@ -57,8 +57,9 @@ impl AudioPlayer {
         let action = self.check_for_transitions();
 
         let available_rect = ui.ctx().content_rect();
-        let panel_default_height = available_rect.height() * 0.20;
-        let panel_min_height = available_rect.height() * 0.12;
+        // Room for track meta + sound wave + transport without vertical overflow
+        let panel_default_height = (available_rect.height() * 0.26).clamp(168.0, 280.0);
+        let panel_min_height = (available_rect.height() * 0.18).clamp(140.0, 220.0);
 
         // Display audio player in a bottom panel with resizable height
         egui::Panel::bottom("audio_player_panel")
@@ -113,14 +114,22 @@ impl AudioPlayer {
 
         // Determine which audio data to use (replacement or original)
         let playback_path = if let Some(replacement_data) = replacement_audio_data {
-            log::info!("Using replacement audio data for: {}", file_info.name);
+            println!(
+                "[PERF] Using in-memory REPLACEMENT for {}: {} bytes",
+                file_info.name,
+                replacement_data.len()
+            );
             let t_write = Instant::now();
             let path = crate::ui::main_area::ExportUtils::write_temp_audio_bytes(
                 file_info,
                 &replacement_data,
                 "replacement",
             )?;
-            println!("[PERF] write_temp_audio_bytes (replacement): {}ms", t_write.elapsed().as_millis());
+            println!(
+                "[PERF] write_temp_audio_bytes (replacement): {}ms -> {}",
+                t_write.elapsed().as_millis(),
+                path
+            );
             path
         } else if let Some(added_data) = pending_added_data {
             log::info!("Using pending added audio data for: {}", file_info.name);
@@ -220,25 +229,86 @@ impl AudioPlayer {
         state.set_audio(audio);
         println!("[PERF] state.set_audio (incl. backend.play_audio): {}ms", t_set.elapsed().as_millis());
 
-        // Reset loop settings to defaults
-        state.set_loop_points(None, None, false);
+        // Queue sound-wave peaks on a background thread (never block UI / first paint)
+        state.load_waveform_async(&playback_path);
+        println!("[PERF] load_waveform_async queued for {}", playback_path);
 
-        // Apply audio-specific loop settings if present
-        let key = format!("{}:{}", file_info.name, file_info.id);
-        if let Ok(settings_map) = crate::ui::main_area::ReplaceUtils::get_loop_settings() {
-            if let Some(&(start, end, use_custom)) = settings_map.get(&key) {
-                // Apply loop settings for this audio
-                log::info!(
-                    "Applied custom loop settings for {}: start={:?}, end={:?}, use_custom={}",
-                    file_info.name,
-                    start,
-                    end,
-                    use_custom
-                );
-                state.set_loop_points(start, end, use_custom);
-            } else {
-                log::info!("No custom loop settings found for: {}", file_info.name);
+        // Reset loop settings, then resolve:
+        // 1) user replace modal settings (if any)
+        // 2) else vgmstream metadata / smpl via `vgmstream-cli -m`
+        state.set_loop_points(None, None, false, false);
+        let duration = state.total_duration.max(0.0);
+        let mut applied_loop = false;
+
+        if let Some(loop_cfg) =
+            crate::ui::main_area::ReplaceUtils::lookup_loop_settings(file_info)
+        {
+            println!(
+                "Applied stored loop settings for {}: start={:?} end={:?} custom={} enable={}",
+                file_info.name,
+                loop_cfg.loop_start,
+                loop_cfg.loop_end,
+                loop_cfg.use_custom_loop,
+                loop_cfg.enable_loop
+            );
+            if loop_cfg.enable_loop {
+                let (start, end, use_custom) = if loop_cfg.use_custom_loop {
+                    (
+                        Some(loop_cfg.loop_start.unwrap_or(0.0)),
+                        Some(loop_cfg.loop_end.unwrap_or(duration).max(0.0)),
+                        true,
+                    )
+                } else {
+                    (Some(0.0), Some(duration), false)
+                };
+                state.set_loop_points(start, end, use_custom, true);
+                applied_loop = true;
             }
+        }
+
+        if !applied_loop {
+            // Prefer querying the playback WAV (smpl from vgmstream -L after replace),
+            // then fall back to original container with stream index.
+            let from_playback = crate::ui::main_area::ExportUtils::query_vgmstream_loop_info(
+                &playback_path,
+                None,
+            );
+
+            let from_source = if from_playback.is_none() {
+                let stream_idx = crate::ui::main_area::ExportUtils::vgmstream_stream_index_for(
+                    file_info,
+                    file_path,
+                );
+                crate::ui::main_area::ExportUtils::query_vgmstream_loop_info(
+                    file_path,
+                    stream_idx.as_deref(),
+                )
+            } else {
+                None
+            };
+
+            if let Some(lp) = from_playback.or(from_source) {
+                let start = lp.loop_start_secs.clamp(0.0, duration.max(lp.loop_end_secs));
+                let end = lp
+                    .loop_end_secs
+                    .min(if duration > 0.0 {
+                        duration
+                    } else {
+                        lp.loop_end_secs
+                    })
+                    .max(start + 0.01);
+                println!(
+                    "[LOOP] Applying vgmstream/smpl loop on main player: {:.3}s .. {:.3}s ({})",
+                    start, end, file_info.name
+                );
+                // Treat embedded loop as A-B style marks (always show on wave)
+                state.set_loop_points(Some(start), Some(end), true, true);
+                applied_loop = true;
+            }
+        }
+
+        if !applied_loop {
+            println!("No loop points for: {} (stored settings + vgmstream)", file_info.name);
         }
 
         // Check if backend could determine the real duration

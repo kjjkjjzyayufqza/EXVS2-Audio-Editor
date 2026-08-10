@@ -179,6 +179,46 @@ pub fn download_latest() -> String {
 }
 
 #[inline]
+pub fn whats_new_heading() -> String {
+    rust_i18n::t!("whats_new_heading").to_string()
+}
+
+#[inline]
+pub fn no_changelog_available() -> String {
+    rust_i18n::t!("no_changelog_available").to_string()
+}
+
+#[inline]
+pub fn view_full_history() -> String {
+    rust_i18n::t!("view_full_history").to_string()
+}
+
+#[inline]
+pub fn update_history_title() -> String {
+    rust_i18n::t!("update_history_title").to_string()
+}
+
+#[inline]
+pub fn update_history_menu() -> String {
+    rust_i18n::t!("update_history_menu").to_string()
+}
+
+#[inline]
+pub fn update_history_subtitle(current: &str, latest: &str) -> String {
+    rust_i18n::t!(
+        "update_history_subtitle",
+        current = current,
+        latest = latest
+    )
+    .to_string()
+}
+
+#[inline]
+pub fn latest_badge() -> String {
+    rust_i18n::t!("latest_badge").to_string()
+}
+
+#[inline]
 pub fn save_success_export_title() -> String {
     rust_i18n::t!("save_success_export_title").to_string()
 }
@@ -1281,6 +1321,51 @@ pub fn loop_parenthetical_range(start: &str, end: &str) -> String {
 #[inline]
 pub fn loop_parenthetical_full() -> String {
     rust_i18n::t!("loop_parenthetical_full").to_string()
+}
+
+#[inline]
+pub fn waveform_preview_unavailable() -> String {
+    rust_i18n::t!("waveform_preview_unavailable").to_string()
+}
+
+#[inline]
+pub fn waveform_drag_loop_hint() -> String {
+    rust_i18n::t!("waveform_drag_loop_hint").to_string()
+}
+
+#[inline]
+pub fn waveform_loading() -> String {
+    rust_i18n::t!("waveform_loading").to_string()
+}
+
+#[inline]
+pub fn preview_unavailable() -> String {
+    rust_i18n::t!("preview_unavailable").to_string()
+}
+
+#[inline]
+pub fn loop_set_from_playhead() -> String {
+    rust_i18n::t!("loop_set_from_playhead").to_string()
+}
+
+#[inline]
+pub fn loop_set_start_hint() -> String {
+    rust_i18n::t!("loop_set_start_hint").to_string()
+}
+
+#[inline]
+pub fn loop_set_end_hint() -> String {
+    rust_i18n::t!("loop_set_end_hint").to_string()
+}
+
+#[inline]
+pub fn loop_preview_ab() -> String {
+    rust_i18n::t!("loop_preview_ab").to_string()
+}
+
+#[inline]
+pub fn gain_live_preview_hint() -> String {
+    rust_i18n::t!("gain_live_preview_hint").to_string()
 }
 
 #[inline]

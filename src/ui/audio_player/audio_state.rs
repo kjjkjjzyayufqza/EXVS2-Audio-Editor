@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
 
 use super::audio_backend::{AudioBackend, PlatformAudioBackend};
 use crate::ui::main_area::AudioFileInfo;
+use crate::ui::waveform::{DEFAULT_PEAK_BINS, WaveformPeaks};
 
 /// Audio loop mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,6 +81,10 @@ pub struct AudioState {
     /// Whether to use custom loop points
     #[serde(skip)]
     pub use_custom_loop: bool,
+
+    /// Track-level loop enabled (full track or A-B); drives wave marks after replace
+    #[serde(skip)]
+    pub enable_loop: bool,
     
     /// Current loop mode
     pub loop_mode: LoopMode,
@@ -106,9 +112,33 @@ pub struct AudioState {
     #[serde(skip)]
     pub is_seeking: bool,
 
+    /// Last time (Instant) a live scrub seek was pushed to the backend (throttle)
+    #[serde(skip)]
+    last_scrub_seek: Option<std::time::Instant>,
+
+    /// Last position actually sent to the backend during scrub
+    #[serde(skip)]
+    last_scrub_pos: f32,
+
     /// Audio backend for playback
     #[serde(skip)]
     audio_backend: Option<Box<dyn AudioBackend>>,
+
+    /// Cached sound-wave peaks for the current track
+    #[serde(skip)]
+    pub waveform: Option<WaveformPeaks>,
+
+    /// True while background peak extraction is running
+    #[serde(skip)]
+    pub waveform_loading: bool,
+
+    /// Monotonic generation to drop stale async waveform results
+    #[serde(skip)]
+    waveform_generation: u64,
+
+    /// Receiver for background waveform jobs
+    #[serde(skip)]
+    waveform_rx: Option<Receiver<(u64, WaveformPeaks)>>,
 }
 
 // Manual Debug implementation since dyn AudioBackend doesn't implement Debug
@@ -122,6 +152,8 @@ impl std::fmt::Debug for AudioState {
             .field("volume", &self.volume)
             .field("is_muted", &self.is_muted)
             .field("previous_volume", &self.previous_volume)
+            .field("waveform", &self.waveform.as_ref().map(|w| w.peaks.len()))
+            .field("waveform_loading", &self.waveform_loading)
             .field("audio_backend", &"<audio backend>".to_string())
             .finish()
     }
@@ -142,6 +174,7 @@ impl Clone for AudioState {
             loop_start: self.loop_start,
             loop_end: self.loop_end,
             use_custom_loop: self.use_custom_loop,
+            enable_loop: self.enable_loop,
             loop_mode: self.loop_mode,
             shuffle: self.shuffle,
             playlist: self.playlist.clone(),
@@ -149,7 +182,13 @@ impl Clone for AudioState {
             should_play_next: self.should_play_next,
             should_play_previous: self.should_play_previous,
             is_seeking: self.is_seeking,
+            last_scrub_seek: None,
+            last_scrub_pos: self.last_scrub_pos,
             audio_backend: None,
+            waveform: self.waveform.clone(),
+            waveform_loading: self.waveform_loading,
+            waveform_generation: self.waveform_generation,
+            waveform_rx: None,
         }
     }
 }
@@ -194,6 +233,7 @@ impl Default for AudioState {
             loop_start: None,
             loop_end: None,
             use_custom_loop: false,
+            enable_loop: false,
             loop_mode: LoopMode::None,
             shuffle: false,
             playlist: Vec::new(),
@@ -201,7 +241,13 @@ impl Default for AudioState {
             should_play_next: false,
             should_play_previous: false,
             is_seeking: false,
+            last_scrub_seek: None,
+            last_scrub_pos: f32::NAN,
             audio_backend: None,
+            waveform: None,
+            waveform_loading: false,
+            waveform_generation: 0,
+            waveform_rx: None,
         };
         
         // Try to initialize the audio backend
@@ -348,6 +394,12 @@ impl AudioState {
             }
         }
 
+        // Waveform is loaded asynchronously after path is known
+        self.waveform = None;
+        self.waveform_loading = false;
+        self.waveform_rx = None;
+        self.waveform_generation = self.waveform_generation.wrapping_add(1);
+
         // Set new audio file
         self.current_audio = Some(audio);
         
@@ -369,24 +421,133 @@ impl AudioState {
         self.stop();
         self.cleanup_temp_audio();
         self.current_audio = None;
+        self.waveform = None;
+        self.waveform_loading = false;
+        self.waveform_rx = None;
+        self.waveform_generation = self.waveform_generation.wrapping_add(1);
+    }
+
+    /// Start background peak extraction so playback UI never blocks on large WAVs.
+    pub fn load_waveform_async(&mut self, path: &str) {
+        self.waveform = None;
+        self.waveform_generation = self.waveform_generation.wrapping_add(1);
+        let wave_gen = self.waveform_generation;
+        self.waveform_loading = true;
+        self.waveform_rx = Some(WaveformPeaks::spawn_load(
+            PathBuf::from(path),
+            DEFAULT_PEAK_BINS,
+            wave_gen,
+        ));
+        log::info!("Queued async waveform load (gen={wave_gen}) for {path}");
+    }
+
+    /// Poll async waveform job; call once per frame while loading.
+    pub fn poll_waveform(&mut self) -> bool {
+        let Some(rx) = self.waveform_rx.as_ref() else {
+            return false;
+        };
+        match rx.try_recv() {
+            Ok((wave_gen, peaks)) => {
+                if wave_gen != self.waveform_generation {
+                    // Stale result from a previous track
+                    return false;
+                }
+                self.waveform_rx = None;
+                self.waveform_loading = false;
+                if peaks.is_empty() {
+                    println!("[PERF] async waveform empty (gen={wave_gen})");
+                    self.waveform = None;
+                } else {
+                    println!(
+                        "[PERF] async waveform ready: {} bins, {:.2}s (gen={})",
+                        peaks.peaks.len(),
+                        peaks.duration_secs,
+                        wave_gen
+                    );
+                    // If backend duration was wrong/0, prefer peaks duration for loop UI
+                    if self.total_duration <= 0.0 && peaks.duration_secs > 0.0 {
+                        self.total_duration = peaks.duration_secs;
+                    }
+                    // Refresh full-track loop end once we know duration
+                    if self.enable_loop && !self.use_custom_loop && peaks.duration_secs > 0.0 {
+                        self.loop_start = Some(0.0);
+                        self.loop_end = Some(peaks.duration_secs);
+                    }
+                    self.waveform = Some(peaks);
+                }
+                true
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                println!("[PERF] async waveform worker disconnected (gen={})", self.waveform_generation);
+                self.waveform_rx = None;
+                self.waveform_loading = false;
+                false
+            }
+        }
     }
     
     /// Set the current position in seconds
     pub fn set_position(&mut self, position: f32) {
-        self.current_position = position.clamp(0.0, self.total_duration);
-        
-        // Only apply position change to the backend if we're playing
-        // This avoids unnecessary reloading when paused
-        if self.is_playing {
-            if let Some(backend) = &mut self.audio_backend {
-                if let Err(e) = backend.set_position(self.current_position) {
-                    log::error!("Failed to set audio position: {}", e);
-                }
+        let max = if self.total_duration > 0.0 {
+            self.total_duration
+        } else {
+            position.max(0.0)
+        };
+        self.current_position = if self.total_duration > 0.0 {
+            position.clamp(0.0, max)
+        } else {
+            position.max(0.0)
+        };
+        self.last_scrub_pos = self.current_position;
+        self.last_scrub_seek = Some(std::time::Instant::now());
+
+        // Apply to backend when playing (or always if loaded — seek while paused is fine)
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_position(self.current_position) {
+                log::error!("Failed to set audio position: {}", e);
             }
         }
-        
-        // If not playing, the position will be applied when play is resumed
-        // via toggle_play which will use the current_position value
+    }
+
+    /// Drag scrub on the waveform: update UI playhead; throttle backend seeks hard.
+    /// Holding the mouse still must NOT flood the audio device.
+    pub fn scrub_to(&mut self, position: f32) {
+        let max = if self.total_duration > 0.0 {
+            self.total_duration
+        } else {
+            f32::MAX
+        };
+        let t = position.clamp(0.0, max);
+        self.is_seeking = true;
+        self.current_position = t;
+
+        // Skip backend if position barely moved
+        if self.last_scrub_pos.is_finite() && (t - self.last_scrub_pos).abs() < 0.04 {
+            return;
+        }
+
+        // At most ~12 seeks/sec while dragging
+        const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(80);
+        if let Some(prev) = self.last_scrub_seek {
+            if prev.elapsed() < MIN_INTERVAL {
+                return;
+            }
+        }
+
+        self.last_scrub_pos = t;
+        self.last_scrub_seek = Some(std::time::Instant::now());
+        if let Some(backend) = &mut self.audio_backend {
+            if let Err(e) = backend.set_position(t) {
+                log::error!("Failed to scrub audio position: {e}");
+            }
+        }
+    }
+
+    /// Click or drag-release: one definitive seek, end scrubbing.
+    pub fn commit_seek(&mut self, position: f32) {
+        self.is_seeking = false;
+        self.set_position(position);
     }
     
     /// Set the volume (0.0 - 1.0)
@@ -443,17 +604,51 @@ impl AudioState {
     
     /// Update playback state from backend
     pub fn update_from_backend(&mut self) {
+        // Pick up waveform results without blocking
+        let _ = self.poll_waveform();
+
         if let Some(backend) = &mut self.audio_backend {
             if self.is_playing && !self.is_seeking {
                 self.current_position = backend.get_position();
+
+                // Track loop region (full-file or A-B) from replace / loop settings
+                if self.enable_loop && self.total_duration > 0.0 {
+                    let start = if self.use_custom_loop {
+                        self.loop_start.unwrap_or(0.0)
+                    } else {
+                        0.0
+                    }
+                    .clamp(0.0, self.total_duration);
+                    let end = if self.use_custom_loop {
+                        self.loop_end.unwrap_or(self.total_duration)
+                    } else {
+                        self.total_duration
+                    }
+                    .clamp(0.0, self.total_duration);
+                    let end = end.max(start + 0.05);
+                    if self.current_position >= end - 0.03 {
+                        self.current_position = start;
+                        if let Err(e) = backend.set_position(start) {
+                            log::error!("Failed to seek to loop start: {e}");
+                        }
+                        // Do not fall through to track-end handling this frame
+                        self.is_playing = backend.is_playing();
+                        return;
+                    }
+                }
 
                 // Check if track has finished
                 if self.current_position >= self.total_duration - 0.1 && self.total_duration > 0.0 {
                     match self.loop_mode {
                         LoopMode::Single => {
-                            // Restart current track
-                            self.current_position = 0.0;
-                            if let Err(e) = backend.set_position(0.0) {
+                            // Restart current track (or loop region start)
+                            let restart = if self.enable_loop && self.use_custom_loop {
+                                self.loop_start.unwrap_or(0.0)
+                            } else {
+                                0.0
+                            };
+                            self.current_position = restart;
+                            if let Err(e) = backend.set_position(restart) {
                                 log::error!("Failed to restart track: {}", e);
                             }
                         }
@@ -497,11 +692,48 @@ impl AudioState {
         }
     }
     
-    /// Set loop points
-    pub fn set_loop_points(&mut self, start: Option<f32>, end: Option<f32>, use_custom: bool) {
+    /// Set loop points / enable flag for the current track
+    pub fn set_loop_points(
+        &mut self,
+        start: Option<f32>,
+        end: Option<f32>,
+        use_custom: bool,
+        enable_loop: bool,
+    ) {
         self.loop_start = start;
         self.loop_end = end;
         self.use_custom_loop = use_custom;
+        self.enable_loop = enable_loop;
+    }
+
+    /// Resolved loop range for UI (None if looping disabled for this track).
+    pub fn display_loop_range(&self) -> Option<(f32, f32)> {
+        if !self.enable_loop {
+            return None;
+        }
+        let duration = self.total_duration.max(
+            self.waveform
+                .as_ref()
+                .map(|w| w.duration_secs)
+                .unwrap_or(0.0),
+        );
+        if duration <= 0.0 {
+            return None;
+        }
+        let start = if self.use_custom_loop {
+            self.loop_start.unwrap_or(0.0)
+        } else {
+            0.0
+        }
+        .clamp(0.0, duration);
+        let end = if self.use_custom_loop {
+            self.loop_end.unwrap_or(duration)
+        } else {
+            duration
+        }
+        .clamp(0.0, duration)
+        .max(start);
+        Some((start, end))
     }
 
     /// Toggle loop mode

@@ -96,12 +96,13 @@ impl NativeAudioBackend {
         }
     }
 
+    /// Convert a linear amplitude scale to dB for kira.
+    /// Values > 1.0 are allowed (e.g. replace-preview gain boosts).
     fn volume_to_decibels(volume: f32) -> f32 {
-        let clamped = volume.clamp(0.0, 1.0);
-        if clamped <= 0.0 {
+        if volume <= 0.0 {
             -80.0
         } else {
-            20.0 * clamped.log10()
+            20.0 * volume.max(1e-6).log10()
         }
     }
 }
@@ -126,8 +127,6 @@ impl AudioBackend for NativeAudioBackend {
             return Err("Audio backend not initialized".to_string());
         }
 
-        let manager = self.manager.as_mut().ok_or_else(|| "Audio manager not available".to_string())?;
-
         if let Some(mut handle) = self.sound_handle.take() {
             handle.stop(Tween::default());
         }
@@ -137,14 +136,32 @@ impl AudioBackend for NativeAudioBackend {
             .map_err(|e| format!("Failed to load audio file: {}", e))?;
         println!("[PERF] kira StaticSoundData::from_file: {}ms", t_load.elapsed().as_millis());
 
+        // Prefer kira's decoded duration. Header estimation often fails (extensible WAV,
+        // late data chunk, non-WAV) and then get_position() clamps to 0 forever.
+        let kira_duration = sound_data.duration().as_secs_f64() as f32;
+        let header_duration = self.estimate_wav_duration_from_file(file_path);
+        self.duration = if kira_duration.is_finite() && kira_duration > 0.0 {
+            kira_duration
+        } else if header_duration > 0.0 {
+            header_duration
+        } else {
+            0.0
+        };
+        println!(
+            "[PERF] duration: kira={:.3}s header={:.3}s -> using={:.3}s",
+            kira_duration, header_duration, self.duration
+        );
+
+        let manager = self
+            .manager
+            .as_mut()
+            .ok_or_else(|| "Audio manager not available".to_string())?;
+
         let t_play = Instant::now();
-        let mut handle = manager.play(sound_data)
+        let mut handle = manager
+            .play(sound_data)
             .map_err(|e| format!("Failed to start audio playback: {}", e))?;
         println!("[PERF] kira manager.play: {}ms", t_play.elapsed().as_millis());
-
-        let t_dur = Instant::now();
-        self.duration = self.estimate_wav_duration_from_file(file_path);
-        println!("[PERF] kira estimate_wav_duration: {}ms (duration={:.2}s)", t_dur.elapsed().as_millis(), self.duration);
 
         self.current_position = 0.0;
         self.playback_start_time = Some(Instant::now());
@@ -210,7 +227,11 @@ impl AudioBackend for NativeAudioBackend {
             return Err("No audio loaded".to_string());
         }
 
-        let clamped_position = position_secs.clamp(0.0, self.duration);
+        let clamped_position = if self.duration > 0.0 {
+            position_secs.clamp(0.0, self.duration)
+        } else {
+            position_secs.max(0.0)
+        };
         self.current_position = clamped_position;
         self.playback_start_position = clamped_position;
 
@@ -226,9 +247,11 @@ impl AudioBackend for NativeAudioBackend {
     }
 
     fn set_volume(&mut self, volume: f32) -> Result<(), String> {
-        self.volume = volume;
+        // Allow >1.0 so preview gain (dB boost) can be heard; hard-cap for safety.
+        self.volume = volume.clamp(0.0, 32.0);
         if let Some(handle) = &mut self.sound_handle {
             let volume_db = Self::volume_to_decibels(self.volume);
+            // Instant response for live gain tweaking in the replace modal
             let _ = handle.set_volume(volume_db, Tween::default());
         }
         Ok(())
@@ -248,15 +271,20 @@ impl AudioBackend for NativeAudioBackend {
 
     fn get_position(&self) -> f32 {
         if !self.is_playing {
-            return self.current_position;
+            return self.current_position.max(0.0);
         }
 
         if let Some(start_time) = self.playback_start_time {
             let elapsed = start_time.elapsed().as_secs_f32();
             let position = self.playback_start_position + elapsed;
-            position.min(self.duration)
+            // Only clamp when we have a known positive duration
+            if self.duration > 0.0 {
+                position.clamp(0.0, self.duration)
+            } else {
+                position.max(0.0)
+            }
         } else {
-            self.current_position
+            self.current_position.max(0.0)
         }
     }
 

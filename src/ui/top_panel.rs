@@ -1,7 +1,7 @@
 use crate::localized;
 use crate::Locale;
 use crate::ui::main_area::Nus3audioFileUtils;
-use crate::version_check;
+use crate::ui::update_log;
 use egui::{Context, Id, Ui};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -59,7 +59,8 @@ impl TopPanel {
     /// Display the top menu panel
     pub fn show(ui: &mut Ui, mut app: Option<&mut crate::TemplateApp>) {
         let ctx = ui.ctx().clone();
-        TopPanel::check_for_updates(&ctx);
+        // Version notice + history windows
+        update_log::show_windows(&ctx);
 
         // Show modal dialog if needed
         let mut should_close_modal = false;
@@ -274,64 +275,13 @@ impl TopPanel {
                             false,
                         );
                     }
+                    if ui.button(localized::update_history_menu()).clicked() {
+                        update_log::open_history();
+                        ui.close();
+                    }
                 });
             });
         });
-    }
-
-    /// Check for updates and show notification if a new version is available
-    fn check_for_updates(_ctx: &Context) {
-        // Only show update notice once per session
-        static SHOWN_UPDATE_NOTICE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
-
-        // If we've already shown the notice, don't do anything else
-        if let Ok(shown) = SHOWN_UPDATE_NOTICE.lock() {
-            if *shown {
-                return;
-            }
-        }
-
-        // Get version check result
-        let version_result = version_check::get_version_check_result();
-
-        // Try to lock the mutex
-        let check_result = match version_result.try_lock() {
-            Ok(guard) => {
-                // Check if we have a result
-                if let Some(result) = &*guard {
-                    // Check if there's a new version
-                    if result.has_new_version {
-                        let current = result.current_version.clone();
-                        let latest = result.latest_version.clone();
-                        let url = result.download_url.clone();
-
-                        // Return the data we need
-                        Some((current, latest, url))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            Err(_) => None, // Couldn't lock the mutex
-        };
-
-        // Show the update notice if we have the data
-        if let Some((current_version, latest_version, download_url)) = check_result {
-            show_modal_with_link(
-                localized::update_available_title(),
-                &localized::update_available_body(&current_version, &latest_version),
-                localized::download_latest(),
-                &download_url,
-                false,
-            );
-
-            // Mark that we've shown the notice
-            if let Ok(mut shown) = SHOWN_UPDATE_NOTICE.lock() {
-                *shown = true;
-            }
-        }
     }
 
     /// Save current audio files to a new file (supports both NUS3AUDIO and NUS3BANK)

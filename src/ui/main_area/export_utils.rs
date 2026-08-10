@@ -26,6 +26,13 @@ static WAV_CONVERSION_CACHE: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(||
 /// Utility functions for exporting audio files
 pub struct ExportUtils;
 
+/// Loop range reported by vgmstream (`-m`), including smpl-backed WAVs.
+#[derive(Clone, Copy, Debug)]
+pub struct VgmstreamLoopInfo {
+    pub loop_start_secs: f32,
+    pub loop_end_secs: f32,
+}
+
 impl ExportUtils {
     /// Pre-populate the indexing pattern cache from already-loaded track IDs.
     /// Call this after `Nus3audioFile::open()` so the first `play` does not re-read the file.
@@ -170,6 +177,191 @@ impl ExportUtils {
         if let Ok(mut cache) = WAV_CONVERSION_CACHE.lock() {
             cache.retain(|key, _| !key.starts_with(file_path));
             println!("[PERF] WAV cache cleared for: {}", file_path);
+        }
+    }
+
+    /// Query loop points via vgmstream-cli metadata (`-m`).
+    /// For NUS3AUDIO/NUS3BANK multi-stream files pass `stream_index` (1-based string).
+    /// For a standalone WAV produced with `-L` (smpl), pass `stream_index = None`.
+    pub fn query_vgmstream_loop_info(
+        input_path: &str,
+        stream_index: Option<&str>,
+    ) -> Option<VgmstreamLoopInfo> {
+        let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
+        if !vgmstream_path.exists() {
+            println!("[LOOP] vgmstream-cli not found at {:?}", vgmstream_path);
+            return None;
+        }
+
+        let mut command = Command::new(&vgmstream_path);
+        #[cfg(windows)]
+        {
+            use winapi::um::winbase::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let mut args: Vec<String> = vec!["-m".to_string()];
+        if let Some(s) = stream_index {
+            args.push("-s".to_string());
+            args.push(s.to_string());
+        }
+        args.push(input_path.to_string());
+
+        let t0 = Instant::now();
+        let output = match command.args(&args).output() {
+            Ok(o) => o,
+            Err(e) => {
+                println!("[LOOP] vgmstream -m failed to run: {e}");
+                return None;
+            }
+        };
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let text = format!("{stdout}\n{stderr}");
+        println!(
+            "[LOOP] vgmstream -m ({}ms) index={:?} path={}",
+            t0.elapsed().as_millis(),
+            stream_index,
+            input_path
+        );
+
+        let info = Self::parse_vgmstream_metadata_loop(&text);
+        if let Some(ref lp) = info {
+            println!(
+                "[LOOP] vgmstream loop: {:.3}s .. {:.3}s",
+                lp.loop_start_secs, lp.loop_end_secs
+            );
+        } else {
+            println!("[LOOP] vgmstream: no loop points in metadata");
+        }
+        info
+    }
+
+    /// Parse `vgmstream-cli -m` text for loop start/end (seconds).
+    fn parse_vgmstream_metadata_loop(text: &str) -> Option<VgmstreamLoopInfo> {
+        let lower = text.to_ascii_lowercase();
+        // Explicitly disabled
+        if lower.contains("looping: disabled") || lower.contains("looping: no") {
+            // Still try parse in case start/end are present for display
+        }
+
+        let mut start_secs: Option<f32> = None;
+        let mut end_secs: Option<f32> = None;
+        let mut sample_rate: Option<f32> = None;
+        let mut start_samples: Option<f32> = None;
+        let mut end_samples: Option<f32> = None;
+
+        for line in text.lines() {
+            let line_trim = line.trim();
+            let line_l = line_trim.to_ascii_lowercase();
+
+            if line_l.starts_with("sample rate:") {
+                // "sample rate: 48000 Hz"
+                if let Some(num) = line_trim
+                    .split(':')
+                    .nth(1)
+                    .and_then(|s| s.split_whitespace().next())
+                    .and_then(|s| s.parse::<f32>().ok())
+                {
+                    sample_rate = Some(num);
+                }
+            }
+
+            // Prefer seconds in parentheses: "loop start: 123 samples (0:01.234 seconds)"
+            if line_l.contains("loop start") {
+                if let Some(s) = Self::parse_seconds_from_vgm_line(line_trim) {
+                    start_secs = Some(s);
+                }
+                if let Some(n) = Self::parse_samples_from_vgm_line(line_trim) {
+                    start_samples = Some(n);
+                }
+            }
+            if line_l.contains("loop end") {
+                if let Some(s) = Self::parse_seconds_from_vgm_line(line_trim) {
+                    end_secs = Some(s);
+                }
+                if let Some(n) = Self::parse_samples_from_vgm_line(line_trim) {
+                    end_samples = Some(n);
+                }
+            }
+        }
+
+        // Fall back to samples / sample_rate
+        if start_secs.is_none() {
+            if let (Some(sr), Some(n)) = (sample_rate, start_samples) {
+                if sr > 0.0 {
+                    start_secs = Some(n / sr);
+                }
+            }
+        }
+        if end_secs.is_none() {
+            if let (Some(sr), Some(n)) = (sample_rate, end_samples) {
+                if sr > 0.0 {
+                    end_secs = Some(n / sr);
+                }
+            }
+        }
+
+        let start = start_secs?;
+        let end = end_secs?;
+        if end <= start {
+            return None;
+        }
+        // Ignore trivial full-zero
+        if end < 0.01 {
+            return None;
+        }
+        Some(VgmstreamLoopInfo {
+            loop_start_secs: start.max(0.0),
+            loop_end_secs: end,
+        })
+    }
+
+    /// Extract "N.NNN seconds" from a vgmstream metadata line.
+    fn parse_seconds_from_vgm_line(line: &str) -> Option<f32> {
+        // Patterns:
+        //   (0:01.234 seconds)
+        //   (1.234 seconds)
+        //   1.234 seconds
+        let lower = line.to_ascii_lowercase();
+        if let Some(idx) = lower.find("seconds") {
+            let before = &line[..idx];
+            // Take last token-ish number before "seconds", may be "0:01.234" or "1.234"
+            let token = before
+                .rsplit(|c: char| c == '(' || c == ' ' || c == '\t')
+                .find(|t| !t.is_empty() && t.chars().any(|c| c.is_ascii_digit()))?;
+            if let Some(colon) = token.find(':') {
+                // m:ss.xxx
+                let mins: f32 = token[..colon].parse().ok()?;
+                let secs: f32 = token[colon + 1..].trim_end_matches(')').parse().ok()?;
+                return Some(mins * 60.0 + secs);
+            }
+            return token.trim_end_matches(')').parse::<f32>().ok();
+        }
+        None
+    }
+
+    fn parse_samples_from_vgm_line(line: &str) -> Option<f32> {
+        // "loop start: 12345 samples (...)"
+        let lower = line.to_ascii_lowercase();
+        let idx = lower.find("samples")?;
+        let before = &line[..idx];
+        let token = before
+            .rsplit(|c: char| c == ':' || c == ' ' || c == '\t')
+            .find(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit()))?;
+        token.parse::<f32>().ok()
+    }
+
+    /// Resolve stream index string for vgmstream `-s` (NUS3AUDIO / NUS3BANK).
+    pub fn vgmstream_stream_index_for(
+        audio_file_info: &AudioFileInfo,
+        original_file_path: &str,
+    ) -> Option<String> {
+        if audio_file_info.is_nus3bank {
+            let id_num = audio_file_info.id.parse::<u32>().ok()?;
+            Some((id_num + 1).to_string())
+        } else {
+            Self::get_vgmstream_index(&audio_file_info.id, original_file_path).ok()
         }
     }
 
@@ -678,5 +870,33 @@ mod tests {
             INDEXING_PATTERN_CACHE.lock().unwrap().get("test_one_idx.nus3audio").copied(),
             Some(false)
         );
+    }
+
+    #[test]
+    fn parse_loop_seconds_from_vgmstream_m() {
+        let text = r#"
+sample rate: 48000 Hz
+channels: 2
+looping: Yes
+loop start: 48000 samples (0:01.000 seconds)
+loop end: 144000 samples (0:03.000 seconds)
+stream total samples: 200000 (0:04.166 seconds)
+"#;
+        let info = ExportUtils::parse_vgmstream_metadata_loop(text).expect("loop");
+        assert!((info.loop_start_secs - 1.0).abs() < 0.01);
+        assert!((info.loop_end_secs - 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn parse_loop_from_samples_only() {
+        let text = r#"
+sample rate: 44100 Hz
+looping: yes
+loop start: 44100 samples
+loop end: 88200 samples
+"#;
+        let info = ExportUtils::parse_vgmstream_metadata_loop(text).expect("loop");
+        assert!((info.loop_start_secs - 1.0).abs() < 0.01);
+        assert!((info.loop_end_secs - 2.0).abs() < 0.01);
     }
 }

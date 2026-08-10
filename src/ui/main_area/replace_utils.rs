@@ -25,9 +25,19 @@ use super::prop_edit_modal::apply_prop_to_file;
 static REPLACED_AUDIO_DATA: Lazy<Mutex<HashMap<String, Vec<u8>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Per-track loop flags persisted for main-player visualization / A-B playback.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StoredLoopSettings {
+    pub loop_start: Option<f32>,
+    pub loop_end: Option<f32>,
+    pub use_custom_loop: bool,
+    /// When true, track is looped (full file if !use_custom_loop, else A-B range).
+    pub enable_loop: bool,
+}
+
 // Store loop settings in a static HashMap.
-// Key format: "file_path:audio_name"; value: (loop_start, loop_end, use_custom_loop).
-static LOOP_SETTINGS: Lazy<Mutex<HashMap<String, (Option<f32>, Option<f32>, bool)>>> =
+// Key format: "name:id" (and aliases). Value includes enable_loop so main UI can show marks.
+static LOOP_SETTINGS: Lazy<Mutex<HashMap<String, StoredLoopSettings>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 // Store user-selected replacement file paths in a static HashMap.
@@ -144,37 +154,64 @@ impl ReplaceUtils {
         audio_file_info: &AudioFileInfo,
         replacement_file_path: &str,
     ) -> Result<AudioFileInfo, String> {
-        // Load the replacement file data
+        // Load the replacement file data (must succeed before any temp cleanup)
         let replacement_data = match fs::read(replacement_file_path) {
             Ok(data) => data,
-            Err(e) => return Err(format!("Failed to read replacement file: {}", e)),
+            Err(e) => {
+                return Err(format!(
+                    "Failed to read replacement file '{}': {}",
+                    replacement_file_path, e
+                ))
+            }
         };
+
+        if replacement_data.is_empty() {
+            return Err(format!(
+                "Replacement file is empty: {}",
+                replacement_file_path
+            ));
+        }
 
         // Create the key based on file type
         let key = if audio_file_info.is_nus3bank {
             // For NUS3BANK, use hex_id:name format
-            format!("{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
+            format!(
+                "{}:{}",
+                audio_file_info
+                    .hex_id
+                    .as_ref()
+                    .unwrap_or(&audio_file_info.id),
+                audio_file_info.name
+            )
         } else {
             // For NUS3AUDIO, use original name:id format
             format!("{}:{}", audio_file_info.name, audio_file_info.id)
         };
 
-        // Store the replacement data in our static HashMap
+        let is_wav = replacement_data.len() >= 12
+            && &replacement_data[0..4] == b"RIFF"
+            && &replacement_data[8..12] == b"WAVE";
+        println!(
+            "Storing replacement bytes: key={} size={} bytes wav={} from={}",
+            key,
+            replacement_data.len(),
+            is_wav,
+            replacement_file_path
+        );
+
+        // Store the replacement data in our static HashMap (source of truth for playback)
         {
             let map_result = REPLACED_AUDIO_DATA.lock();
             if let Ok(mut map) = map_result {
                 map.insert(key.clone(), replacement_data.clone());
+            } else {
+                return Err("Failed to lock replacement data map".to_string());
             }
         }
 
-        // Store the replacement file path
-        {
-            let path_buf = Path::new(replacement_file_path).to_path_buf();
-            let map_result = REPLACEMENT_FILE_PATHS.lock();
-            if let Ok(mut map) = map_result {
-                map.insert(key, path_buf);
-            }
-        }
+        // Do NOT overwrite REPLACEMENT_FILE_PATHS with processed temp paths.
+        // That map must keep the user-selected source file (mp3/wav/…).
+        // Processed temps are deleted after read; pointing at them breaks re-process / batch.
 
         // Get the filename for the new AudioFileInfo
         let filename = Path::new(replacement_file_path)
@@ -189,7 +226,11 @@ impl ReplaceUtils {
             id: audio_file_info.id.clone(),
             size: replacement_data.len(),
             filename,
-            file_type: audio_file_info.file_type.clone(),
+            file_type: if is_wav {
+                "WAV".to_string()
+            } else {
+                audio_file_info.file_type.clone()
+            },
             hex_id: audio_file_info.hex_id.clone(),
             is_nus3bank: audio_file_info.is_nus3bank,
         };
@@ -211,10 +252,25 @@ impl ReplaceUtils {
             return Err(format!("vgmstream-cli not found at {:?}", vgmstream_path));
         }
 
-        // Create a temporary output file path
+        // Unique temp path per invocation — same source filename used for many tracks
+        // would otherwise overwrite a shared looping_*.wav and race with cleanup.
         let temp_dir = std::env::temp_dir();
         let stem = file_path.file_stem().unwrap_or_default().to_string_lossy();
-        let temp_filename = format!("looping_{}.wav", stem);
+        let stem_safe: String = stem
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .take(48)
+            .collect();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let temp_filename = format!(
+            "looping_{}_{}_{}.wav",
+            stem_safe,
+            std::process::id(),
+            stamp
+        );
         let temp_output_path = temp_dir.join(&temp_filename);
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
@@ -435,10 +491,9 @@ impl ReplaceUtils {
             map.insert(map_key.clone(), replacement_path);
         }
 
-        // Initialize with empty loop settings
-        let empty_loop_settings = (None, None, false);
+        // Initialize with empty loop settings (overwritten on Confirm)
         if let Ok(mut settings) = LOOP_SETTINGS.lock() {
-            settings.insert(map_key, empty_loop_settings);
+            settings.insert(map_key, StoredLoopSettings::default());
         }
 
         // 创建一个新的AudioFileInfo，但保持原始的name和id
@@ -506,28 +561,17 @@ impl ReplaceUtils {
 
         println!("Using actual file path: {:?}", actual_file_path);
 
-        // Apply gain first if requested
-        let gain_processed_path = if gain_db.abs() > std::f32::EPSILON {
-            match Self::apply_wav_gain(&actual_file_path, gain_db) {
-                Ok(p) => {
-                    println!("Successfully applied gain to file: {:?}", p);
-                    p
-                },
-                Err(e) => {
-                    println!(
-                        "Warning: Failed to apply gain: {}. Using original file.",
-                        e
-                    );
-                    actual_file_path.clone()
-                }
-            }
-        } else {
-            actual_file_path.clone()
-        };
+        if !actual_file_path.exists() {
+            return Err(format!(
+                "Replacement source file does not exist: {:?}",
+                actual_file_path
+            ));
+        }
 
-        // Then process the gain-adjusted file with vgmstream to add loop points
-        let final_path = match Self::process_with_vgmstream(
-            &gain_processed_path,
+        // Always decode through vgmstream first so MP3/IDSP/etc become a stable WAV,
+        // then apply gain on the WAV (hound cannot open mp3).
+        let decoded_path = match Self::process_with_vgmstream(
+            &actual_file_path,
             loop_start,
             loop_end,
             use_custom_loop,
@@ -536,28 +580,68 @@ impl ReplaceUtils {
             Ok(path) => path,
             Err(e) => {
                 println!("Warning: Failed to process file with vgmstream: {}", e);
-                println!("Falling back to gain-processed file");
-                // Fall back to the gain-processed file if vgmstream processing fails
-                gain_processed_path.clone()
+                // Fall back to the raw source only if it is already a WAV
+                let lower = actual_file_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if lower == "wav" {
+                    actual_file_path.clone()
+                } else {
+                    return Err(format!(
+                        "Failed to decode replacement with vgmstream: {e}"
+                    ));
+                }
             }
         };
 
-        // Replace the audio file with the final processed file (gain-applied then vgmstream-processed) in memory only
-        let result = Self::replace_in_memory(audio_file_info, final_path.to_str().unwrap());
+        let gain_processed_path = if gain_db.abs() > std::f32::EPSILON {
+            match Self::apply_wav_gain(&decoded_path, gain_db) {
+                Ok(p) => {
+                    println!("Successfully applied gain to file: {:?}", p);
+                    p
+                }
+                Err(e) => {
+                    println!(
+                        "Warning: Failed to apply gain: {}. Using decoded file.",
+                        e
+                    );
+                    decoded_path.clone()
+                }
+            }
+        } else {
+            decoded_path.clone()
+        };
 
-        // Store loop settings
-        if let Ok(mut settings) = LOOP_SETTINGS.lock() {
-            settings.insert(key, (loop_start, loop_end, use_custom_loop));
+        // Read into memory BEFORE deleting temps
+        let result =
+            Self::replace_in_memory(audio_file_info, gain_processed_path.to_str().unwrap());
+
+        if let Ok(ref info) = result {
+            println!(
+                "Replacement stored for {} ({}): size={} filename={}",
+                info.name, info.id, info.size, info.filename
+            );
         }
 
-        // Clean up temporary files if they are different from the original
-        if gain_processed_path != actual_file_path && gain_processed_path.exists() {
-            let _ = fs::remove_file(&gain_processed_path);
-            println!("Cleaned up temporary gain file: {:?}", gain_processed_path);
-        }
-        if final_path != gain_processed_path && final_path != actual_file_path && final_path.exists() {
-            let _ = fs::remove_file(&final_path);
-            println!("Cleaned up temporary vgmstream file: {:?}", final_path);
+        // Store loop settings under every key variant used by play / replace lookups
+        Self::store_loop_settings(
+            audio_file_info,
+            loop_start,
+            loop_end,
+            use_custom_loop,
+            enable_loop,
+        );
+
+        // Clean up temporary files only (never the user-selected source)
+        for p in [&decoded_path, &gain_processed_path] {
+            if p.as_path() != actual_file_path.as_path() && p.exists() {
+                match fs::remove_file(p) {
+                    Ok(()) => println!("Cleaned up temporary file: {:?}", p),
+                    Err(e) => println!("Warning: failed to clean temp {:?}: {}", p, e),
+                }
+            }
         }
 
         result
@@ -565,36 +649,32 @@ impl ReplaceUtils {
 
     /// Get the replacement audio data for a specific audio file (unified for both file types)
     pub fn get_replacement_data_unified(audio_file_info: &AudioFileInfo) -> Option<Vec<u8>> {
-        // Create the correct key based on file type
-        let key = if audio_file_info.is_nus3bank {
-            // For NUS3BANK, use hex_id:name format
-            format!("{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
-        } else {
-            // For NUS3AUDIO, use original name:id format
-            format!("{}:{}", audio_file_info.name, audio_file_info.id)
-        };
-        
-        // Also try with ADD_ prefix for NUS3BANK files (for newly added audio)
-        let add_key = if audio_file_info.is_nus3bank {
-            format!("ADD_{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
-        } else {
-            key.clone()
-        };
-        
-        println!("Looking for replacement data with key: {} or {}", key, add_key);
+        let keys = Self::loop_setting_keys(audio_file_info);
+
+        println!(
+            "Looking for replacement data with keys: {:?}",
+            keys
+        );
         if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
-            // Try regular key first, then ADD_ prefixed key
-            let result = map.get(&key).cloned().or_else(|| map.get(&add_key).cloned());
-            if result.is_some() {
-                println!("Found replacement data for audio: {}", audio_file_info.name);
-            } else {
-                println!("No replacement data found for keys: {} or {}", key, add_key);
-                println!("Available keys in replacement data:");
-                for stored_key in map.keys() {
-                    println!("  - {}", stored_key);
+            for key in &keys {
+                if let Some(data) = map.get(key) {
+                    println!(
+                        "Found replacement data for {} via key {} ({} bytes)",
+                        audio_file_info.name,
+                        key,
+                        data.len()
+                    );
+                    return Some(data.clone());
                 }
             }
-            result
+            println!(
+                "No replacement data found for {}. Available keys:",
+                audio_file_info.name
+            );
+            for stored_key in map.keys() {
+                println!("  - {}", stored_key);
+            }
+            None
         } else {
             println!("Failed to access replacement data map");
             None
@@ -631,7 +711,7 @@ impl ReplaceUtils {
 
     /// Get a reference to the loop settings map
     pub fn get_loop_settings() -> Result<
-        std::sync::MutexGuard<'static, HashMap<String, (Option<f32>, Option<f32>, bool)>>,
+        std::sync::MutexGuard<'static, HashMap<String, StoredLoopSettings>>,
         String,
     > {
         if let Ok(settings) = LOOP_SETTINGS.lock() {
@@ -639,6 +719,73 @@ impl ReplaceUtils {
         } else {
             Err("Failed to access loop settings".to_string())
         }
+    }
+
+    /// Candidate keys for loop settings (must match play + replace path conventions).
+    fn loop_setting_keys(info: &AudioFileInfo) -> Vec<String> {
+        let mut keys = vec![
+            format!("{}:{}", info.name, info.id),
+            format!("{}:{}", info.id, info.name),
+        ];
+        if let Some(hex) = info.hex_id.as_ref() {
+            keys.push(format!("{}:{}", hex, info.name));
+            keys.push(format!("{}:{}", info.name, hex));
+            keys.push(format!("ADD_{}:{}", hex, info.name));
+        }
+        keys
+    }
+
+    /// Persist loop settings for an audio entry (all key aliases).
+    pub fn store_loop_settings(
+        info: &AudioFileInfo,
+        loop_start: Option<f32>,
+        loop_end: Option<f32>,
+        use_custom_loop: bool,
+        enable_loop: bool,
+    ) {
+        if let Ok(mut settings) = LOOP_SETTINGS.lock() {
+            let value = StoredLoopSettings {
+                loop_start,
+                loop_end,
+                use_custom_loop,
+                enable_loop,
+            };
+            for key in Self::loop_setting_keys(info) {
+                println!(
+                    "Store loop settings key={} start={:?} end={:?} custom={} enable={}",
+                    key, loop_start, loop_end, use_custom_loop, enable_loop
+                );
+                settings.insert(key, value);
+            }
+        }
+    }
+
+    /// Lookup loop settings using every known key form.
+    pub fn lookup_loop_settings(info: &AudioFileInfo) -> Option<StoredLoopSettings> {
+        let settings = LOOP_SETTINGS.lock().ok()?;
+        for key in Self::loop_setting_keys(info) {
+            if let Some(&v) = settings.get(&key) {
+                println!(
+                    "Found loop settings for {} via key {}: start={:?} end={:?} custom={} enable={}",
+                    info.name, key, v.loop_start, v.loop_end, v.use_custom_loop, v.enable_loop
+                );
+                return Some(v);
+            }
+        }
+        // Fallback: scan by name / id
+        for (k, v) in settings.iter() {
+            if k.contains(&info.name)
+                && (k.contains(&info.id)
+                    || info.hex_id.as_ref().is_some_and(|h| k.contains(h)))
+            {
+                println!(
+                    "Found loop settings for {} via fuzzy key {}: custom={} enable={}",
+                    info.name, k, v.use_custom_loop, v.enable_loop
+                );
+                return Some(*v);
+            }
+        }
+        None
     }
 
     /// Clear all replacement data from memory (unified for both file types)

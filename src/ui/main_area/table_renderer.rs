@@ -310,52 +310,66 @@ impl TableRenderer {
                             .map(|current| current == key)
                             .unwrap_or(false);
 
-                        let row_cursor = ui.available_rect_before_wrap().min;
-                        let row_paint_rect =
-                            Rect::from_min_size(row_cursor, Vec2::new(row_full_width, row_height));
-
-                        // Striped background
-                        if striped && row_index % 2 == 1 {
-                            ui.painter().rect_filled(
-                                row_paint_rect,
-                                CornerRadius::ZERO,
-                                ui.visuals().faint_bg_color,
-                            );
-                        }
-
-                        if is_now_playing {
-                            ui.painter().rect_filled(
-                                row_paint_rect,
-                                CornerRadius::ZERO,
-                                now_playing_bg,
-                            );
-                        }
-
-                        // Highlight selected row
-                        if is_selected {
-                            ui.painter().rect_filled(
-                                row_paint_rect,
-                                CornerRadius::ZERO,
-                                ui.visuals().selection.bg_fill,
-                            );
-                        }
-
-                        if is_now_playing {
-                            let border_w = 2.5_f32;
-                            let border_color = ui.visuals().selection.stroke.color;
-                            ui.painter().rect_stroke(
-                                row_paint_rect.shrink(border_w * 0.5),
-                                CornerRadius::same(4),
-                                Stroke::new(border_w, border_color),
-                                StrokeKind::Inside,
-                            );
-                        }
-
                         // Row selection is checkbox-only (`persistent_selected`); do not steal clicks from cells.
-                        {
-                            let mut checked = is_persist_selected;
-                            let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_width_checkbox, row_height));
-                            ui.scope_builder(egui::UiBuilder::new().max_rect(cell_rect).layout(Layout::centered_and_justified(Direction::LeftToRight)), |ui| {
+                        // Allocate first cell *before* painting so Y is correct during fast scroll
+                        // (painting from available_rect_before_wrap caused a flashing wrong-position frame).
+                        let mut checked = is_persist_selected;
+                        let (_id, first_cell_rect) =
+                            ui.allocate_space(Vec2::new(col_width_checkbox, row_height));
+
+                        let row_paint_rect = Rect::from_min_size(
+                            egui::pos2(first_cell_rect.min.x, first_cell_rect.min.y),
+                            Vec2::new(row_full_width, row_height),
+                        );
+                        let clip = ui.clip_rect();
+                        let row_visible = row_paint_rect.intersects(clip)
+                            && row_paint_rect.height() > 0.0
+                            && (row_paint_rect.height() - row_height).abs() < 2.0;
+
+                        if row_visible {
+                            // Striped background
+                            if striped && row_index % 2 == 1 {
+                                ui.painter().rect_filled(
+                                    row_paint_rect,
+                                    CornerRadius::ZERO,
+                                    ui.visuals().faint_bg_color,
+                                );
+                            }
+
+                            if is_now_playing {
+                                ui.painter().rect_filled(
+                                    row_paint_rect,
+                                    CornerRadius::ZERO,
+                                    now_playing_bg,
+                                );
+                            }
+
+                            // Highlight selected row
+                            if is_selected {
+                                ui.painter().rect_filled(
+                                    row_paint_rect,
+                                    CornerRadius::ZERO,
+                                    ui.visuals().selection.bg_fill,
+                                );
+                            }
+
+                            // Now-playing outline: use stable blue accent (not selection stroke, which can look red)
+                            if is_now_playing {
+                                let border_w = 2.0_f32;
+                                ui.painter().rect_stroke(
+                                    row_paint_rect.shrink(border_w * 0.5),
+                                    CornerRadius::same(4),
+                                    Stroke::new(border_w, now_playing_accent),
+                                    StrokeKind::Inside,
+                                );
+                            }
+                        }
+
+                        ui.scope_builder(
+                            egui::UiBuilder::new()
+                                .max_rect(first_cell_rect)
+                                .layout(Layout::centered_and_justified(Direction::LeftToRight)),
+                            |ui| {
                                 let resp = ui.add(egui::Checkbox::new(&mut checked, ""));
                                 if resp.changed() {
                                     if checked {
@@ -364,8 +378,8 @@ impl TableRenderer {
                                         persistent_selected.remove(&key);
                                     }
                                 }
-                            });
-                        }
+                            },
+                        );
 
                         // Column 1: Name - with text clipping
                         ui.scope(|ui| {

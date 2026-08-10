@@ -3,6 +3,8 @@ mod top_panel;
 mod file_list;
 pub mod main_area;  // Make this public
 pub mod audio_player; // Audio player module
+pub mod waveform; // Sound-wave visualization
+pub mod update_log; // Version update notice + history
 
 pub use top_panel::TopPanel;
 pub use file_list::FileList;
