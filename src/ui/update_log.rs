@@ -92,14 +92,20 @@ pub fn show_windows(ctx: &Context) {
     let mut notice_actions = NoticeActions::default();
     let mut history_actions = HistoryActions::default();
 
+    let screen_center = ctx.content_rect().center();
+
     if show_notice {
         let mut open = true;
         Window::new(localized::update_available_title())
+            .id(egui::Id::new("update_notice_modal"))
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
+            .movable(true)
             .default_width(420.0)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .min_width(360.0)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(screen_center)
             .show(ctx, |ui| {
                 notice_actions = render_update_notice(ui, &payload);
             });
@@ -111,12 +117,16 @@ pub fn show_windows(ctx: &Context) {
     if show_history {
         let mut open = true;
         Window::new(localized::update_history_title())
+            .id(egui::Id::new("update_history_modal"))
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
+            .movable(true)
             .default_width(480.0)
             .default_height(420.0)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .min_width(400.0)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(screen_center)
             .show(ctx, |ui| {
                 history_actions = render_history(ui, &payload);
             });

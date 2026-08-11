@@ -709,18 +709,6 @@ impl ReplaceUtils {
         }
     }
 
-    /// Get a reference to the loop settings map
-    pub fn get_loop_settings() -> Result<
-        std::sync::MutexGuard<'static, HashMap<String, StoredLoopSettings>>,
-        String,
-    > {
-        if let Ok(settings) = LOOP_SETTINGS.lock() {
-            Ok(settings)
-        } else {
-            Err("Failed to access loop settings".to_string())
-        }
-    }
-
     /// Candidate keys for loop settings (must match play + replace path conventions).
     fn loop_setting_keys(info: &AudioFileInfo) -> Vec<String> {
         let mut keys = vec![

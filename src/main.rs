@@ -218,12 +218,13 @@ fn main() -> eframe::Result {
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
+    // Window / taskbar icon (runtime). EXE file icon is embedded separately via
+    // build.rs + assets/favicon.ico (winres).
+    let app_icon =
+        eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png"))
+            .expect("Failed to load app icon from assets/icon-256.png");
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_icon(
-            // NOTE: Adding an icon is optional
-            eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
-                .expect("Failed to load icon"),
-        ),
+        viewport: egui::ViewportBuilder::default().with_icon(app_icon),
         ..Default::default()
     };
     eframe::run_native(

@@ -53,34 +53,46 @@ impl ConfirmModal {
             return;
         }
         let available_rect = ctx.content_rect();
-        let min_width = available_rect.width() * 0.3;
-        let min_height = available_rect.height() * 0.2;
+        let min_width = (available_rect.width() * 0.3).clamp(320.0, 560.0);
+        let min_height = (available_rect.height() * 0.15).clamp(140.0, 280.0);
 
+        // Do NOT use .anchor() — anchoring makes the window immovable.
         Window::new(&self.title)
+            .id(egui::Id::new("confirm_modal"))
             .min_width(min_width)
             .min_height(min_height)
-            .resizable(false)
+            .default_width(min_width)
+            .resizable(true)
+            .movable(true)
             .collapsible(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(available_rect.center())
             .show(ctx, |ui| {
+                ui.set_min_width(min_width - 24.0);
                 ui.vertical_centered(|ui| {
                     ui.add_space(10.0);
                     ui.label(&self.message);
                     ui.add_space(20.0);
-                    
+
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Confirm button - red warning color
-                            if ui.add(Button::new(
-                                RichText::new(localized::confirm())
-                                    .color(Color32::from_rgb(255, 255, 255))
-                            ).fill(Color32::from_rgb(220, 50, 50))).clicked() {
+                            if ui
+                                .add(
+                                    Button::new(
+                                        RichText::new(localized::confirm())
+                                            .color(Color32::from_rgb(255, 255, 255)),
+                                    )
+                                    .fill(Color32::from_rgb(220, 50, 50)),
+                                )
+                                .clicked()
+                            {
                                 self.confirmed = true;
                                 self.open = false;
                             }
-                            
+
                             ui.add_space(10.0);
-                            
+
                             // Cancel button
                             if ui.button(localized::cancel()).clicked() {
                                 self.cancelled = true;

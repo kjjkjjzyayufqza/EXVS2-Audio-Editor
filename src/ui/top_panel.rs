@@ -13,9 +13,8 @@ struct ModalInfo {
     title: String,
     message: String,
     is_error: bool,
-    has_link: bool,
-    link_text: String,
-    link_url: String,
+    /// Optional clickable links shown under the message (label, url)
+    links: Vec<(String, String)>,
 }
 
 // Using Lazy and Mutex for thread-safe access to modal info
@@ -28,17 +27,14 @@ fn show_modal(title: impl AsRef<str>, message: impl AsRef<str>, is_error: bool) 
         modal.title = title.as_ref().to_string();
         modal.message = message.as_ref().to_string();
         modal.is_error = is_error;
-        modal.has_link = false;
-        modal.link_text = String::new();
-        modal.link_url = String::new();
+        modal.links.clear();
     }
 }
 
-fn show_modal_with_link(
+fn show_modal_with_links(
     title: impl AsRef<str>,
     message: impl AsRef<str>,
-    link_text: impl AsRef<str>,
-    link_url: impl AsRef<str>,
+    links: Vec<(String, String)>,
     is_error: bool,
 ) {
     if let Ok(mut modal) = MODAL_INFO.lock() {
@@ -46,9 +42,7 @@ fn show_modal_with_link(
         modal.title = title.as_ref().to_string();
         modal.message = message.as_ref().to_string();
         modal.is_error = is_error;
-        modal.has_link = true;
-        modal.link_text = link_text.as_ref().to_string();
-        modal.link_url = link_url.as_ref().to_string();
+        modal.links = links;
     }
 }
 
@@ -75,22 +69,45 @@ impl TopPanel {
         };
 
         if let Some(modal) = modal_data {
+            // Fixed id keeps drag position across different modal titles.
+            // Do NOT use .anchor() — it makes the window immovable.
+            let screen_center = ctx.content_rect().center();
             egui::Window::new(&modal.title)
+                .id(Id::new("top_panel_modal"))
                 .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .resizable(true)
+                .movable(true)
+                .default_width(440.0)
+                .min_width(400.0)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(screen_center)
                 .show(&ctx, |ui| {
-                    ui.label(&modal.message);
+                    ui.set_min_width(380.0);
+                    ui.label(egui::RichText::new(&modal.message).size(14.0));
 
-                    if modal.has_link {
-                        ui.hyperlink_to(&modal.link_text, &modal.link_url);
+                    if !modal.links.is_empty() {
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                        for (link_text, link_url) in &modal.links {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{link_text}:"));
+                                ui.hyperlink_to(link_url.as_str(), link_url.as_str());
+                            });
+                        }
                     }
 
-                    ui.add_space(8.0);
-
-                    if ui.button(localized::ok()).clicked() {
-                        should_close_modal = true;
-                    }
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.button(localized::ok()).clicked() {
+                                    should_close_modal = true;
+                                }
+                            },
+                        );
+                    });
                 });
         }
 
@@ -267,11 +284,20 @@ impl TopPanel {
 
                 ui.menu_button(localized::help_menu(), |ui| {
                     if ui.button(localized::about()).clicked() {
-                        show_modal_with_link(
+                        show_modal_with_links(
                             localized::about_title(),
                             &localized::about_body(env!("CARGO_PKG_VERSION")),
-                            localized::source_link_label(),
-                            "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor",
+                            vec![
+                                (
+                                    localized::source_link_label(),
+                                    "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor"
+                                        .to_string(),
+                                ),
+                                (
+                                    localized::buy_me_a_coffee_label(),
+                                    "https://www.buymeacoffee.com/kjjkjjzyayx".to_string(),
+                                ),
+                            ],
                             false,
                         );
                     }

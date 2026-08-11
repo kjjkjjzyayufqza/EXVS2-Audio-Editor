@@ -112,11 +112,15 @@ impl PropEditModal {
         let min_height = available_rect.height() * 0.7;
 
         Window::new(localized::edit_prop_title())
+            .id(egui::Id::new("prop_edit_modal"))
             .open(&mut open)
             .min_width(min_width)
             .min_height(min_height)
             .resizable(true)
+            .movable(true)
             .collapsible(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(available_rect.center())
             .show(ctx, |ui| {
                 self.render(ui);
             });

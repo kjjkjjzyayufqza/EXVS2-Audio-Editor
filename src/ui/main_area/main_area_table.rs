@@ -129,6 +129,14 @@ impl MainArea {
 
         ui.add_space(8.0);
 
+        // Keep player queue aligned with the live table (search + sort order).
+        if let Some(player) = self.audio_player.as_ref() {
+            let state = player.get_audio_state();
+            if let Ok(mut state) = state.lock() {
+                state.sync_playlist_preserving_current(filtered_audio_files.clone());
+            }
+        }
+
         let now_playing_key = self.audio_player.as_ref().and_then(|player| {
             let state = player.get_audio_state();
             let state = state.lock().unwrap();
@@ -1092,113 +1100,122 @@ impl MainArea {
             AudioPlayerAction::PlayPrevious => {
                 self.play_previous_track();
             }
+            AudioPlayerAction::PlaylistEnded => {
+                self.add_toast(localized::playlist_ended(), Color32::from_rgb(220, 180, 80));
+            }
         }
     }
 
     fn play_next_track(&mut self) {
-        let (next_index, playlist) = {
-            let player = match self.audio_player.as_ref() {
-                Some(p) => p,
-                None => return,
+        // Always re-sync to current table order (search + sort) before advancing.
+        let visible = self.filtered_audio_files();
+        let decision: Result<(usize, AudioFileInfo), String> = {
+            let Some(player) = self.audio_player.as_ref() else {
+                return;
             };
             let state = player.get_audio_state();
-            let state = state.lock().unwrap();
-            
-            if state.playlist.is_empty() {
-                return;
-            }
+            let mut state = state.lock().unwrap();
+            state.sync_playlist_preserving_current(visible);
 
-            let current_index = state.current_track_index.unwrap_or(0);
-            let next_index = if state.shuffle {
-                // Simple random next track (excluding current if possible)
-                if state.playlist.len() > 1 {
-                    let mut idx = rand::random_range(0..state.playlist.len());
-                    while idx == current_index {
-                        idx = rand::random_range(0..state.playlist.len());
-                    }
-                    idx
-                } else {
-                    0
-                }
+            if state.playlist.is_empty() {
+                Err(localized::no_tracks_in_queue())
             } else {
-                // Play tracks in order by ID (playlist is already sorted)
-                let next = current_index + 1;
-                if next >= state.playlist.len() {
-                    // At the end of playlist
-                    match state.loop_mode {
-                        LoopMode::All => 0, // Loop back to first track
-                        LoopMode::None => {
-                            // In None mode, stop at the end when manually clicking next
-                            return;
-                        }
-                        LoopMode::Single => {
-                            // In Single mode, stay on current track when manually clicking next
-                            return;
-                        }
-                    }
+                let next_index = if state.shuffle {
+                    state.take_shuffle_next_index()
                 } else {
-                    next
+                    match state.current_track_index {
+                        Some(current_index) => {
+                            let next = current_index + 1;
+                            if next < state.playlist.len() {
+                                Some(next)
+                            } else {
+                                match state.loop_mode {
+                                    // Manual next wraps on All; Single does not trap the user.
+                                    LoopMode::All => Some(0),
+                                    LoopMode::None | LoopMode::Single => None,
+                                }
+                            }
+                        }
+                        // Current track filtered out of the list — jump to first visible
+                        None => Some(0),
+                    }
+                };
+
+                match next_index {
+                    Some(idx) if idx < state.playlist.len() => {
+                        Ok((idx, state.playlist[idx].clone()))
+                    }
+                    _ => Err(localized::playlist_ended()),
                 }
-            };
-            
-            (next_index, state.playlist.clone())
+            }
         };
 
-        let next_track = &playlist[next_index];
-        let file_path = self.selected_file.clone();
-        if let Some(path) = file_path {
-            if let Some(player) = &mut self.audio_player {
-                if let Ok(()) = player.load_audio(next_track, &path) {
-                    let state = player.get_audio_state();
-                    let mut state = state.lock().unwrap();
-                    state.current_track_index = Some(next_index);
-                    // load_audio already starts playback via set_audio, no need to toggle again
-                    self.add_toast(localized::now_playing(&next_track.name), Color32::GREEN);
-                }
+        match decision {
+            Ok((next_index, next_track)) => {
+                self.load_queue_track(next_index, &next_track);
+            }
+            Err(msg) => {
+                self.add_toast(msg, Color32::from_rgb(220, 180, 80));
             }
         }
     }
 
     fn play_previous_track(&mut self) {
-        let (prev_index, playlist) = {
-            let player = match self.audio_player.as_ref() {
-                Some(p) => p,
-                None => return,
+        let visible = self.filtered_audio_files();
+        let decision: Result<(usize, AudioFileInfo), String> = {
+            let Some(player) = self.audio_player.as_ref() else {
+                return;
             };
             let state = player.get_audio_state();
-            let state = state.lock().unwrap();
-            
-            if state.playlist.is_empty() {
-                return;
-            }
+            let mut state = state.lock().unwrap();
+            state.sync_playlist_preserving_current(visible);
 
-            let current_index = state.current_track_index.unwrap_or(0);
-            let prev_index = if current_index == 0 {
-                // At the beginning of playlist
-                match state.loop_mode {
-                    LoopMode::All => state.playlist.len() - 1, // Loop to last track
-                    LoopMode::None | LoopMode::Single => {
-                        // Stay at first track
-                        0
-                    }
-                }
+            if state.playlist.is_empty() {
+                Err(localized::no_tracks_in_queue())
             } else {
-                current_index - 1
-            };
-            
-            (prev_index, state.playlist.clone())
+                let prev_index = if state.shuffle {
+                    // Shuffle: previous draws another bag entry (no immediate repeat)
+                    state.take_shuffle_next_index()
+                } else {
+                    match state.current_track_index {
+                        Some(0) => match state.loop_mode {
+                            LoopMode::All => Some(state.playlist.len() - 1),
+                            LoopMode::None | LoopMode::Single => Some(0),
+                        },
+                        Some(current_index) => Some(current_index - 1),
+                        None => Some(0),
+                    }
+                };
+
+                match prev_index {
+                    Some(idx) if idx < state.playlist.len() => {
+                        Ok((idx, state.playlist[idx].clone()))
+                    }
+                    _ => Err(localized::no_tracks_in_queue()),
+                }
+            }
         };
 
-        let prev_track = &playlist[prev_index];
+        match decision {
+            Ok((prev_index, prev_track)) => {
+                self.load_queue_track(prev_index, &prev_track);
+            }
+            Err(msg) => {
+                self.add_toast(msg, Color32::from_rgb(220, 180, 80));
+            }
+        }
+    }
+
+    fn load_queue_track(&mut self, index: usize, track: &AudioFileInfo) {
         let file_path = self.selected_file.clone();
         if let Some(path) = file_path {
             if let Some(player) = &mut self.audio_player {
-                if let Ok(()) = player.load_audio(prev_track, &path) {
+                if let Ok(()) = player.load_audio(track, &path) {
                     let state = player.get_audio_state();
-                    let mut state = state.lock().unwrap();
-                    state.current_track_index = Some(prev_index);
-                    // load_audio already starts playback via set_audio, no need to toggle again
-                    self.add_toast(localized::now_playing(&prev_track.name), Color32::GREEN);
+                    if let Ok(mut state) = state.lock() {
+                        state.current_track_index = Some(index);
+                    }
+                    self.add_toast(localized::now_playing(&track.name), Color32::GREEN);
                 }
             }
         }

@@ -193,10 +193,14 @@ impl AddAudioModal {
         let min_width = available_rect.width() * 0.5;
         let min_height = available_rect.height() * 0.5;
         Window::new(localized::add_new_audio_title())
+            .id(egui::Id::new("add_audio_modal"))
             .min_width(min_width)
             .min_height(min_height)
             .resizable(true)
+            .movable(true)
             .collapsible(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(available_rect.center())
             .show(ctx, |ui| {
                 self.render_content(ui);
             });

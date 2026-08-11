@@ -16,6 +16,8 @@ pub enum AudioPlayerAction {
     PlayNext,
     /// Play the previous track
     PlayPrevious,
+    /// Auto-advance could not continue (end of queue)
+    PlaylistEnded,
 }
 
 /// Main audio player component
@@ -84,6 +86,9 @@ impl AudioPlayer {
         } else if state.should_play_previous {
             state.should_play_previous = false;
             AudioPlayerAction::PlayPrevious
+        } else if state.should_notify_playlist_ended {
+            state.should_notify_playlist_ended = false;
+            AudioPlayerAction::PlaylistEnded
         } else {
             AudioPlayerAction::None
         }
@@ -310,6 +315,10 @@ impl AudioPlayer {
         if !applied_loop {
             println!("No loop points for: {} (stored settings + vgmstream)", file_info.name);
         }
+
+        // Queue modes None/All: do not A-B loop by default so auto-next works.
+        // Repeat one: honor track loop points when present (in-game style preview).
+        state.apply_default_honor_for_load();
 
         // Check if backend could determine the real duration
         if state.total_duration <= 0.0 {

@@ -1,156 +1,151 @@
 # EXVS2 Audio Editor
 
-A specialized audio editor for handling NUS3AUDIO format files from EXVS2 (Extreme VS 2) game.
+<p align="center">
+  <img src="git_images/app_icon.png" alt="EXVS2 Audio Editor icon" width="128" />
+</p>
 
-![Version](https://img.shields.io/badge/version-0.8.0-blue)
+<p align="center">
+  <strong>A desktop GUI for editing NUS3AUDIO / NUS3BANK audio used in EXVS2 (Extreme VS 2)</strong>
+</p>
 
-## Overview
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.8.1-blue" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D6" />
+  <img alt="Language" src="https://img.shields.io/badge/rust-1.97+-orange" />
+  <a href="https://www.buymeacoffee.com/kjjkjjzyayx">
+    <img alt="Buy Me A Coffee" src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-ffdd00?logo=buymeacoffee&logoColor=black" />
+  </a>
+</p>
 
-EXVS2 Audio Editor is a tool designed to help you work with NUS3AUDIO and NUS3BANK format audio files. It allows you to extract, play, replace, and export audio files contained within these containers, which are commonly used in Bandai Namco's Extreme VS 2 (EXVS2) game.
+Extract, preview, replace, and export game audio tracks with loop-point control and NUS3BANK section editing.
 
-![preview](/git_images/preview.png)
-![Loop Settings](/git_images/loop_setting.png)
+## 📸 Screenshots
 
-## Features
+| Main window | Loop settings |
+|:-----------:|:-------------:|
+| ![Main preview](git_images/preview.png) | ![Loop settings](git_images/loop_setting.png) |
 
-- **Audio File Management**: Open NUS3AUDIO and NUS3BANK files and view contained audio tracks
-- **Audio Playback**: Built-in audio player for previewing tracks (supports both NUS3AUDIO and NUS3BANK)
-- **Audio Extraction**: Export audio tracks to WAV format
-- **Audio Replacement**: Replace audio tracks with your own audio files
-- **NUS3BANK Section Editing**: Edit PROP (Properties), DTON (Tones), and GRP (Groups) sections specifically for EXVS2 NUS3BANK files
-- **Advanced Loop Settings**: Configure custom loop points with precise timing control
-- **Audio Gain Adjustment**: Apply volume gain (amplification/attenuation) to audio files before processing
-- **Loop Point Processing**: Add loop points to audio files for seamless looping using vgmstream
-- **Search & Filter**: Easily find specific audio tracks within large containers
-- **Add/Remove Audio**: Support for adding and removing audio tracks in both NUS3AUDIO and NUS3BANK containers
+## ✨ Features
 
-## System Requirements
+- **File management** — Open NUS3AUDIO and NUS3BANK containers and browse tracks
+- **Playback** — Built-in player with waveform preview (NUS3AUDIO + NUS3BANK)
+- **Export** — Export selected tracks to WAV
+- **Replace** — Swap track data with your own audio (with optional gain + loop processing)
+- **NUS3BANK sections** — Edit PROP, DTON, and GRP for EXVS2 banks
+- **Loop tools** — Custom A–B loop points via vgmstream-assisted processing
+- **Search & sort** — Filter large banks; next/prev playback follows table order
+- **Add / remove** — Add or mark tracks for removal in supported containers
 
-- **Windows**: Windows 10 or newer recommended
+## 💻 System Requirements
 
-## Installation
+- **Windows** 10 or newer recommended
 
-1. Download the latest release from the [Releases](https://github.com/your-username/exvs2-audio-editor/releases) page
-2. Extract the ZIP file to a location of your choice
-3. Run the `exvs2_audio_editor.exe` file
+## 📦 Installation
 
-## Usage
+1. Download the latest release from the [Releases](https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor/releases) page
+2. Extract the ZIP to a folder of your choice
+3. Run `exvs2_audio_editor.exe`
 
-### Opening Audio Files (NUS3AUDIO/NUS3BANK)
+## 🚀 Usage
 
-1. Click the "Add File" button in the file list panel
-2. Select a NUS3AUDIO or NUS3BANK file from your computer
-3. The file will be loaded and its contents displayed in the main area
+### Open a container
 
-### Playing Audio Tracks
+1. Click **Add File** in the file list panel
+2. Choose a `.nus3audio` or `.nus3bank` file
+3. Tracks appear in the main table
 
-1. Select an audio track from the list
-2. Use the built-in audio player controls to play, pause, and adjust volume
+### Play a track
 
-### Exporting Audio Tracks
+1. Select a row and click **Play** (or use the bottom player)
+2. Use transport controls for pause, next/previous, shuffle, and queue repeat
+3. If a track has loop metadata, use the amber **A–B chip** on the player to honor or ignore in-file loop points
 
-1. Select one or multiple audio tracks
-2. Click the "Export" button
-3. Choose an output directory
-4. The selected tracks will be exported as WAV files
+### Export
 
-### Replacing Audio Tracks
+1. Select one or more tracks
+2. Click **Export** and pick an output folder
+3. Files are written as WAV
 
-1. Select an audio track you want to replace
-2. Click the "Replace" button
-3. Choose a replacement audio file from your computer
-4. A loop settings dialog will appear, allowing you to configure advanced audio processing options
+### Replace audio
 
-#### Loop Settings Configuration
+1. Select a track → **Replace**
+2. Choose a source audio file
+3. Configure loop / gain in the loop settings dialog if needed
+4. Apply — changes stay in memory until you **Save**
 
-![Loop Settings](/git_images/loop_setting.png)
+#### Loop settings
 
-The loop settings dialog provides the following options:
+![Loop Settings](git_images/loop_setting.png)
 
-- **Enable Loop**: Toggle to enable/disable loop point processing
-- **Use Custom Loop Points**: Enable custom loop point configuration
-- **Loop Start**: Set the loop start time in seconds (when using custom loop points)
-- **Loop End**: Set the loop end time in seconds (when using custom loop points)
-- **Gain (dB)**: Apply volume adjustment in decibels (-20 to +20 dB range)
-  - Negative values reduce volume
-  - Positive values increase volume
-  - 0 dB means no change
+- **Enable Loop** — Toggle loop-point processing
+- **Use Custom Loop Points** — Set start/end in seconds
+- **Gain (dB)** — Volume adjust (−20 … +20)
 
-**Processing Order**: When both gain adjustment and loop processing are enabled:
-1. Gain adjustment is applied first to the original audio file
-2. Loop point processing is then applied to the gain-adjusted audio
+When both gain and loop processing are on: gain is applied first, then loop processing.
 
-5. Click "Apply" to process the audio with your settings
-6. The audio track will be replaced in memory (changes aren't saved until you explicitly save the file)
+### Save
 
-### Saving Changes
+1. Click **Save** after edits
+2. Choose the output path for the modified container  
+   (original file is not overwritten unless you choose that path)
 
-1. After making your desired changes, click the "Save" button
-2. Choose where to save the modified NUS3AUDIO or NUS3BANK file
-3. All changes will be written to the new file (the original file is not modified)
+## 🛠️ Tools Used
 
-## Tools Used
+- **vgmstream-cli** — Decode/encode game audio and loop handling
+- **kira** — Native audio playback
+- **hound** — WAV I/O and gain adjustment
+- **egui / eframe** — Desktop UI
 
-This application uses the following tools to process audio files:
+## 📝 Implementation Notes
 
-- **vgmstream-cli**: For decoding and encoding various game audio formats, and adding loop points
-- **rodio**: For audio playback
-- **hound**: For WAV file processing and gain adjustment
+### NUS3BANK support
 
-## Implementation Notes
+Partial but usable support for EXVS2 NUS3BANK, informed by [Smash-Forge's NUS3BANK.cs](https://github.com/jam1garner/Smash-Forge/blob/master/Smash%20Forge/Filetypes/Sounds/NUS3BANK.cs).
 
-### NUS3BANK Format Support
+- TOC / TONE mapping
+- Audio replace into TONE payload
+- PROP / DTON / GRP editing
+- Basic add / remove of tracks
 
-This tool provides partial but functional support for the NUS3BANK format used in EXVS2. The implementation is based on the reference code from [Smash-Forge's NUS3BANK.cs](https://github.com/jam1garner/Smash-Forge/blob/master/Smash%20Forge/Filetypes/Sounds/NUS3BANK.cs).
+> ⚠️ **Experimental** — Always keep backups of original banks before saving.
 
-Supported NUS3BANK features:
-- **TOC/TONE Parsing**: Correctly mapping TONE entries to audio data
-- **Audio Replacement**: Replacing TONE payload with WAV data (automatically converted to the appropriate format)
-- **PROP Editing**: Modifying audio properties like volume, pitch, etc.
-- **DTON Editing**: Modifying tone data specific to the bank
-- **GRP Editing**: Managing group assignments for audio tracks
-- **Adding/Removing Tracks**: Basic support for changing the number of tracks in a bank
+## 🔧 Development
 
-**⚠️ Experimental Status**: While many features are working for EXVS2, NUS3BANK support is still considered experimental. Always keep backups of your original files before saving.
-
-## Development
-
-### Building from Source
-
-Prerequisites:
-- Rust 1.97 or newer
-- Cargo package manager
+**Prerequisites:** Rust 1.97+, Cargo
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/exvs2-audio-editor.git
-cd exvs2-audio-editor
+git clone https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor.git
+cd EXVS2-Audio-Editor
 
-# Build the application
 cargo build --release
-
-# Run the application
 cargo run --release
 ```
 
-## License
+## 📄 License
 
-This project is licensed under both:
-- MIT License
-- Apache License 2.0
+Dual-licensed:
 
-See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
+- [MIT](LICENSE-MIT)
+- [Apache-2.0](LICENSE-APACHE)
 
-## Acknowledgements
+## 🙏 Acknowledgements
 
-- [egui](https://github.com/emilk/egui) - Immediate mode GUI library for Rust
-- [nus3audio](https://crates.io/crates/nus3audio) - Library for handling NUS3AUDIO format files
-- [vgmstream](https://github.com/vgmstream/vgmstream) - Audio stream player for video games
+- [egui](https://github.com/emilk/egui) — Immediate-mode GUI for Rust
+- [nus3audio](https://crates.io/crates/nus3audio) — NUS3AUDIO crate
+- [vgmstream](https://github.com/vgmstream/vgmstream) — Game audio streaming toolkit
 
-## AI Assistance
+## 🤖 AI Assistance
 
-Parts of the code in this project were generated with the assistance of AI.
+Parts of this project were developed with AI assistance.
 
-## Contributing
+## ☕ Support
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+If this tool helps you, consider buying me a coffee:
+
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/kjjkjjzyayx)
+
+https://www.buymeacoffee.com/kjjkjjzyayx
+
+## 🤝 Contributing
+
+Contributions are welcome — feel free to open a Pull Request.

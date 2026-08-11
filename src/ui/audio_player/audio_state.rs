@@ -82,23 +82,32 @@ pub struct AudioState {
     #[serde(skip)]
     pub use_custom_loop: bool,
 
-    /// Track-level loop enabled (full track or A-B); drives wave marks after replace
+    /// Track has loop metadata (A-B or full-file marks on the wave)
     #[serde(skip)]
     pub enable_loop: bool,
+
+    /// When true, playback rewinds inside the track loop region.
+    /// Independent of queue `loop_mode`. Default off for sequential listening.
+    #[serde(skip)]
+    pub honor_track_loop: bool,
     
-    /// Current loop mode
+    /// Current queue loop mode (repeat off / one / all)
     pub loop_mode: LoopMode,
     
     /// Whether shuffle mode is enabled
     pub shuffle: bool,
     
-    /// Current playlist
+    /// Current playlist (UI table order: filtered + sorted; never re-sorted by ID)
     #[serde(skip)]
     pub playlist: Vec<AudioFileInfo>,
     
     /// Index of the current track in the playlist
     #[serde(skip)]
     pub current_track_index: Option<usize>,
+
+    /// Remaining shuffle indices (bag); rebuilt when empty or playlist changes
+    #[serde(skip)]
+    shuffle_bag: Vec<usize>,
 
     /// Whether the current track has finished and we should play the next one
     #[serde(skip)]
@@ -107,6 +116,10 @@ pub struct AudioState {
     /// Whether the user requested the previous track
     #[serde(skip)]
     pub should_play_previous: bool,
+
+    /// Fire a one-shot "playlist ended" toast (auto-advance could not continue)
+    #[serde(skip)]
+    pub should_notify_playlist_ended: bool,
 
     /// True while the user is dragging the seek slider (suppresses backend position updates)
     #[serde(skip)]
@@ -175,12 +188,15 @@ impl Clone for AudioState {
             loop_end: self.loop_end,
             use_custom_loop: self.use_custom_loop,
             enable_loop: self.enable_loop,
+            honor_track_loop: self.honor_track_loop,
             loop_mode: self.loop_mode,
             shuffle: self.shuffle,
             playlist: self.playlist.clone(),
             current_track_index: self.current_track_index,
+            shuffle_bag: self.shuffle_bag.clone(),
             should_play_next: self.should_play_next,
             should_play_previous: self.should_play_previous,
+            should_notify_playlist_ended: self.should_notify_playlist_ended,
             is_seeking: self.is_seeking,
             last_scrub_seek: None,
             last_scrub_pos: self.last_scrub_pos,
@@ -234,12 +250,15 @@ impl Default for AudioState {
             loop_end: None,
             use_custom_loop: false,
             enable_loop: false,
+            honor_track_loop: false,
             loop_mode: LoopMode::None,
             shuffle: false,
             playlist: Vec::new(),
             current_track_index: None,
+            shuffle_bag: Vec::new(),
             should_play_next: false,
             should_play_previous: false,
+            should_notify_playlist_ended: false,
             is_seeking: false,
             last_scrub_seek: None,
             last_scrub_pos: f32::NAN,
@@ -611,8 +630,9 @@ impl AudioState {
             if self.is_playing && !self.is_seeking {
                 self.current_position = backend.get_position();
 
-                // Track loop region (full-file or A-B) from replace / loop settings
-                if self.enable_loop && self.total_duration > 0.0 {
+                // Track A-B loop only when user honors track loop points (chip / Repeat one).
+                // When honor is off, play through so queue auto-next works.
+                if self.enable_loop && self.honor_track_loop && self.total_duration > 0.0 {
                     let start = if self.use_custom_loop {
                         self.loop_start.unwrap_or(0.0)
                     } else {
@@ -637,12 +657,15 @@ impl AudioState {
                     }
                 }
 
-                // Check if track has finished
+                // Check if track has finished (full file; A-B is handled above when honor is on)
                 if self.current_position >= self.total_duration - 0.1 && self.total_duration > 0.0 {
                     match self.loop_mode {
                         LoopMode::Single => {
-                            // Restart current track (or loop region start)
-                            let restart = if self.enable_loop && self.use_custom_loop {
+                            // Restart current track (A-B start only when honoring track loop)
+                            let restart = if self.enable_loop
+                                && self.honor_track_loop
+                                && self.use_custom_loop
+                            {
                                 self.loop_start.unwrap_or(0.0)
                             } else {
                                 0.0
@@ -659,17 +682,21 @@ impl AudioState {
                             self.should_play_next = true;
                         }
                         LoopMode::None => {
-                            // Sequential / shuffle playlist: advance to another track until the playlist ends (no wrap).
+                            // Sequential / shuffle playlist: advance until the playlist ends (no wrap).
                             self.is_playing = false;
                             self.current_position = 0.0;
                             let can_auto_advance = if self.shuffle {
                                 !self.playlist.is_empty()
-                            } else {
-                                let idx = self.current_track_index.unwrap_or(0);
+                            } else if let Some(idx) = self.current_track_index {
                                 idx + 1 < self.playlist.len()
+                            } else {
+                                // Filtered out of the queue — still try first visible track
+                                !self.playlist.is_empty()
                             };
                             if can_auto_advance {
                                 self.should_play_next = true;
+                            } else {
+                                self.should_notify_playlist_ended = true;
                             }
                         }
                     }
@@ -692,7 +719,8 @@ impl AudioState {
         }
     }
     
-    /// Set loop points / enable flag for the current track
+    /// Set loop points / enable flag for the current track (metadata + wave marks).
+    /// Does not force A-B playback; that is controlled by `honor_track_loop`.
     pub fn set_loop_points(
         &mut self,
         start: Option<f32>,
@@ -704,9 +732,25 @@ impl AudioState {
         self.loop_end = end;
         self.use_custom_loop = use_custom;
         self.enable_loop = enable_loop;
+        if !enable_loop {
+            self.honor_track_loop = false;
+        }
     }
 
-    /// Resolved loop range for UI (None if looping disabled for this track).
+    /// Apply default honor flag after loop points are resolved for a newly loaded track.
+    /// Sequential/All queue modes leave A-B off so auto-next works; Repeat one enables it.
+    pub fn apply_default_honor_for_load(&mut self) {
+        self.honor_track_loop =
+            self.enable_loop && matches!(self.loop_mode, LoopMode::Single);
+    }
+
+    pub fn toggle_honor_track_loop(&mut self) {
+        if self.enable_loop {
+            self.honor_track_loop = !self.honor_track_loop;
+        }
+    }
+
+    /// Resolved loop range for UI marks (shown whenever track has loop metadata).
     pub fn display_loop_range(&self) -> Option<(f32, f32)> {
         if !self.enable_loop {
             return None;
@@ -736,18 +780,26 @@ impl AudioState {
         Some((start, end))
     }
 
-    /// Toggle loop mode
+    /// Toggle queue loop mode
     pub fn next_loop_mode(&mut self) {
         self.loop_mode = match self.loop_mode {
             LoopMode::None => LoopMode::Single,
             LoopMode::Single => LoopMode::All,
             LoopMode::All => LoopMode::None,
         };
+        // Repeat one: honor track A-B when present. Other modes leave sequential play free.
+        if matches!(self.loop_mode, LoopMode::Single) && self.enable_loop {
+            self.honor_track_loop = true;
+        } else if !matches!(self.loop_mode, LoopMode::Single) {
+            // Keep user's chip choice if they explicitly turned A-B on under None/All —
+            // only auto-clear when leaving Single would surprise; leave chip state as-is.
+        }
     }
 
     /// Toggle shuffle mode
     pub fn toggle_shuffle(&mut self) {
         self.shuffle = !self.shuffle;
+        self.shuffle_bag.clear();
     }
 
     /// Request next track
@@ -760,21 +812,92 @@ impl AudioState {
         self.should_play_previous = true;
     }
 
-    /// Update playlist and current index
-    pub fn update_playlist(&mut self, playlist: Vec<AudioFileInfo>, current_name: &str, current_id: &str) {
-        // Sort playlist by ID (from small to large)
-        let mut sorted_playlist = playlist;
-        sorted_playlist.sort_by(|a, b| {
-            // Try to parse as numbers first for proper numeric sorting
-            match (a.id.parse::<u32>(), b.id.parse::<u32>()) {
-                (Ok(a_num), Ok(b_num)) => a_num.cmp(&b_num),
-                // Fall back to string comparison if parsing fails
-                _ => a.id.cmp(&b.id),
+    /// Update playlist and current index. Order is kept as provided (table filter + sort).
+    pub fn update_playlist(
+        &mut self,
+        playlist: Vec<AudioFileInfo>,
+        current_name: &str,
+        current_id: &str,
+    ) {
+        self.playlist = playlist;
+        self.current_track_index = self
+            .playlist
+            .iter()
+            .position(|f| f.name == current_name && f.id == current_id);
+        self.shuffle_bag.clear();
+    }
+
+    /// Refresh playlist from the live table order while preserving the playing track identity.
+    pub fn sync_playlist_preserving_current(&mut self, playlist: Vec<AudioFileInfo>) {
+        let identity = self
+            .current_audio
+            .as_ref()
+            .map(|a| (a.name.clone(), a.id.clone()))
+            .or_else(|| {
+                self.current_track_index
+                    .and_then(|i| self.playlist.get(i))
+                    .map(|f| (f.name.clone(), f.id.clone()))
+            });
+
+        let order_changed = self.playlist.len() != playlist.len()
+            || self
+                .playlist
+                .iter()
+                .zip(playlist.iter())
+                .any(|(a, b)| a.name != b.name || a.id != b.id);
+
+        self.playlist = playlist;
+        if let Some((name, id)) = identity {
+            self.current_track_index = self
+                .playlist
+                .iter()
+                .position(|f| f.name == name && f.id == id);
+        } else {
+            self.current_track_index = None;
+        }
+        if order_changed {
+            self.shuffle_bag.clear();
+        }
+    }
+
+    /// Pick next index for shuffle without immediate repeat when possible.
+    pub fn take_shuffle_next_index(&mut self) -> Option<usize> {
+        let n = self.playlist.len();
+        if n == 0 {
+            return None;
+        }
+        let current = self.current_track_index;
+        if self.shuffle_bag.is_empty() {
+            self.refill_shuffle_bag(current);
+        }
+        // Prefer not the current track at the front of a fresh bag
+        if let Some(cur) = current {
+            if self.shuffle_bag.len() > 1 && self.shuffle_bag.last() == Some(&cur) {
+                let last = self.shuffle_bag.len() - 1;
+                self.shuffle_bag.swap(0, last);
             }
-        });
-        
-        self.playlist = sorted_playlist;
-        self.current_track_index = self.playlist.iter().position(|f| f.name == current_name && f.id == current_id);
+        }
+        self.shuffle_bag.pop()
+    }
+
+    fn refill_shuffle_bag(&mut self, avoid: Option<usize>) {
+        let n = self.playlist.len();
+        let mut bag: Vec<usize> = (0..n).collect();
+        // Fisher–Yates
+        for i in (1..bag.len()).rev() {
+            let j = rand::random_range(0..=i);
+            bag.swap(i, j);
+        }
+        if let Some(cur) = avoid {
+            if bag.len() > 1 {
+                if let Some(pos) = bag.iter().position(|&i| i == cur) {
+                    // Put current at the end so it is drawn last from this bag
+                    let last = bag.len() - 1;
+                    bag.swap(pos, last);
+                }
+            }
+        }
+        self.shuffle_bag = bag;
     }
     
     /// Get formatted current position (MM:SS)
@@ -805,6 +928,48 @@ impl AudioState {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn update_playlist_preserves_table_order() {
+        let mut state = AudioState::default();
+        let playlist = vec![
+            AudioFileInfo {
+                name: "b".into(),
+                id: "2".into(),
+                size: 1,
+                filename: "b".into(),
+                file_type: "WAV".into(),
+                is_nus3bank: false,
+                hex_id: None,
+            },
+            AudioFileInfo {
+                name: "a".into(),
+                id: "1".into(),
+                size: 1,
+                filename: "a".into(),
+                file_type: "WAV".into(),
+                is_nus3bank: false,
+                hex_id: None,
+            },
+        ];
+        state.update_playlist(playlist, "a", "1");
+        assert_eq!(state.playlist[0].name, "b");
+        assert_eq!(state.playlist[1].name, "a");
+        assert_eq!(state.current_track_index, Some(1));
+    }
+
+    #[test]
+    fn honor_defaults_off_unless_single_mode() {
+        let mut state = AudioState::default();
+        state.enable_loop = true;
+        state.loop_mode = LoopMode::None;
+        state.apply_default_honor_for_load();
+        assert!(!state.honor_track_loop);
+
+        state.loop_mode = LoopMode::Single;
+        state.apply_default_honor_for_load();
+        assert!(state.honor_track_loop);
+    }
 
     fn make_temp_wav(name: &str) -> String {
         let path = std::env::temp_dir().join(name);

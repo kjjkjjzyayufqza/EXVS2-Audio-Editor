@@ -164,6 +164,11 @@ pub fn source_link_label() -> String {
 }
 
 #[inline]
+pub fn buy_me_a_coffee_label() -> String {
+    rust_i18n::t!("buy_me_a_coffee_label").to_string()
+}
+
+#[inline]
 pub fn update_available_title() -> String {
     rust_i18n::t!("update_available_title").to_string()
 }
@@ -554,11 +559,6 @@ pub fn remove_tooltip() -> String {
 }
 
 #[inline]
-pub fn more_label() -> String {
-    rust_i18n::t!("more_label").to_string()
-}
-
-#[inline]
 pub fn no_track_selected() -> String {
     rust_i18n::t!("no_track_selected").to_string()
 }
@@ -604,6 +604,26 @@ pub fn loop_one_tooltip() -> String {
 }
 
 #[inline]
+pub fn track_loop_on_tooltip() -> String {
+    rust_i18n::t!("track_loop_on_tooltip").to_string()
+}
+
+#[inline]
+pub fn track_loop_off_tooltip() -> String {
+    rust_i18n::t!("track_loop_off_tooltip").to_string()
+}
+
+#[inline]
+pub fn playlist_ended() -> String {
+    rust_i18n::t!("playlist_ended").to_string()
+}
+
+#[inline]
+pub fn no_tracks_in_queue() -> String {
+    rust_i18n::t!("no_tracks_in_queue").to_string()
+}
+
+#[inline]
 pub fn stop_playback_tooltip() -> String {
     rust_i18n::t!("stop_playback_tooltip").to_string()
 }
@@ -611,11 +631,6 @@ pub fn stop_playback_tooltip() -> String {
 #[inline]
 pub fn loop_settings_title(name: &str) -> String {
     rust_i18n::t!("loop_settings_title", name = name).to_string()
-}
-
-#[inline]
-pub fn audio_information() -> String {
-    rust_i18n::t!("audio_information").to_string()
 }
 
 #[inline]
@@ -881,11 +896,6 @@ pub fn default_project_name() -> String {
 #[inline]
 pub fn clear_cell() -> String {
     rust_i18n::t!("clear_cell").to_string()
-}
-
-#[inline]
-pub fn remove_row() -> String {
-    rust_i18n::t!("remove_row").to_string()
 }
 
 #[inline]

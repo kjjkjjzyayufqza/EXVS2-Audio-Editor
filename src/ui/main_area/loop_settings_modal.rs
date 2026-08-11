@@ -466,14 +466,18 @@ impl LoopSettingsModal {
             let min_height = (available_rect.height() * 0.62).clamp(480.0, 780.0);
 
             let mut open = self.open;
+            // Do NOT use .anchor() — anchoring makes the window immovable.
             Window::new(&title)
+                .id(egui::Id::new("loop_settings_modal"))
                 .open(&mut open)
                 .min_width(min_width)
                 .default_width(min_width)
                 .min_height(min_height)
                 .resizable(true)
+                .movable(true)
                 .collapsible(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(available_rect.center())
                 .show(ctx, |ui| {
                     self.render_content(ui);
                 });

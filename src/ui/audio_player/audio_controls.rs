@@ -268,42 +268,74 @@ impl AudioControls {
             .loop_end
             .unwrap_or(state.total_duration)
             .max(start);
-        // Compact: "A–B" times only (icon via phosphor may render as tofu in some fonts)
+        // Compact times; click toggles whether playback honors A-B
         let label = format!("{}–{}", format_mmss(start), format_mmss(end));
-        let full_tip = localized::loop_parenthetical_range(
+        let range_tip = localized::loop_parenthetical_range(
             &format!("{start:.2}s"),
             &format!("{end:.2}s"),
         );
+        let honor = state.honor_track_loop;
+        let tip = if honor {
+            format!(
+                "{}\n{}",
+                localized::track_loop_on_tooltip(),
+                range_tip.trim()
+            )
+        } else {
+            format!(
+                "{}\n{}",
+                localized::track_loop_off_tooltip(),
+                range_tip.trim()
+            )
+        };
 
-        Frame::new()
-            .inner_margin(egui::Margin::symmetric(6, 2))
-            .corner_radius(CornerRadius::same(8))
-            .fill(Color32::from_rgba_unmultiplied(
+        let fill_a = if honor { 55 } else { 16 };
+        let stroke_a = if honor { 200 } else { 80 };
+        let text_color = if honor {
+            LOOP_AMBER
+        } else {
+            ui.visuals().weak_text_color()
+        };
+
+        let (rect, response) = ui.allocate_exact_size(
+            vec2((max_width - 4.0).clamp(56.0, 110.0), 22.0),
+            egui::Sense::click(),
+        );
+        let response = response
+            .on_hover_text(tip)
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+        ui.painter().rect(
+            rect,
+            CornerRadius::same(8),
+            Color32::from_rgba_unmultiplied(
                 LOOP_AMBER.r(),
                 LOOP_AMBER.g(),
                 LOOP_AMBER.b(),
-                28,
-            ))
-            .stroke(egui::Stroke::new(
+                fill_a,
+            ),
+            egui::Stroke::new(
                 1.0,
                 Color32::from_rgba_unmultiplied(
                     LOOP_AMBER.r(),
                     LOOP_AMBER.g(),
                     LOOP_AMBER.b(),
-                    120,
+                    stroke_a,
                 ),
-            ))
-            .show(ui, |ui| {
-                ui.set_max_width((max_width - 4.0).max(40.0));
-                ui.label(
-                    RichText::new(label)
-                        .size(10.5)
-                        .color(LOOP_AMBER)
-                        .monospace(),
-                );
-            })
-            .response
-            .on_hover_text(full_tip);
+            ),
+            egui::StrokeKind::Inside,
+        );
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::monospace(10.5),
+            text_color,
+        );
+
+        if response.clicked() {
+            self.audio_state.lock().unwrap().toggle_honor_track_loop();
+        }
     }
 
     fn render_transport_row(&mut self, ui: &mut Ui, state_copy: &AudioState, has_audio: bool) {

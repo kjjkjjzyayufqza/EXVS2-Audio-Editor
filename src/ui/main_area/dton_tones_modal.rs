@@ -84,13 +84,17 @@ impl DtonTonesModal {
         let default_height = available_rect.height() * 0.7;
 
         Window::new(localized::edit_dton_title())
+            .id(egui::Id::new("dton_tones_modal"))
             .open(&mut open)
             .default_width(default_width)
             .default_height(default_height)
             .min_width(available_rect.width() * 0.5)
             .min_height(available_rect.height() * 0.5)
             .resizable(true)
+            .movable(true)
             .collapsible(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(available_rect.center())
             .show(ctx, |ui| {
                 self.render(ui);
             });

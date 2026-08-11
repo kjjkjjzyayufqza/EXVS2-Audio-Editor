@@ -1,14 +1,27 @@
 {
-  "version": "0.8.0",
+  "version": "0.8.1",
   "download_url": "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor/releases/latest",
   "changelog": [
-    "UI fixes: player layout, table selection border, update dialog OK button freeze",
-    "Fix replace audio gain (volume amplification) pipeline",
-    "Sound-wave visualization with loop A/B marks (vgmstream -m / smpl)",
-    "Replace modal: live preview play, volume, and gain",
-    "Update history window and release notes UI"
+    "Playback: track A-B loop is optional (amber chip) so auto-next no longer gets stuck on looped tracks",
+    "Queue follows live table order (search + sort); fairer shuffle bag",
+    "All dialogs are draggable; About layout and support links improved",
+    "New app icon (EXE + taskbar) and refreshed README with screenshots",
+    "Buy Me A Coffee links in README, About, and GitHub homepage"
   ],
   "history": [
+    {
+      "version": "0.8.1",
+      "date": "2026-08-11",
+      "changes": [
+        "Playback: track A-B loop is optional (amber chip) so auto-next no longer gets stuck on looped tracks",
+        "Queue follows live table order (search + sort); next/prev honor filtered list",
+        "Shuffle bag avoids immediate repeats; toast when playlist ends",
+        "All dialogs are draggable (no anchor lock); About dialog no longer crushed",
+        "Buy Me A Coffee support links in About, README, and GitHub homepage",
+        "New app icon for EXE resource and window/taskbar",
+        "README polish: app icon, screenshots, badges, correct repo links"
+      ]
+    },
     {
       "version": "0.8.0",
       "date": "2026-08-11",

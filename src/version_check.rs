@@ -12,7 +12,7 @@ use reqwest::blocking::Client;
 use {wasm_bindgen::prelude::*, wasm_bindgen_futures::spawn_local, web_sys::console};
 
 /// Current version of the application (keep in sync with Cargo.toml)
-pub const CURRENT_VERSION: &str = "0.8.0";
+pub const CURRENT_VERSION: &str = "0.8.1";
 
 /// Bundled fallback when network is unavailable (update history still works offline).
 const EMBEDDED_VERSION_JSON: &str = include_str!("../version.json");

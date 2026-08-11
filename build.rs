@@ -35,8 +35,9 @@ fn main() {
     
     // Tell Cargo to re-run this build script if the tools directory changes
     println!("cargo:rerun-if-changed=tools");
-    // Tell Cargo to re-run this build script if the icon changes
+    // Tell Cargo to re-run this build script if icon assets change
     println!("cargo:rerun-if-changed=assets/favicon.ico");
+    println!("cargo:rerun-if-changed=assets/icon-256.png");
 }
 
 // Function to recursively copy a directory
