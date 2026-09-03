@@ -265,13 +265,23 @@ impl MainArea {
                 let mut audio_files = Vec::new();
 
                 for track in nus3bank_file.tracks.iter() {
-                    audio_files.push(AudioFileInfo::from_nus3bank_track(
+                    let mut info = AudioFileInfo::from_nus3bank_track(
                         track.name.clone(),
                         track.index as u32,
                         track.hex_id.clone(),
                         track.size as usize,
                         track.filename(),
-                    ));
+                    );
+                    let data = track.audio_data.as_deref().unwrap_or_default();
+                    info.file_type = if data.starts_with(b"BNSF") {
+                        "BNSF"
+                    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WAVE") {
+                        "WAV"
+                    } else {
+                        "Unknown"
+                    }
+                    .to_string();
+                    audio_files.push(info);
                 }
 
                 println!(

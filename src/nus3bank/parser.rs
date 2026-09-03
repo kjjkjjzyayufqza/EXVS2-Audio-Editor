@@ -527,7 +527,7 @@ impl Nus3bankParser {
         let _section_size = BinaryReader::read_u32_le(&mut r)?;
 
         let count = BinaryReader::read_u32_le(&mut r)? as usize;
-        // Vanilla OB TONE offsets are from the payload origin (count at 0 ⇒
+        // Vanilla OB TONE offsets are from the payload origin (count at 0 =>
         // 8 bytes after magic+size). Editor-written SE banks add a 4-byte pad
         // after the pointer table and store offsets from after the count
         // (12). Pick the origin that yields unshifted live descriptors
@@ -553,8 +553,7 @@ impl Nus3bankParser {
                         if meta_start >= section_end {
                             return false;
                         }
-                        let meta_end =
-                            (meta_start + *reported_meta_size as u64).min(section_end);
+                        let meta_end = (meta_start + *reported_meta_size as u64).min(section_end);
                         if meta_end <= meta_start {
                             return false;
                         }
@@ -661,7 +660,8 @@ impl Nus3bankParser {
             meta: &[u8],
             tone_idx: usize,
             prefix_len: usize,
-            name_at: usize,
+            name_at: Option<usize>,
+            header_only: bool,
         ) -> Result<ToneMeta, Nus3bankError> {
             let mut c = Cursor::new(meta);
 
@@ -673,22 +673,38 @@ impl Nus3bankParser {
 
             let hash = BinaryReader::read_i32_le(&mut c)?;
             let unk1 = BinaryReader::read_i32_le(&mut c)?;
-            if name_at < c.position() as usize || name_at >= meta.len() {
-                return Err(Nus3bankError::InvalidFormat {
-                    reason: format!("Invalid TONE name offset (index={})", tone_idx),
-                });
-            }
-            c.seek(SeekFrom::Start(name_at as u64))?;
-            let name_len_pos = name_at;
+            let name_len_pos = if let Some(name_at) = name_at {
+                if name_at < c.position() as usize || name_at >= meta.len() {
+                    return Err(Nus3bankError::InvalidFormat {
+                        reason: format!("Invalid TONE name offset (index={})", tone_idx),
+                    });
+                }
+                c.seek(SeekFrom::Start(name_at as u64))?;
+                name_at
+            } else {
+                c.position() as usize
+            };
             let name_len = BinaryReader::read_u8(&mut c)? as usize;
             if name_len == 0 || (c.position() + name_len as u64) > meta.len() as u64 {
                 return Err(Nus3bankError::InvalidFormat {
                     reason: format!("Invalid TONE name_len (index={})", tone_idx),
                 });
             }
-            let name = BinaryReader::read_string_exact(&mut c, name_len - 1)?;
-            let name = name.split('\0').next().unwrap_or("").to_string();
-            BinaryReader::skip(&mut c, 1)?;
+            let name = if name_at.is_none() || header_only {
+                let name_bytes = BinaryReader::read_bytes(&mut c, name_len - 1)?;
+                let terminator = BinaryReader::read_u8(&mut c)?;
+                if terminator != 0 || name_bytes.iter().any(|b| b.is_ascii_control()) {
+                    return Err(Nus3bankError::InvalidFormat {
+                        reason: format!("Invalid TONE name/terminator (index={})", tone_idx),
+                    });
+                }
+                String::from_utf8_lossy(&name_bytes).to_string()
+            } else {
+                let parsed = BinaryReader::read_string_exact(&mut c, name_len - 1)?;
+                let parsed = parsed.split('\0').next().unwrap_or("").to_string();
+                BinaryReader::skip(&mut c, 1)?;
+                parsed
+            };
             c.seek(SeekFrom::Start(align4_pos(c.position())))?;
 
             let reserved0 = BinaryReader::read_i32_le(&mut c)?;
@@ -697,6 +713,38 @@ impl Nus3bankParser {
             let offset = BinaryReader::read_i32_le(&mut c)?;
             let pack_size_field_pos = c.position() as usize;
             let size = BinaryReader::read_i32_le(&mut c)?;
+
+            if header_only {
+                if reserved0 != 0 || reserved8 != 8 || offset < 0 || size < 0 {
+                    return Err(Nus3bankError::InvalidFormat {
+                        reason: format!("Invalid TONE payload header (index={})", tone_idx),
+                    });
+                }
+                return Ok(ToneMeta {
+                    meta_prefix,
+                    raw_meta: meta.to_vec(),
+                    pack_offset_field_pos: Some(pack_offset_field_pos),
+                    pack_size_field_pos: Some(pack_size_field_pos),
+                    name_len_pos: Some(name_len_pos),
+                    descriptor_words: Vec::new(),
+                    hash,
+                    unk1,
+                    name,
+                    reserved0,
+                    reserved8,
+                    offset,
+                    size,
+                    param: [0.0; 12],
+                    offsets: Vec::new(),
+                    unkvalues: Vec::new(),
+                    unkvalues_pair_order: UnkvaluesPairOrder::IndexThenValue,
+                    unkending: vec![-1],
+                    end: Vec::new(),
+                    payload: Vec::new(),
+                    meta_size: meta.len() as u32,
+                    removed: size == 0,
+                });
+            }
 
             let mut param = [0.0f32; 12];
             for i in 0..12 {
@@ -876,17 +924,13 @@ impl Nus3bankParser {
         }
 
         if let Some(name_at) = super::ob_tone_decode::ob_name_len_pos(meta) {
-            if let Ok(parsed) = try_parse(meta, tone_idx, 0, name_at) {
+            if let Ok(parsed) = try_parse(meta, tone_idx, 0, Some(name_at), false) {
                 return Ok(parsed);
             }
         }
 
-        let a = try_parse(meta, tone_idx, 0, prefix_name_at(0));
-        let b = try_parse(meta, tone_idx, 8, prefix_name_at(8));
-
-        fn prefix_name_at(prefix_len: usize) -> usize {
-            prefix_len + 8
-        }
+        let a = try_parse(meta, tone_idx, 0, None, false);
+        let b = try_parse(meta, tone_idx, 8, None, false);
 
         match (a, b) {
             (Ok(x), Ok(y)) => {
@@ -923,6 +967,12 @@ impl Nus3bankParser {
             (Ok(x), Err(_)) => Ok(x),
             (Err(_), Ok(y)) => Ok(y),
             (Err(_ea), Err(_eb)) => {
+                let header_a = try_parse(meta, tone_idx, 0, None, true);
+                let header_b = try_parse(meta, tone_idx, 8, None, true);
+                match (header_a, header_b) {
+                    (Ok(header), Err(_)) | (Err(_), Ok(header)) => return Ok(header),
+                    _ => {}
+                }
                 // Fallback for unsupported/unknown meta layouts:
                 // - Do not guess field semantics
                 // - Preserve raw bytes in `meta_prefix` for debug inspection

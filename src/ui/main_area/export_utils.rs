@@ -474,7 +474,7 @@ impl ExportUtils {
     ) -> Result<String, String> {
         // Create output file path in the custom directory
         let output_dir_path = Path::new(output_dir);
-        let output_filename = format!("{}.wav", audio_file_info.name);
+        let output_filename = crate::nus3bank::export::wav_filename(&audio_file_info.name, "audio");
         let output_path = output_dir_path.join(output_filename);
         let output_path_str = output_path.to_string_lossy().to_string();
 
@@ -558,7 +558,7 @@ impl ExportUtils {
             };
 
             // Create output file path with the audio file name
-            let output_filename = format!("{}.wav", audio_name);
+            let output_filename = crate::nus3bank::export::wav_filename(&audio_name, "audio");
             let output_path = output_dir_path.join(output_filename);
             let output_path_str = output_path.to_string_lossy().to_string();
 
@@ -720,7 +720,7 @@ impl ExportUtils {
 
         // Create output file path in the custom directory
         let output_dir_path = Path::new(output_dir);
-        let output_filename = format!("{}.wav", audio_file_info.name);
+        let output_filename = crate::nus3bank::export::wav_filename(&audio_file_info.name, "audio");
         let output_path = output_dir_path.join(output_filename);
         let output_path_str = output_path.to_string_lossy().to_string();
 
@@ -808,6 +808,37 @@ impl ExportUtils {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    #[cfg(windows)]
+    fn nus3bank_single_export_sanitizes_name_if_present() {
+        let input = "../song_wgnmd1.nus3bank";
+        if !Path::new(input).exists() {
+            return;
+        }
+        let output_dir = ExportUtils::build_temp_audio_path("single_export_test", "dir");
+        fs::create_dir(&output_dir).unwrap();
+        let info = AudioFileInfo::from_nus3bank_track(
+            "song\0wgnmd1".to_string(),
+            0,
+            "0x0".to_string(),
+            3439408,
+            "unused.wav".to_string(),
+        );
+        let path = ExportUtils::export_to_wav_with_custom_dir_unified(
+            &info,
+            input,
+            output_dir.to_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(Path::new(&path).file_name().unwrap(), "song_wgnmd1.wav");
+        let reader = hound::WavReader::open(&path).unwrap();
+        assert_eq!(reader.spec().sample_rate, 48000);
+        assert_eq!(reader.duration(), 5158694);
+        drop(reader);
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(output_dir).unwrap();
+    }
 
     fn touch(path: &str) {
         let mut f = std::fs::File::create(path).unwrap();

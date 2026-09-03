@@ -1,5 +1,43 @@
 use super::structures::Nus3bankFile;
-use std::fs;
+use std::path::Path;
+use std::process::Command;
+
+/// Produce a single Windows-safe filename without altering the bank's track name.
+pub(crate) fn wav_filename(name: &str, fallback: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || "<>:\"/\\|?*".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let stem = sanitized.trim().trim_end_matches(['.', ' ']);
+    let stem = if stem.is_empty() { fallback } else { stem };
+    let base = stem.split('.').next().unwrap_or(stem).to_ascii_uppercase();
+    let reserved = matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            base.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(
+                    suffix,
+                    "1" | "2"
+                        | "3"
+                        | "4"
+                        | "5"
+                        | "6"
+                        | "7"
+                        | "8"
+                        | "9"
+                        | "\u{00B9}"
+                        | "\u{00B2}"
+                        | "\u{00B3}"
+                )
+            })
+        });
+    format!("{}{}.wav", if reserved { "_" } else { "" }, stem)
+}
 
 /// NUS3BANK export utilities
 pub struct Nus3bankExporter;
@@ -14,19 +52,41 @@ impl Nus3bankExporter {
             .get_track_by_hex_id(hex_id)
             .ok_or_else(|| format!("Track with hex ID {} not found", hex_id))?;
 
-        let output_path = format!("{}/{}", output_dir, track.filename());
+        Self::export_parsed_track(file_path, track, output_dir)
+    }
 
-        if let Some(audio_data) = &track.audio_data {
-            fs::write(&output_path, audio_data)
-                .map_err(|e| format!("Failed to write audio file: {}", e))?;
-        } else {
+    fn export_parsed_track(
+        file_path: &str,
+        track: &super::structures::AudioTrack,
+        output_dir: &str,
+    ) -> Result<String, String> {
+        let filename = wav_filename(&format!("{}-{}", track.hex_id, track.name), "audio");
+        let output_path = Path::new(output_dir).join(filename);
+        let mut command = Command::new(Path::new("tools").join("vgmstream-cli.exe"));
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
+        }
+        let output = command
+            .arg("-i")
+            .arg("-o")
+            .arg(&output_path)
+            .arg("-s")
+            .arg((track.index + 1).to_string())
+            .arg(file_path)
+            .output()
+            .map_err(|e| format!("Failed to run vgmstream-cli: {}", e))?;
+        if !output.status.success() {
             return Err(format!(
-                "Audio data not loaded for track '{}' ({}). The track may be corrupted or the file may not have been parsed correctly.",
-                track.name, track.hex_id
+                "vgmstream-cli error: {}",
+                String::from_utf8_lossy(&output.stderr)
             ));
         }
-
-        Ok(output_path)
+        if !output_path.is_file() {
+            return Err("vgmstream-cli did not create the WAV file".to_string());
+        }
+        Ok(output_path.to_string_lossy().into_owned())
     }
 
     /// Batch export all tracks from NUS3BANK
@@ -35,12 +95,20 @@ impl Nus3bankExporter {
             .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
 
         let mut exported_files = Vec::new();
+        let mut failures = Vec::new();
 
         for track in &nus3bank_file.tracks {
-            match Self::export_track(file_path, &track.hex_id, output_dir) {
+            match Self::export_parsed_track(file_path, track, output_dir) {
                 Ok(path) => exported_files.push(path),
-                Err(e) => log::warn!("Failed to export track {}: {}", track.hex_id, e),
+                Err(e) => failures.push(format!("{}: {}", track.hex_id, e)),
             }
+        }
+        if !failures.is_empty() {
+            return Err(format!(
+                "Exported {} tracks; failed: {}",
+                exported_files.len(),
+                failures.join("; ")
+            ));
         }
 
         Ok(exported_files)

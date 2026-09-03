@@ -109,10 +109,7 @@ pub fn bgm_name_len_pos(raw_meta: &[u8]) -> Option<usize> {
             continue;
         };
         let name_len = raw_meta[name_at];
-        if flags0 as u32 == 0x8427_FFFF
-            && flags1 > 0
-            && (3..=80).contains(&name_len)
-        {
+        if flags0 as u32 == 0x8427_FFFF && flags1 > 0 && (3..=80).contains(&name_len) {
             return Some(name_at);
         }
     }
@@ -140,6 +137,14 @@ pub fn unshifted_name_len_pos(raw_meta: &[u8]) -> Option<usize> {
     let flags0 = i32_at(raw_meta, 4)?;
     let flags1 = i32_at(raw_meta, 8)?;
     if flags0 >= 0 || flags1 <= 0 {
+        return None;
+    }
+    // song_wgnmd1 and similar banks store a hash at this slot; only known
+    // OB live-descriptor flags0 values are unshifted name-at-+12 layouts.
+    if !matches!(
+        flags0 as u32,
+        0x8427_FFFF | 0x8467_FFFF | 0x8627_FFFF | 0x8427_BFFF
+    ) {
         return None;
     }
     let name_len = raw_meta[12];
@@ -340,7 +345,10 @@ fn skip_flags1(cur: &mut Walk, flags1: u32) -> Result<(), Nus3bankError> {
                 reason: format!("flags1 bit 8 count {n} is implausible"),
             });
         }
-        cur.skip(4usize.saturating_add((n as usize).saturating_mul(4)), "flags1 bit 8")?;
+        cur.skip(
+            4usize.saturating_add((n as usize).saturating_mul(4)),
+            "flags1 bit 8",
+        )?;
     }
     for b in 9..=15 {
         if bit(flags1, b) {
