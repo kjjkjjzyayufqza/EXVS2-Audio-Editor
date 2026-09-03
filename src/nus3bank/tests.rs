@@ -237,6 +237,130 @@ fn write_len_string(out: &mut Vec<u8>, value: &str) {
     }
 }
 
+// This fixture contains only the original TONE section, no song audio.
+fn legacy_song_bank(payload: &[u8]) -> Vec<u8> {
+    let mut tone = include_bytes!("../../tests/fixtures/song_wgnmd1-tone.bin")[8..].to_vec();
+    // PACK size in the original metadata; all other bytes reproduce the reported bug.
+    tone[0x34..0x38].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+    build_banktoc_file(&[(*b"TONE", tone), (*b"PACK", payload.to_vec())])
+}
+
+#[test]
+fn legacy_song_header_survives_unknown_parameter_layout() {
+    let payload = b"BNSFtest payload";
+    let input = unique_temp_path("legacy_song.nus3bank");
+    let output = unique_temp_path("legacy_song_roundtrip.nus3bank");
+    std::fs::write(&input, legacy_song_bank(payload)).unwrap();
+    let file = Nus3bankFile::open(&input).unwrap();
+    assert_eq!(file.tracks.len(), 1);
+    let track = &file.tracks[0];
+    assert_eq!(track.name, "song_wgnmd1");
+    assert_eq!(track.size as usize, payload.len());
+    assert_eq!(track.pack_offset, 0);
+    assert_eq!(track.audio_data.as_deref(), Some(payload.as_slice()));
+    let original_meta = file.tone.tones[0].raw_meta.clone();
+    assert!(file.tone.tones[0].meta_prefix.is_empty());
+    file.save(&output).unwrap();
+    let roundtrip = Nus3bankFile::open(&output).unwrap();
+    assert_eq!(roundtrip.tone.tones[0].raw_meta, original_meta);
+    assert_eq!(roundtrip.tracks[0].audio_data.as_deref(), Some(payload.as_slice()));
+    std::fs::remove_file(input).unwrap();
+    std::fs::remove_file(output).unwrap();
+}
+
+#[test]
+fn legacy_song_rejects_pack_range_outside_file() {
+    let input = unique_temp_path("legacy_song_bad_range.nus3bank");
+    let mut bytes = legacy_song_bank(b"BNSF");
+    // Two-entry TOC is 40 bytes; TONE size field is at section + 0x3c.
+    bytes[100..104].copy_from_slice(&3439408u32.to_le_bytes());
+    std::fs::write(&input, bytes).unwrap();
+    let err = Nus3bankFile::open(&input).unwrap_err();
+    assert!(err.to_string().contains("pack offset/size out of bounds"));
+    std::fs::remove_file(input).unwrap();
+}
+
+#[test]
+fn prefixed_tone_layout_still_parses() {
+    let mut file = make_sample_file();
+    file.tone.tones[0].meta_prefix = vec![0; 8];
+    let input = unique_temp_path("prefixed_tone.nus3bank");
+    file.save(&input).unwrap();
+    let parsed = Nus3bankFile::open(&input).unwrap();
+    assert_eq!(parsed.tracks[0].name, "track_a");
+    assert_eq!(parsed.tone.tones[0].meta_prefix, vec![0; 8]);
+    std::fs::remove_file(input).unwrap();
+}
+
+#[test]
+fn export_names_cannot_contain_nul_or_escape_output_directory() {
+    use super::export::wav_filename;
+    assert_eq!(wav_filename("song_wgnmd1", "audio"), "song_wgnmd1.wav");
+    assert_eq!(wav_filename("a\0b/c\\d:e?f", "audio"), "a_b_c_d_e_f.wav");
+    assert_eq!(wav_filename("NUL", "audio"), "_NUL.wav");
+    assert_eq!(wav_filename("com1.foo", "audio"), "_com1.foo.wav");
+    assert_eq!(wav_filename(".. ", "audio"), "audio.wav");
+}
+
+#[test]
+#[cfg(windows)]
+fn batch_export_decodes_pcm_instead_of_copying_payload() {
+    let input = unique_temp_path("export_pcm").with_extension("nus3bank");
+    let output_dir = unique_temp_path("export_pcm");
+    std::fs::create_dir(&output_dir).unwrap();
+    let mut wav = minimal_wav_bytes();
+    wav[4..8].copy_from_slice(&38u32.to_le_bytes());
+    wav[28..32].copy_from_slice(&8000u32.to_le_bytes());
+    wav[32..34].copy_from_slice(&1u16.to_le_bytes());
+    wav[34..36].copy_from_slice(&8u16.to_le_bytes());
+    wav[40..44].copy_from_slice(&2u32.to_le_bytes());
+    wav.extend_from_slice(&[128, 129]);
+    std::fs::write(&input, legacy_song_bank(&wav)).unwrap();
+    let paths = super::export::Nus3bankExporter::export_all_tracks(
+        input.to_str().unwrap(), output_dir.to_str().unwrap(),
+    ).unwrap();
+    assert_eq!(paths.len(), 1);
+    let reader = hound::WavReader::open(&paths[0]).unwrap();
+    assert_eq!(reader.spec().sample_rate, 8000);
+    assert_eq!(reader.spec().bits_per_sample, 16);
+    assert_eq!(reader.duration(), 2);
+    drop(reader);
+    std::fs::remove_file(&paths[0]).unwrap();
+    // A failed decode must not be reported as a successful empty export.
+    std::fs::write(&input, legacy_song_bank(b"not audio")).unwrap();
+    assert!(super::export::Nus3bankExporter::export_all_tracks(
+        input.to_str().unwrap(), output_dir.to_str().unwrap(),
+    ).is_err());
+    std::fs::remove_file(input).unwrap();
+    std::fs::remove_dir(output_dir).unwrap();
+}
+
+#[test]
+#[cfg(windows)]
+fn supplied_song_parses_and_exports_if_present() {
+    let input = PathBuf::from("../song_wgnmd1.nus3bank");
+    if !input.exists() { return; }
+    let file = Nus3bankFile::open(&input).unwrap();
+    assert_eq!(file.tracks.len(), 1);
+    assert_eq!(file.tracks[0].name, "song_wgnmd1");
+    assert_eq!(file.tracks[0].size, 3439408);
+    assert!(file.tracks[0].audio_data.as_ref().unwrap().starts_with(b"BNSF"));
+    let output_dir = unique_temp_path("supplied_song_export");
+    std::fs::create_dir(&output_dir).unwrap();
+    let paths = super::export::Nus3bankExporter::export_all_tracks(
+        input.to_str().unwrap(), output_dir.to_str().unwrap(),
+    ).unwrap();
+    assert_eq!(paths.len(), 1);
+    let reader = hound::WavReader::open(&paths[0]).unwrap();
+    assert_eq!(reader.spec().sample_rate, 48000);
+    assert_eq!(reader.spec().channels, 2);
+    assert_eq!(reader.spec().bits_per_sample, 16);
+    assert_eq!(reader.duration(), 5158694);
+    drop(reader);
+    std::fs::remove_file(&paths[0]).unwrap();
+    std::fs::remove_dir(output_dir).unwrap();
+}
+
 fn bitmask_prop_payload() -> Vec<u8> {
     let mut payload = Vec::new();
     payload.extend_from_slice(&0u32.to_le_bytes());
