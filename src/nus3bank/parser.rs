@@ -612,6 +612,7 @@ impl Nus3bankParser {
             meta: &[u8],
             tone_idx: usize,
             prefix_len: usize,
+            header_only: bool,
         ) -> Result<ToneMeta, Nus3bankError> {
             let mut c = Cursor::new(meta);
 
@@ -629,8 +630,16 @@ impl Nus3bankParser {
                     reason: format!("Invalid TONE name_len (index={})", tone_idx),
                 });
             }
-            let name = BinaryReader::read_string_exact(&mut c, name_len - 1)?;
-            BinaryReader::skip(&mut c, 1)?;
+            let name_bytes = BinaryReader::read_bytes(&mut c, name_len - 1)?;
+            let terminator = BinaryReader::read_u8(&mut c)?;
+            // A shifted layout can otherwise interpret arbitrary binary data as a name.
+            // NUL inside that name later makes Windows reject the export command.
+            if terminator != 0 || name_bytes.iter().any(|b| b.is_ascii_control()) {
+                return Err(Nus3bankError::InvalidFormat {
+                    reason: format!("Invalid TONE name/terminator (index={})", tone_idx),
+                });
+            }
+            let name = String::from_utf8_lossy(&name_bytes).to_string();
             c.seek(SeekFrom::Start(align4_pos(c.position())))?;
 
             let reserved0 = BinaryReader::read_i32_le(&mut c)?;
@@ -639,6 +648,39 @@ impl Nus3bankParser {
             let offset = BinaryReader::read_i32_le(&mut c)?;
             let pack_size_field_pos = c.position() as usize;
             let size = BinaryReader::read_i32_le(&mut c)?;
+
+            // Some banks share this header but use a different parameter-table layout.
+            // Recover only the validated header; the writer preserves raw_meta and
+            // patches just the PACK offset/size, without synthesizing unknown fields.
+            if header_only {
+                if reserved0 != 0 || reserved8 != 8 || offset < 0 || size < 0 {
+                    return Err(Nus3bankError::InvalidFormat {
+                        reason: format!("Invalid TONE payload header (index={})", tone_idx),
+                    });
+                }
+                return Ok(ToneMeta {
+                    meta_prefix,
+                    raw_meta: meta.to_vec(),
+                    pack_offset_field_pos: Some(pack_offset_field_pos),
+                    pack_size_field_pos: Some(pack_size_field_pos),
+                    hash,
+                    unk1,
+                    name,
+                    reserved0,
+                    reserved8,
+                    offset,
+                    size,
+                    param: [0.0; 12],
+                    offsets: Vec::new(),
+                    unkvalues: Vec::new(),
+                    unkvalues_pair_order: UnkvaluesPairOrder::IndexThenValue,
+                    unkending: vec![-1],
+                    end: Vec::new(),
+                    payload: Vec::new(),
+                    meta_size: meta.len() as u32,
+                    removed: size == 0,
+                });
+            }
 
             let mut param = [0.0f32; 12];
             for i in 0..12 {
@@ -801,8 +843,8 @@ impl Nus3bankParser {
             })
         }
 
-        let a = try_parse(meta, tone_idx, 0);
-        let b = try_parse(meta, tone_idx, 8);
+        let a = try_parse(meta, tone_idx, 0, false);
+        let b = try_parse(meta, tone_idx, 8, false);
 
         match (a, b) {
             (Ok(x), Ok(y)) => {
@@ -837,6 +879,13 @@ impl Nus3bankParser {
             (Ok(x), Err(_)) => Ok(x),
             (Err(_), Ok(y)) => Ok(y),
             (Err(_ea), Err(_eb)) => {
+                let header_a = try_parse(meta, tone_idx, 0, true);
+                let header_b = try_parse(meta, tone_idx, 8, true);
+                match (header_a, header_b) {
+                    (Ok(header), Err(_)) | (Err(_), Ok(header)) => return Ok(header),
+                    // An ambiguous header is not sufficient evidence to select a layout.
+                    _ => {}
+                }
                 // Fallback for unsupported/unknown meta layouts:
                 // - Do not guess field semantics
                 // - Preserve raw bytes in `meta_prefix` for debug inspection
