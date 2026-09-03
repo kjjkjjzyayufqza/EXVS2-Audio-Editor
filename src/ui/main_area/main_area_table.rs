@@ -1,10 +1,11 @@
 use crate::localized;
-use egui::{Color32, Ui, RichText};
+use egui::{Color32, RichText, Ui};
 use egui_phosphor::regular;
 
 use super::{
-    audio_file_info::AudioFileInfo, export_utils::ExportUtils, main_area_core::MainArea,
-    replace_utils::ReplaceUtils, table_renderer::TableRenderer, add_audio_utils::AddAudioUtils, nus3audio_file_utils::Nus3audioFileUtils,
+    add_audio_utils::AddAudioUtils, audio_file_info::AudioFileInfo, export_utils::ExportUtils,
+    main_area_core::MainArea, nus3audio_file_utils::Nus3audioFileUtils,
+    replace_utils::ReplaceUtils, table_renderer::TableRenderer,
 };
 use crate::ui::audio_player::{AudioPlayerAction, LoopMode};
 
@@ -57,15 +58,31 @@ impl MainArea {
         // First, render the UI - Actions Bar
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            
+
             // Primary Actions Group
             ui.label(RichText::new(localized::actions_colon()).weak().size(11.0));
-            
-            if ui.button(RichText::new(format!("{} {}", regular::PLUS, localized::add_audio_btn()))).on_hover_text(localized::add_audio_tooltip()).clicked() {
+
+            if ui
+                .button(RichText::new(format!(
+                    "{} {}",
+                    regular::PLUS,
+                    localized::add_audio_btn()
+                )))
+                .on_hover_text(localized::add_audio_tooltip())
+                .clicked()
+            {
                 action_data.add_audio = true;
             }
-            
-            if ui.button(RichText::new(format!("{} {}", regular::EXPORT, localized::export_all_btn()))).on_hover_text(localized::export_all_tooltip()).clicked() {
+
+            if ui
+                .button(RichText::new(format!(
+                    "{} {}",
+                    regular::EXPORT,
+                    localized::export_all_btn()
+                )))
+                .on_hover_text(localized::export_all_tooltip())
+                .clicked()
+            {
                 action_data.export_all_confirm = true;
             }
 
@@ -73,13 +90,25 @@ impl MainArea {
 
             // Edit Group
             ui.label(RichText::new(localized::edit_colon()).weak().size(11.0));
-            if ui.button("GRP").on_hover_text(localized::edit_grp_tooltip()).clicked() {
+            if ui
+                .button("GRP")
+                .on_hover_text(localized::edit_grp_tooltip())
+                .clicked()
+            {
                 action_data.edit_grp_list = true;
             }
-            if ui.button("DTON").on_hover_text(localized::edit_dton_tooltip()).clicked() {
+            if ui
+                .button("DTON")
+                .on_hover_text(localized::edit_dton_tooltip())
+                .clicked()
+            {
                 action_data.edit_dton_tones = true;
             }
-            if ui.button("PROP").on_hover_text(localized::edit_prop_tooltip()).clicked() {
+            if ui
+                .button("PROP")
+                .on_hover_text(localized::edit_prop_tooltip())
+                .clicked()
+            {
                 action_data.edit_prop = true;
             }
 
@@ -88,24 +117,52 @@ impl MainArea {
             // Batch Operations Group
             ui.label(RichText::new(localized::batch_colon()).weak().size(11.0));
             let batch_enabled = selected_count > 0;
-            
+
             ui.add_enabled_ui(batch_enabled, |ui| {
-                if ui.button(RichText::new(format!("{} {}", regular::FILE_ARROW_UP, localized::replace_btn()))).on_hover_text(localized::replace_selected_tooltip()).clicked() {
+                if ui
+                    .button(RichText::new(format!(
+                        "{} {}",
+                        regular::FILE_ARROW_UP,
+                        localized::replace_btn()
+                    )))
+                    .on_hover_text(localized::replace_selected_tooltip())
+                    .clicked()
+                {
                     action_data.replace_new = true;
                 }
-                if ui.button(RichText::new(format!("{} {}", regular::ERASER, localized::clear_btn()))).on_hover_text(localized::clear_wav_tooltip()).clicked() {
+                if ui
+                    .button(RichText::new(format!(
+                        "{} {}",
+                        regular::ERASER,
+                        localized::clear_btn()
+                    )))
+                    .on_hover_text(localized::clear_wav_tooltip())
+                    .clicked()
+                {
                     action_data.replace_empty = true;
                 }
-                if ui.button(RichText::new(format!("{} {}", regular::TRASH, localized::remove_btn()))).on_hover_text(localized::remove_selected_tooltip()).clicked() {
+                if ui
+                    .button(RichText::new(format!(
+                        "{} {}",
+                        regular::TRASH,
+                        localized::remove_btn()
+                    )))
+                    .on_hover_text(localized::remove_selected_tooltip())
+                    .clicked()
+                {
                     action_data.remove_selected = true;
                 }
             });
-            
+
             ui.separator();
 
             // More Actions
             ui.menu_button(localized::more_menu(), |ui| {
-                if ui.button(localized::debug_convert_all()).on_hover_text(localized::debug_convert_tooltip()).clicked() {
+                if ui
+                    .button(localized::debug_convert_all())
+                    .on_hover_text(localized::debug_convert_tooltip())
+                    .clicked()
+                {
                     action_data.debug_convert_all_wav = true;
                     ui.close();
                 }
@@ -117,12 +174,18 @@ impl MainArea {
                     ui.label(
                         RichText::new(localized::selected_count(selected_count))
                             .color(Color32::from_rgb(100, 150, 255))
-                            .strong()
+                            .strong(),
                     );
                 }
-                
+
                 if !self.search_query.is_empty() {
-                    ui.label(RichText::new(localized::found_count(files_count, self.file_count.unwrap_or(0))).weak());
+                    ui.label(
+                        RichText::new(localized::found_count(
+                            files_count,
+                            self.file_count.unwrap_or(0),
+                        ))
+                        .weak(),
+                    );
                 }
             });
         });
@@ -179,7 +242,9 @@ impl MainArea {
                 let mut representative: Option<AudioFileInfo> = None;
                 for key in self.selected_items.iter() {
                     if let Some((name, id)) = key.split_once(':') {
-                        if let Some(info) = audio_files.iter().find(|f| f.name == name && f.id == id) {
+                        if let Some(info) =
+                            audio_files.iter().find(|f| f.name == name && f.id == id)
+                        {
                             representative = Some(info.clone());
                             break;
                         }
@@ -188,7 +253,10 @@ impl MainArea {
 
                 if let Some(rep) = representative {
                     self.pause_main_player_for_preview();
-                    match ReplaceUtils::replace_with_file_dialog(&rep, &mut self.loop_settings_modal) {
+                    match ReplaceUtils::replace_with_file_dialog(
+                        &rep,
+                        &mut self.loop_settings_modal,
+                    ) {
                         Ok(_) => {
                             self.pending_replace_new = true;
                         }
@@ -199,7 +267,7 @@ impl MainArea {
                 }
             }
         }
-        
+
         if action_data.replace_empty {
             self.pending_replace_empty = true;
             self.confirm_modal.open(
@@ -225,10 +293,7 @@ impl MainArea {
                         &localized::confirm_debug_convert_body(),
                     );
                 } else {
-                    self.add_toast(
-                        localized::debug_nus3bank_only().to_string(),
-                        Color32::GOLD,
-                    );
+                    self.add_toast(localized::debug_nus3bank_only().to_string(), Color32::GOLD);
                 }
             }
         }
@@ -243,8 +308,9 @@ impl MainArea {
         // Handle "Add Audio" action if clicked
         if action_data.add_audio {
             let selected_file = self.selected_file.clone();
-            
+
             if let Some(_file_path) = &selected_file {
+                self.pause_main_player_for_preview();
                 // Use AddAudioUtils to open file dialog and show add audio modal
                 match AddAudioUtils::add_with_file_dialog(
                     &mut self.add_audio_modal,
@@ -268,12 +334,10 @@ impl MainArea {
         if action_data.edit_grp_list {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.grp_list_modal.open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
+                    self.grp_list_modal
+                        .open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
                 } else {
-                    toasts_to_add.push((
-                        localized::grp_nus3bank_only().to_string(),
-                        Color32::GOLD,
-                    ));
+                    toasts_to_add.push((localized::grp_nus3bank_only().to_string(), Color32::GOLD));
                 }
             } else {
                 toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
@@ -284,12 +348,11 @@ impl MainArea {
         if action_data.edit_dton_tones {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.dton_tones_modal.open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
+                    self.dton_tones_modal
+                        .open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
                 } else {
-                    toasts_to_add.push((
-                        localized::dton_nus3bank_only().to_string(),
-                        Color32::GOLD,
-                    ));
+                    toasts_to_add
+                        .push((localized::dton_nus3bank_only().to_string(), Color32::GOLD));
                 }
             } else {
                 toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
@@ -300,12 +363,11 @@ impl MainArea {
         if action_data.edit_prop {
             if let Some(file_path) = self.selected_file.clone() {
                 if file_path.to_lowercase().ends_with(".nus3bank") {
-                    self.prop_edit_modal.open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
+                    self.prop_edit_modal
+                        .open_for_file(&file_path, crate::locale_from_ctx(ui.ctx()));
                 } else {
-                    toasts_to_add.push((
-                        localized::prop_nus3bank_only().to_string(),
-                        Color32::GOLD,
-                    ));
+                    toasts_to_add
+                        .push((localized::prop_nus3bank_only().to_string(), Color32::GOLD));
                 }
             } else {
                 toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
@@ -319,10 +381,10 @@ impl MainArea {
             } else {
                 0
             };
-            
+
             // Set the pending export all flag
             self.pending_export_all = true;
-            
+
             self.confirm_modal.open(
                 &localized::confirm_export_all_title(),
                 &localized::confirm_export_all_body(file_count),
@@ -342,20 +404,14 @@ impl MainArea {
                             audio_info, file_path, output_dir,
                         ) {
                             Ok(path) => {
-                                toasts_to_add.push((
-                                    localized::exported_to(path),
-                                    Color32::GREEN,
-                                ));
+                                toasts_to_add.push((localized::exported_to(path), Color32::GREEN));
                             }
                             Err(e) => {
                                 toasts_to_add.push((localized::export_failed(&e), Color32::RED));
                             }
                         }
                     } else {
-                        toasts_to_add.push((
-                            localized::no_output_dir().to_string(),
-                            Color32::GOLD,
-                        ));
+                        toasts_to_add.push((localized::no_output_dir().to_string(), Color32::GOLD));
                     }
                 }
             }
@@ -368,8 +424,12 @@ impl MainArea {
                 let audio_name = audio_info.name.clone();
                 let file_path = self.selected_file.clone();
 
-                log::info!("Play button clicked for audio: {} (id: {}, is_nus3bank: {})", 
-                          audio_name, audio_info.id, audio_info.is_nus3bank);
+                log::info!(
+                    "Play button clicked for audio: {} (id: {}, is_nus3bank: {})",
+                    audio_name,
+                    audio_info.id,
+                    audio_info.is_nus3bank
+                );
 
                 if let Some(path) = &file_path {
                     if let Some(audio_player) = &mut self.audio_player {
@@ -380,8 +440,12 @@ impl MainArea {
                                 let state = audio_player.get_audio_state();
                                 {
                                     let mut state = state.lock().unwrap();
-                                    state.update_playlist(filtered_audio_files.clone(), &audio_info.name, &audio_info.id);
-                                    
+                                    state.update_playlist(
+                                        filtered_audio_files.clone(),
+                                        &audio_info.name,
+                                        &audio_info.id,
+                                    );
+
                                     // Start playing
                                     if !state.is_playing {
                                         state.toggle_play();
@@ -395,27 +459,23 @@ impl MainArea {
                             Err(e) => {
                                 let error_msg = localized::failed_load_audio(&audio_name, &e);
                                 log::error!("{}", error_msg);
-                                toasts_to_add
-                                    .push((error_msg, Color32::RED));
+                                toasts_to_add.push((error_msg, Color32::RED));
                             }
                         }
                     } else {
                         let error_msg = localized::audio_player_not_initialized().to_string();
                         log::error!("{}", error_msg);
-                        toasts_to_add
-                            .push((error_msg, Color32::RED));
+                        toasts_to_add.push((error_msg, Color32::RED));
                     }
                 } else {
                     let error_msg = localized::no_file_for_playback().to_string();
                     log::error!("{}", error_msg);
-                    toasts_to_add
-                        .push((error_msg, Color32::RED));
+                    toasts_to_add.push((error_msg, Color32::RED));
                 }
             } else {
                 let error_msg = localized::invalid_audio_index(idx, filtered_audio_files.len());
                 log::error!("{}", error_msg);
-                toasts_to_add
-                    .push((error_msg, Color32::RED));
+                toasts_to_add.push((error_msg, Color32::RED));
             }
         }
 
@@ -472,10 +532,10 @@ impl MainArea {
                         "Confirming removal of audio: {} (ID: {})",
                         audio_info.name, audio_info.id
                     );
-                    
+
                     // Save the audio info to be removed
                     self.pending_remove_audio = Some(audio_info.clone());
-                    
+
                     // Open the confirm dialog
                     self.confirm_modal.open(
                         &localized::confirm_title_default(),
@@ -484,16 +544,16 @@ impl MainArea {
                 }
             }
         }
-        
+
         // Process the confirm dialog's confirmation action
         if self.confirm_modal.confirmed {
             // Reset the confirmed state
             self.confirm_modal.reset_state();
-            
+
             // If there is a pending export all action, perform the export
             if self.pending_export_all {
                 self.pending_export_all = false;
-                
+
                 let selected_file = self.selected_file.clone();
                 let output_path = self.output_path.clone();
 
@@ -512,10 +572,7 @@ impl MainArea {
                             }
                         }
                     } else {
-                        toasts_to_add.push((
-                            localized::no_output_dir().to_string(),
-                            Color32::GOLD,
-                        ));
+                        toasts_to_add.push((localized::no_output_dir().to_string(), Color32::GOLD));
                     }
                 }
             }
@@ -537,13 +594,19 @@ impl MainArea {
                         for key in self.selected_items.clone().into_iter() {
                             if let Some(&idx) = index_by_key.get(&key) {
                                 let audio_info = audio_files[idx].clone();
-                                match ReplaceUtils::replace_with_empty_wav_in_memory(&audio_info, file_path) {
+                                match ReplaceUtils::replace_with_empty_wav_in_memory(
+                                    &audio_info,
+                                    file_path,
+                                ) {
                                     Ok(new_info) => {
                                         audio_files[idx] = new_info;
                                         replaced += 1;
                                     }
                                     Err(e) => {
-                                        toasts_to_add.push((localized::failed_replace_key(&key, &e), Color32::RED));
+                                        toasts_to_add.push((
+                                            localized::failed_replace_key(&key, &e),
+                                            Color32::RED,
+                                        ));
                                     }
                                 }
                             }
@@ -554,13 +617,14 @@ impl MainArea {
                         if replaced > 0 {
                             // Clear all selected items after successful batch replacement
                             self.selected_items.clear();
-                            
-                            toasts_to_add.push((
-                                localized::replaced_empty_wav(replaced),
-                                Color32::GREEN,
-                            ));
+
+                            toasts_to_add
+                                .push((localized::replaced_empty_wav(replaced), Color32::GREEN));
                         } else {
-                            toasts_to_add.push((localized::no_matching_replace().to_string(), Color32::GOLD));
+                            toasts_to_add.push((
+                                localized::no_matching_replace().to_string(),
+                                Color32::GOLD,
+                            ));
                         }
                     }
                 }
@@ -572,7 +636,8 @@ impl MainArea {
                 let selected_file_path = match self.selected_file.as_deref() {
                     Some(p) => p,
                     None => {
-                        toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
+                        toasts_to_add
+                            .push((localized::no_file_selected().to_string(), Color32::GOLD));
                         return;
                     }
                 };
@@ -586,7 +651,8 @@ impl MainArea {
                 }
 
                 // Load current bank to read original payloads.
-                let bank = match crate::nus3bank::structures::Nus3bankFile::open(selected_file_path) {
+                let bank = match crate::nus3bank::structures::Nus3bankFile::open(selected_file_path)
+                {
                     Ok(f) => f,
                     Err(e) => {
                         toasts_to_add.push((localized::failed_open_bank(&e), Color32::RED));
@@ -621,20 +687,24 @@ impl MainArea {
                             }
                         };
 
-                        let source = super::replace_utils::ReplaceUtils::get_replacement_data_unified(info)
-                            .or_else(|| payload_by_hex.get(hex_id).cloned());
+                        let source =
+                            super::replace_utils::ReplaceUtils::get_replacement_data_unified(info)
+                                .or_else(|| payload_by_hex.get(hex_id).cloned());
 
                         let Some(source_bytes) = source else {
                             failed += 1;
                             continue;
                         };
 
-                        if super::replace_utils::ReplaceUtils::is_standard_pcm16_wav(&source_bytes) {
+                        if super::replace_utils::ReplaceUtils::is_standard_pcm16_wav(&source_bytes)
+                        {
                             skipped += 1;
                             continue;
                         }
 
-                        match super::replace_utils::ReplaceUtils::convert_audio_bytes_to_pcm_wav(&source_bytes) {
+                        match super::replace_utils::ReplaceUtils::convert_audio_bytes_to_pcm_wav(
+                            &source_bytes,
+                        ) {
                             Ok(wav_bytes) => {
                                 // Stage replacement for export/save.
                                 let _ = crate::nus3bank::replace::Nus3bankReplacer::replace_track_in_memory(
@@ -655,7 +725,10 @@ impl MainArea {
                             }
                             Err(e) => {
                                 failed += 1;
-                                toasts_to_add.push((localized::convert_failed_for(&info.name, &e), Color32::RED));
+                                toasts_to_add.push((
+                                    localized::convert_failed_for(&info.name, &e),
+                                    Color32::RED,
+                                ));
                             }
                         }
                     }
@@ -663,7 +736,11 @@ impl MainArea {
 
                 toasts_to_add.push((
                     localized::debug_convert_done(converted, skipped, failed),
-                    if failed == 0 { Color32::GREEN } else { Color32::GOLD },
+                    if failed == 0 {
+                        Color32::GREEN
+                    } else {
+                        Color32::GOLD
+                    },
                 ));
             }
             // If there is a pending remove-selected action, perform it
@@ -673,7 +750,8 @@ impl MainArea {
                 let selected_file_path = match self.selected_file.as_deref() {
                     Some(p) => p,
                     None => {
-                        toasts_to_add.push((localized::no_file_selected().to_string(), Color32::GOLD));
+                        toasts_to_add
+                            .push((localized::no_file_selected().to_string(), Color32::GOLD));
                         return;
                     }
                 };
@@ -691,21 +769,29 @@ impl MainArea {
                             continue;
                         };
 
-                        let Some(info) = audio_files.iter().find(|f| f.name == name && f.id == id).cloned() else {
+                        let Some(info) = audio_files
+                            .iter()
+                            .find(|f| f.name == name && f.id == id)
+                            .cloned()
+                        else {
                             continue;
                         };
 
                         match Nus3audioFileUtils::register_remove(&info, Some(selected_file_path)) {
                             Ok(_) => {
                                 // Remove from the in-memory list
-                                if let Some(pos) = audio_files.iter().position(|f| f.name == info.name && f.id == info.id) {
+                                if let Some(pos) = audio_files
+                                    .iter()
+                                    .position(|f| f.name == info.name && f.id == info.id)
+                                {
                                     audio_files.remove(pos);
                                     removed_count += 1;
                                     removed_keys.insert(format!("{}:{}", info.name, info.id));
                                 }
                             }
                             Err(e) => {
-                                toasts_to_add.push((localized::failed_mark_deletion(&e), Color32::RED));
+                                toasts_to_add
+                                    .push((localized::failed_mark_deletion(&e), Color32::RED));
                             }
                         }
                     }
@@ -722,7 +808,8 @@ impl MainArea {
                             Color32::GREEN,
                         ));
                     } else {
-                        toasts_to_add.push((localized::no_matching_in_list().to_string(), Color32::GOLD));
+                        toasts_to_add
+                            .push((localized::no_matching_in_list().to_string(), Color32::GOLD));
                     }
                 } else {
                     toasts_to_add.push((localized::no_audio_list().to_string(), Color32::GOLD));
@@ -735,25 +822,28 @@ impl MainArea {
                         "Confirmed removal of audio: {} (ID: {})",
                         audio_info.name, audio_info.id
                     );
-                    
+
                     // Register the removal in memory only
-                    match Nus3audioFileUtils::register_remove(audio_info, self.selected_file.as_deref()) {
+                    match Nus3audioFileUtils::register_remove(
+                        audio_info,
+                        self.selected_file.as_deref(),
+                    ) {
                         Ok(_) => {
                             // Remove the audio from memory
                             if let Some(ref mut audio_files) = self.audio_files {
-                                if let Some(original_idx) = audio_files.iter().position(|f| 
+                                if let Some(original_idx) = audio_files.iter().position(|f| {
                                     f.name == audio_info.name && f.id == audio_info.id
-                                ) {
+                                }) {
                                     // Remove from the collection
                                     audio_files.remove(original_idx);
-                                    
+
                                     // Update the file count
                                     self.file_count = Some(audio_files.len());
-                                    
+
                                     // Remove from persistent selection if present
                                     let key = format!("{}:{}", audio_info.name, audio_info.id);
                                     self.selected_items.remove(&key);
-                                    
+
                                     toasts_to_add.push((
                                         localized::marked_deleted_one(&audio_info.name),
                                         Color32::GREEN,
@@ -765,7 +855,7 @@ impl MainArea {
                             toasts_to_add.push((localized::failed_mark_deletion(&e), Color32::RED));
                         }
                     }
-                    
+
                     // Clear the audio info to be removed
                     self.pending_remove_audio = None;
                 }
@@ -773,7 +863,7 @@ impl MainArea {
         } else if self.confirm_modal.cancelled {
             // Process the case of cancelling the action
             self.confirm_modal.reset_state();
-            
+
             if self.pending_export_all {
                 self.pending_export_all = false;
             } else if self.pending_replace_empty {
@@ -795,85 +885,49 @@ impl MainArea {
 
             // Get the selected file
             if let Some(_file_path) = &self.selected_file {
-                // 1. 获取原始文件路径
-                let original_file_path = match &self.add_audio_modal.settings.file_path {
-                    Some(path) => path,
-                    None => {
-                        toasts_to_add.push((localized::no_audio_path().to_string(), Color32::RED));
-                        return;
-                    }
-                };
-                
-                // 2. 确定文件类型 - 检查当前选择的文件是否为NUS3BANK
+                if self.add_audio_modal.settings.file_path.is_none() {
+                    toasts_to_add.push((localized::no_audio_path().to_string(), Color32::RED));
+                    return;
+                }
+
                 let selected_file_path = self.selected_file.as_ref().unwrap();
                 let is_nus3bank = selected_file_path.to_lowercase().ends_with(".nus3bank");
-                
-                // 处理新音频文件
-                match AddAudioUtils::process_new_audio(&self.add_audio_modal, is_nus3bank, crate::locale_from_ctx(ui.ctx()))
-                {
-                    Ok(new_audio_info) => {
-                        // 3. 尝试将音频转换为WAV格式
-                        match AddAudioUtils::convert_to_wav(original_file_path) {
-                            Ok(wav_data) => {
-                                // 4. 使用转换后的WAV数据注册添加操作
-                                let register_result = if new_audio_info.is_nus3bank {
-                                    let selected_file_path = self.selected_file.as_ref().unwrap();
-                                    Nus3audioFileUtils::register_add_nus3bank(selected_file_path, &new_audio_info, wav_data)
-                                } else {
-                                    Nus3audioFileUtils::register_add_audio(&new_audio_info, wav_data)
-                                };
-                                
-                                match register_result {
-                                    Ok(_) => {
-                                        // 5. 更新内存中的音频文件列表
-                                        if let Some(ref mut audio_files) = self.audio_files {
-                                            audio_files.push(new_audio_info.clone());
-                                            self.file_count = Some(audio_files.len());
-                                            toasts_to_add.push((
-                                                localized::added_wav(&new_audio_info.name),
-                                                Color32::GREEN,
-                                            ));
-                                        }
-                                    },
-                                    Err(e) => {
-                                        toasts_to_add.push((localized::register_wav_failed(&e), Color32::RED));
-                                    }
-                                }
-                            },
-                            Err(e) => {
-                                // 6. 如果WAV转换失败，回退到使用原始音频数据
-                                println!("Warning: Failed to convert to WAV: {}", e);
-                                println!("Falling back to original file data");
-                                
-                                if let Some(data) = &self.add_audio_modal.file_data {
-                                    let fallback_result = if new_audio_info.is_nus3bank {
-                                        let selected_file_path = self.selected_file.as_ref().unwrap();
-                                        Nus3audioFileUtils::register_add_nus3bank(selected_file_path, &new_audio_info, data.clone())
-                                    } else {
-                                        Nus3audioFileUtils::register_add_audio(&new_audio_info, data.clone())
-                                    };
-                                    
-                                    match fallback_result {
-                                        Ok(_) => {
-                                            if let Some(ref mut audio_files) = self.audio_files {
-                                                audio_files.push(new_audio_info.clone());
-                                                self.file_count = Some(audio_files.len());
-                                                toasts_to_add.push((
-                                                    localized::added_original(&new_audio_info.name),
-                                                    Color32::GREEN,
-                                                ));
-                                            }
-                                        },
-                                        Err(e) => {
-                                            toasts_to_add.push((localized::failed_add_audio(&e), Color32::RED));
-                                        }
-                                    }
-                                } else {
-                                    toasts_to_add.push((localized::no_audio_data().to_string(), Color32::RED));
+
+                match AddAudioUtils::process_new_audio(
+                    &self.add_audio_modal,
+                    is_nus3bank,
+                    crate::locale_from_ctx(ui.ctx()),
+                ) {
+                    Ok((mut new_audio_info, wav_data)) => {
+                        let register_result = if new_audio_info.is_nus3bank {
+                            Nus3audioFileUtils::register_add_nus3bank(
+                                selected_file_path,
+                                &mut new_audio_info,
+                                wav_data,
+                            )
+                        } else {
+                            Nus3audioFileUtils::register_add_audio(&new_audio_info, wav_data)
+                        };
+
+                        match register_result {
+                            Ok(_) => {
+                                if let Some(ref mut audio_files) = self.audio_files {
+                                    audio_files.push(new_audio_info.clone());
+                                    self.file_count = Some(audio_files.len());
+                                    toasts_to_add.push((
+                                        localized::added_wav(&new_audio_info.name),
+                                        Color32::GREEN,
+                                    ));
                                 }
                             }
+                            Err(e) => {
+                                toasts_to_add.push((
+                                    localized::register_wav_failed(&e),
+                                    Color32::RED,
+                                ));
+                            }
                         }
-                    },
+                    }
                     Err(e) => {
                         toasts_to_add.push((localized::failed_process_new_audio(&e), Color32::RED));
                     }
@@ -897,12 +951,7 @@ impl MainArea {
                         .estimated_duration
                         .max(0.0);
                     let loop_start = if use_custom_loop {
-                        Some(
-                            self.loop_settings_modal
-                                .settings
-                                .loop_start
-                                .unwrap_or(0.0),
-                        )
+                        Some(self.loop_settings_modal.settings.loop_start.unwrap_or(0.0))
                     } else {
                         None
                     };
@@ -923,9 +972,11 @@ impl MainArea {
                         self.pending_replace_new = false;
 
                         // Retrieve the file path chosen during the dialog (from representative)
-                        let rep_path_opt = ReplaceUtils::get_replacement_path(&audio_info.name, &audio_info.id);
+                        let rep_path_opt =
+                            ReplaceUtils::get_replacement_path(&audio_info.name, &audio_info.id);
                         if rep_path_opt.is_none() {
-                            toasts_to_add.push((localized::no_replacement_path().to_string(), Color32::RED));
+                            toasts_to_add
+                                .push((localized::no_replacement_path().to_string(), Color32::RED));
                             return;
                         }
                         let rep_path = rep_path_opt.unwrap();
@@ -956,7 +1007,10 @@ impl MainArea {
                                             replaced_count += 1;
                                         }
                                         Err(e) => {
-                                            toasts_to_add.push((localized::failed_process_replacement_key(&key, &e), Color32::RED));
+                                            toasts_to_add.push((
+                                                localized::failed_process_replacement_key(&key, &e),
+                                                Color32::RED,
+                                            ));
                                         }
                                     }
                                 }
@@ -965,8 +1019,14 @@ impl MainArea {
                             self.file_count = Some(audio_files.len());
 
                             let loop_message = if use_custom_loop {
-                                let start_str = loop_start.map_or(localized::loop_word_start().to_string(), |s| format!("{:.2}s", s));
-                                let end_str = loop_end.map_or(localized::loop_word_end().to_string(), |e| format!("{:.2}s", e));
+                                let start_str = loop_start
+                                    .map_or(localized::loop_word_start().to_string(), |s| {
+                                        format!("{:.2}s", s)
+                                    });
+                                let end_str = loop_end
+                                    .map_or(localized::loop_word_end().to_string(), |e| {
+                                        format!("{:.2}s", e)
+                                    });
                                 localized::loop_parenthetical_range(&start_str, &end_str)
                             } else {
                                 localized::loop_parenthetical_full().to_string()
@@ -975,8 +1035,7 @@ impl MainArea {
                             if replaced_count > 0 {
                                 // Play the representative track via full load (uses in-memory replacement)
                                 if let Some(audio_player) = &mut self.audio_player {
-                                    if let Err(e) = audio_player.load_audio(audio_info, file_path)
-                                    {
+                                    if let Err(e) = audio_player.load_audio(audio_info, file_path) {
                                         log::error!(
                                             "Failed to play replacement after batch: {}",
                                             e
@@ -992,11 +1051,17 @@ impl MainArea {
                                 self.selected_items.clear();
 
                                 toasts_to_add.push((
-                                    localized::replaced_in_memory_count(replaced_count, &loop_message),
+                                    localized::replaced_in_memory_count(
+                                        replaced_count,
+                                        &loop_message,
+                                    ),
                                     Color32::GREEN,
                                 ));
                             } else {
-                                toasts_to_add.push((localized::no_matching_replace().to_string(), Color32::GOLD));
+                                toasts_to_add.push((
+                                    localized::no_matching_replace().to_string(),
+                                    Color32::GOLD,
+                                ));
                             }
                         }
                     } else {
@@ -1053,17 +1118,26 @@ impl MainArea {
                                         }
 
                                         let loop_message = if use_custom_loop {
-                                            let start_str = loop_start
-                                                .map_or(localized::loop_word_start().to_string(), |s| format!("{:.2}s", s));
-                                            let end_str = loop_end
-                                                .map_or(localized::loop_word_end().to_string(), |e| format!("{:.2}s", e));
-                                            localized::loop_parenthetical_range(&start_str, &end_str)
+                                            let start_str = loop_start.map_or(
+                                                localized::loop_word_start().to_string(),
+                                                |s| format!("{:.2}s", s),
+                                            );
+                                            let end_str = loop_end.map_or(
+                                                localized::loop_word_end().to_string(),
+                                                |e| format!("{:.2}s", e),
+                                            );
+                                            localized::loop_parenthetical_range(
+                                                &start_str, &end_str,
+                                            )
                                         } else {
                                             localized::loop_parenthetical_full().to_string()
                                         };
 
                                         toasts_to_add.push((
-                                            localized::replaced_in_memory_one(&audio_info.name, &loop_message),
+                                            localized::replaced_in_memory_one(
+                                                &audio_info.name,
+                                                &loop_message,
+                                            ),
                                             Color32::GREEN,
                                         ));
                                     }
@@ -1221,5 +1295,3 @@ impl MainArea {
         }
     }
 }
-
-

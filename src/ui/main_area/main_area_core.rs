@@ -4,12 +4,9 @@ use std::sync::mpsc;
 
 use super::{
     add_audio_modal::AddAudioModal, audio_file_info::AudioFileInfo, confirm_modal::ConfirmModal,
-    dton_tones_modal::DtonTonesModal,
-    grp_list_modal::GrpListModal,
-    loop_settings_modal::LoopSettingsModal,
-    prop_edit_modal::PropEditModal,
-    search_column::SearchColumn, sort_column::SortColumn,
-    toast_message::ToastMessage,
+    dton_tones_modal::DtonTonesModal, grp_list_modal::GrpListModal,
+    loop_settings_modal::LoopSettingsModal, prop_edit_modal::PropEditModal,
+    search_column::SearchColumn, sort_column::SortColumn, toast_message::ToastMessage,
 };
 use crate::ui::audio_player::{AudioPlayer, AudioPlayerSettings};
 
@@ -254,5 +251,82 @@ impl MainArea {
                 state.toggle_play(); // pause
             }
         }
+    }
+
+    /// Route Space / prev / next / stop / Escape before widgets steal them.
+    pub fn handle_keyboard_shortcuts(&mut self, ctx: &egui::Context) {
+        use crate::ui::shortcuts::{
+            ActivePlayer, ShortcutAction, ShortcutContext, consume_modifiers_for_key,
+            detect_pressed_shortcut, route_shortcut,
+        };
+
+        let text_input_focused = ctx.text_edit_focused();
+        let dialog_open = self.loop_settings_modal.open || self.add_audio_modal.open;
+        let active_player = if dialog_open {
+            ActivePlayer::Preview
+        } else {
+            ActivePlayer::Main
+        };
+
+        let detected = ctx.input(|i| detect_pressed_shortcut(i));
+        let Some((shortcut_key, egui_key)) = detected else {
+            return;
+        };
+
+        let action = route_shortcut(
+            shortcut_key,
+            ShortcutContext {
+                text_input_focused,
+                active_player,
+                dialog_open,
+            },
+        );
+        let Some(action) = action else {
+            return;
+        };
+
+        ctx.input_mut(|i| {
+            let _ = i.consume_key(consume_modifiers_for_key(egui_key), egui_key);
+        });
+
+        match action {
+            ShortcutAction::TogglePlayPause => {
+                if self.loop_settings_modal.open {
+                    self.loop_settings_modal.toggle_preview_play();
+                } else if self.add_audio_modal.open {
+                    self.add_audio_modal.toggle_preview_play();
+                } else if let Some(player) = &mut self.audio_player {
+                    player.toggle_play();
+                }
+            }
+            ShortcutAction::PreviousTrack => {
+                if let Some(player) = &mut self.audio_player {
+                    player.request_previous_track();
+                }
+            }
+            ShortcutAction::NextTrack => {
+                if let Some(player) = &mut self.audio_player {
+                    player.request_next_track();
+                }
+            }
+            ShortcutAction::Stop => {
+                if self.loop_settings_modal.open {
+                    self.loop_settings_modal.stop_preview();
+                } else if self.add_audio_modal.open {
+                    self.add_audio_modal.stop_preview();
+                } else if let Some(player) = &mut self.audio_player {
+                    player.stop();
+                }
+            }
+            ShortcutAction::DismissDialog => {
+                if self.loop_settings_modal.open {
+                    self.loop_settings_modal.dismiss_without_confirm();
+                }
+                if self.add_audio_modal.open {
+                    self.add_audio_modal.dismiss_without_confirm();
+                }
+            }
+        }
+        ctx.request_repaint();
     }
 }

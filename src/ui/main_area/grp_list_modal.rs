@@ -1,7 +1,7 @@
 use egui::{Color32, Context, ScrollArea, Ui, Window};
 
-use crate::{localized, Locale};
 use crate::nus3bank::structures::{GrpSection, Nus3bankFile};
+use crate::{Locale, localized};
 
 use super::{grp_pending, grp_template};
 
@@ -339,5 +339,8 @@ impl GrpListModal {
 }
 
 pub fn apply_grp_names_to_file(file: &mut Nus3bankFile, names: Vec<String>) {
-    file.grp = Some(GrpSection { names });
+    file.grp = Some(GrpSection {
+        names,
+        raw_payload: None,
+    });
 }

@@ -76,15 +76,13 @@ impl AudioControls {
 
                 // Row 2: sound wave (full width, clipped)
                 // Show loop region when track loop is enabled (full file or A-B)
-                let duration_for_wave = state_copy
-                    .total_duration
-                    .max(
-                        state_copy
-                            .waveform
-                            .as_ref()
-                            .map(|w| w.duration_secs)
-                            .unwrap_or(0.0),
-                    );
+                let duration_for_wave = state_copy.total_duration.max(
+                    state_copy
+                        .waveform
+                        .as_ref()
+                        .map(|w| w.duration_secs)
+                        .unwrap_or(0.0),
+                );
                 let (show_loop, loop_start, loop_end) =
                     if let Some((a, b)) = state_copy.display_loop_range() {
                         (true, Some(a), Some(b.max(a)))
@@ -222,30 +220,22 @@ impl AudioControls {
 
             // Text column with hard clip so long names never overflow into volume
             let text_w = (max_width - 36.0).max(80.0);
-            ui.allocate_ui_with_layout(
-                vec2(text_w, 40.0),
-                Layout::top_down(Align::LEFT),
-                |ui| {
-                    ui.set_max_width(text_w);
-                    ui.set_clip_rect(ui.max_rect());
+            ui.allocate_ui_with_layout(vec2(text_w, 40.0), Layout::top_down(Align::LEFT), |ui| {
+                ui.set_max_width(text_w);
+                ui.set_clip_rect(ui.max_rect());
 
-                    let name = elide_middle(&audio.name, 42);
-                    ui.label(
-                        RichText::new(name)
-                            .color(ui.visuals().strong_text_color())
-                            .size(14.0)
-                            .strong(),
-                    )
-                    .on_hover_text(&audio.name);
+                let name = elide_middle(&audio.name, 42);
+                ui.label(
+                    RichText::new(name)
+                        .color(ui.visuals().strong_text_color())
+                        .size(14.0)
+                        .strong(),
+                )
+                .on_hover_text(&audio.name);
 
-                    let subtitle = format!("{}  ·  {}", audio.file_type, state.format_duration());
-                    ui.label(
-                        RichText::new(subtitle)
-                            .color(type_color)
-                            .size(11.0),
-                    );
-                },
-            );
+                let subtitle = format!("{}  ·  {}", audio.file_type, state.format_duration());
+                ui.label(RichText::new(subtitle).color(type_color).size(11.0));
+            });
         } else {
             ui.label(
                 RichText::new(regular::MUSIC_NOTES_PLUS.to_string())
@@ -264,16 +254,11 @@ impl AudioControls {
 
     fn render_loop_chip(&self, ui: &mut Ui, state: &AudioState, max_width: f32) {
         let start = state.loop_start.unwrap_or(0.0);
-        let end = state
-            .loop_end
-            .unwrap_or(state.total_duration)
-            .max(start);
+        let end = state.loop_end.unwrap_or(state.total_duration).max(start);
         // Compact times; click toggles whether playback honors A-B
         let label = format!("{}–{}", format_mmss(start), format_mmss(end));
-        let range_tip = localized::loop_parenthetical_range(
-            &format!("{start:.2}s"),
-            &format!("{end:.2}s"),
-        );
+        let range_tip =
+            localized::loop_parenthetical_range(&format!("{start:.2}s"), &format!("{end:.2}s"));
         let honor = state.honor_track_loop;
         let tip = if honor {
             format!(
@@ -308,12 +293,7 @@ impl AudioControls {
         ui.painter().rect(
             rect,
             CornerRadius::same(8),
-            Color32::from_rgba_unmultiplied(
-                LOOP_AMBER.r(),
-                LOOP_AMBER.g(),
-                LOOP_AMBER.b(),
-                fill_a,
-            ),
+            Color32::from_rgba_unmultiplied(LOOP_AMBER.r(), LOOP_AMBER.g(), LOOP_AMBER.b(), fill_a),
             egui::Stroke::new(
                 1.0,
                 Color32::from_rgba_unmultiplied(
@@ -422,9 +402,16 @@ impl AudioControls {
                     self.audio_state.lock().unwrap().next_loop_mode();
                 }
 
-                if transport_icon_button(ui, regular::STOP_CIRCLE, 20.0, STOP_COLOR, SIDE_HIT, ROW_H)
-                    .on_hover_text(localized::stop_playback_tooltip())
-                    .clicked()
+                if transport_icon_button(
+                    ui,
+                    regular::STOP_CIRCLE,
+                    20.0,
+                    STOP_COLOR,
+                    SIDE_HIT,
+                    ROW_H,
+                )
+                .on_hover_text(localized::stop_playback_tooltip())
+                .clicked()
                     && has_audio
                 {
                     self.audio_state.lock().unwrap().stop();
@@ -465,12 +452,7 @@ impl AudioControls {
     }
 }
 
-fn icon_button(
-    ui: &mut Ui,
-    icon: &str,
-    size: f32,
-    color: Color32,
-) -> egui::Response {
+fn icon_button(ui: &mut Ui, icon: &str, size: f32, color: Color32) -> egui::Response {
     ui.add(
         egui::Button::new(RichText::new(icon.to_string()).size(size).color(color))
             .frame(false)
@@ -489,12 +471,8 @@ fn transport_icon_button(
 ) -> egui::Response {
     ui.add_sized(
         vec2(hit_w, hit_h),
-        egui::Button::new(
-            RichText::new(icon.to_string())
-                .size(icon_size)
-                .color(color),
-        )
-        .frame(false),
+        egui::Button::new(RichText::new(icon.to_string()).size(icon_size).color(color))
+            .frame(false),
     )
 }
 

@@ -1,37 +1,37 @@
 // Main area module components
-mod audio_file_info;
-mod search_column;
-mod table_renderer;
-mod export_utils;
-mod replace_utils;
-mod loop_settings_modal;
 mod add_audio_modal;
 mod add_audio_utils;
+mod audio_file_info;
 mod confirm_modal;
-mod nus3audio_file_utils;
-mod grp_pending;
-mod grp_template;
-mod grp_list_modal;
 mod dton_pending;
 mod dton_tones_modal;
-mod prop_pending;
+mod export_utils;
+mod grp_list_modal;
+mod grp_pending;
+mod grp_template;
+mod loop_settings_modal;
+mod nus3audio_file_utils;
 mod prop_edit_modal;
+mod prop_pending;
+mod replace_utils;
+mod search_column;
+mod table_renderer;
 
 // New modular components
-mod sort_column;
-mod toast_message;
 mod main_area_core;
 mod main_area_filtering;
+mod main_area_output;
 mod main_area_rendering;
 mod main_area_search;
-mod main_area_output;
 mod main_area_table;
 mod main_component;
+mod sort_column;
+mod toast_message;
 
 // Re-export the main struct
-pub use main_component::MainArea;
 pub use audio_file_info::AudioFileInfo;
-pub use replace_utils::ReplaceUtils;
-pub use export_utils::ExportUtils;
-pub use nus3audio_file_utils::Nus3audioFileUtils;
 pub use confirm_modal::ConfirmModal;
+pub use export_utils::ExportUtils;
+pub use main_component::MainArea;
+pub use nus3audio_file_utils::Nus3audioFileUtils;
+pub use replace_utils::ReplaceUtils;

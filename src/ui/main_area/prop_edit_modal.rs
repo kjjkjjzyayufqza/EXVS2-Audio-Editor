@@ -1,7 +1,7 @@
 use egui::{Color32, Context, ScrollArea, Ui, Window};
 
-use crate::{localized, Locale};
 use crate::nus3bank::structures::{Nus3bankFile, PropLayout, PropSection};
+use crate::{Locale, localized};
 
 use super::prop_pending;
 
@@ -249,12 +249,18 @@ impl PropEditModal {
                         ui.horizontal(|ui| {
                             ui.label(localized::layout_type_label());
                             let layout_minimal = prop.layout == PropLayout::Minimal;
-                            if ui.radio(layout_minimal, localized::layout_minimal()).clicked() {
+                            if ui
+                                .radio(layout_minimal, localized::layout_minimal())
+                                .clicked()
+                            {
                                 prop.layout = PropLayout::Minimal;
                                 self.dirty = true;
                             }
                             if ui
-                                .radio(prop.layout == PropLayout::Extended, localized::layout_extended())
+                                .radio(
+                                    prop.layout == PropLayout::Extended,
+                                    localized::layout_extended(),
+                                )
                                 .clicked()
                             {
                                 prop.layout = PropLayout::Extended;

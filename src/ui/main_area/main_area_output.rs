@@ -1,5 +1,5 @@
 use crate::localized;
-use egui::{Color32, Ui, RichText};
+use egui::{Color32, RichText, Ui};
 use egui_phosphor::regular;
 
 use super::main_area_core::MainArea;
@@ -26,10 +26,10 @@ impl MainArea {
                     } else {
                         path.clone()
                     }
-                },
+                }
                 None => localized::output_folder_not_set().to_string(),
             };
-            
+
             let color = if self.output_path.is_none() {
                 Color32::from_rgb(255, 200, 100) // Warning color
             } else {
@@ -45,11 +45,14 @@ impl MainArea {
                 label_resp.on_hover_text(localized::output_folder_hover());
             }
 
-            if ui.button(format!("{} {}", regular::FOLDER_OPEN, localized::browse())).clicked() {
+            if ui
+                .button(format!("{} {}", regular::FOLDER_OPEN, localized::browse()))
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_title(localized::select_output_directory())
                     .set_directory(self.output_path.clone().unwrap_or_else(|| ".".to_string()))
-                    .pick_folder() 
+                    .pick_folder()
                 {
                     if let Some(path_str) = path.to_str() {
                         self.output_path = Some(path_str.to_string());
@@ -58,7 +61,11 @@ impl MainArea {
             }
 
             if self.output_path.is_some() {
-                if ui.button(RichText::new(regular::X.to_string()).color(Color32::GRAY)).on_hover_text(localized::clear_output_path_tooltip()).clicked() {
+                if ui
+                    .button(RichText::new(regular::X.to_string()).color(Color32::GRAY))
+                    .on_hover_text(localized::clear_output_path_tooltip())
+                    .clicked()
+                {
                     self.output_path = None;
                 }
             }

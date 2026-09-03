@@ -1,10 +1,11 @@
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use once_cell::sync::Lazy;
 
 use crate::nus3bank::structures::PropSection;
 
-static PROP_PENDING: Lazy<Mutex<HashMap<String, PropSection>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static PROP_PENDING: Lazy<Mutex<HashMap<String, PropSection>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub fn set(file_path: &str, prop: PropSection) -> Result<(), String> {
     PROP_PENDING
@@ -15,11 +16,7 @@ pub fn set(file_path: &str, prop: PropSection) -> Result<(), String> {
 }
 
 pub fn get(file_path: &str) -> Option<PropSection> {
-    PROP_PENDING
-        .lock()
-        .ok()?
-        .get(file_path)
-        .cloned()
+    PROP_PENDING.lock().ok()?.get(file_path).cloned()
 }
 
 pub fn clear(file_path: &str) -> Result<(), String> {
@@ -29,4 +26,3 @@ pub fn clear(file_path: &str) -> Result<(), String> {
         .remove(file_path);
     Ok(())
 }
-

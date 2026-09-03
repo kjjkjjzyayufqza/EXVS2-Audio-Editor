@@ -1,6 +1,6 @@
-use crate::{locale_ctx_id, sync_rust_i18n_locale, Locale};
 use crate::ui::{FileList, MainArea, TopPanel};
 use crate::version_check;
+use crate::{Locale, locale_ctx_id, sync_rust_i18n_locale};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -30,12 +30,12 @@ impl TemplateApp {
     pub fn main_area(&self) -> &MainArea {
         &self.main_area
     }
-    
+
     /// Get a mutable reference to the main area
     pub fn main_area_mut(&mut self) -> &mut MainArea {
         &mut self.main_area
     }
-    
+
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut fonts = egui::FontDefinitions::default();
@@ -76,11 +76,12 @@ impl eframe::App for TemplateApp {
         ));
 
         self.main_area.sync_locale(self.locale);
+        self.main_area.handle_keyboard_shortcuts(&ctx);
 
         // Custom dark theme with consistent black background
         let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = egui::Color32::from_rgb(27, 27, 27);    // Panel background (top panel, side panel, bottom player)
-        visuals.window_fill = egui::Color32::from_rgb(27, 27, 27);   // Main area background
+        visuals.panel_fill = egui::Color32::from_rgb(27, 27, 27); // Panel background (top panel, side panel, bottom player)
+        visuals.window_fill = egui::Color32::from_rgb(27, 27, 27); // Main area background
         visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(27, 27, 27);
         ctx.set_visuals(visuals);
         // Display top menu panel

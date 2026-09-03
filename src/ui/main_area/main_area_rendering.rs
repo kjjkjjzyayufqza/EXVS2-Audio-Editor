@@ -18,9 +18,11 @@ impl MainArea {
         self.prop_edit_modal.show(&ctx);
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new()
-                .fill(ui.visuals().window_fill) // 使用視窗背景色（深灰色）
-                .inner_margin(egui::Margin::same(0)))
+            .frame(
+                egui::Frame::new()
+                    .fill(ui.visuals().window_fill) // 使用視窗背景色（深灰色）
+                    .inner_margin(egui::Margin::same(0)),
+            )
             .show(ui, |ui| {
                 self.render(ui);
             });
@@ -52,11 +54,11 @@ impl MainArea {
 
                     // Render the table with audio files
                     self.render_audio_table(
-                        ui, 
-                        filtered_audio_files, 
-                        files_count, 
+                        ui,
+                        filtered_audio_files,
+                        files_count,
                         available_height - 120.0, // Adjust for header and toolbar
-                        available_width
+                        available_width,
                     );
                 } else if let Some(error) = &self.error_message {
                     ui.centered_and_justified(|ui| {
@@ -82,7 +84,7 @@ impl MainArea {
                     ui.label(
                         RichText::new(regular::FILE_PLUS.to_string())
                             .size(48.0)
-                            .color(ui.visuals().weak_text_color())
+                            .color(ui.visuals().weak_text_color()),
                     );
                     ui.add_space(10.0);
                     ui.heading(localized::no_file_selected_heading());
@@ -103,10 +105,10 @@ impl MainArea {
                     ui.label(
                         RichText::new(regular::WAVEFORM.to_string())
                             .size(24.0)
-                            .color(Color32::from_rgb(100, 150, 255))
+                            .color(Color32::from_rgb(100, 150, 255)),
                     );
                     ui.heading(localized::audio_editor_heading());
-                    
+
                     ui.add_space(20.0);
                     ui.separator();
                     ui.add_space(20.0);
@@ -114,8 +116,12 @@ impl MainArea {
                     // Current File Info
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(localized::currently_editing()).weak().size(11.0));
-                            
+                            ui.label(
+                                RichText::new(localized::currently_editing())
+                                    .weak()
+                                    .size(11.0),
+                            );
+
                             // Display filename with ellipsis if too long
                             let display_name = if selected.len() > 80 {
                                 format!(
@@ -130,22 +136,30 @@ impl MainArea {
                             ui.label(
                                 RichText::new(display_name)
                                     .color(ui.visuals().strong_text_color())
-                                    .strong()
-                            ).on_hover_text(selected);
+                                    .strong(),
+                            )
+                            .on_hover_text(selected);
                         });
 
                         if let Some(count) = self.file_count {
                             ui.label(
                                 RichText::new(localized::audio_files_found(count))
                                     .weak()
-                                    .size(11.0)
+                                    .size(11.0),
                             );
                         }
                     });
-                    
+
                     // Right-aligned status/actions can go here
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button(RichText::new(format!("{} {}", regular::ARROWS_CLOCKWISE, localized::refresh()))).clicked() {
+                        if ui
+                            .button(RichText::new(format!(
+                                "{} {}",
+                                regular::ARROWS_CLOCKWISE,
+                                localized::refresh()
+                            )))
+                            .clicked()
+                        {
                             self.force_reload_selected_file();
                         }
                     });
@@ -163,7 +177,7 @@ impl MainArea {
                     // Search box (Left aligned)
                     ui.label(RichText::new(regular::MAGNIFYING_GLASS.to_string()).size(16.0));
                     self.render_search_box_compact(ui);
-                    
+
                     ui.add_space(12.0);
                     ui.separator();
                     ui.add_space(12.0);
@@ -171,12 +185,20 @@ impl MainArea {
                     // Output Path (Middle/Right)
                     ui.label(RichText::new(regular::FOLDER_OPEN.to_string()).size(16.0));
                     self.render_output_path_compact(ui);
-                    
+
                     // Advanced search toggle
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let text = if self.show_advanced_search { localized::simple_view() } else { localized::advanced_search() };
-                        let icon = if self.show_advanced_search { regular::CARET_UP } else { regular::CARET_DOWN };
-                        
+                        let text = if self.show_advanced_search {
+                            localized::simple_view()
+                        } else {
+                            localized::advanced_search()
+                        };
+                        let icon = if self.show_advanced_search {
+                            regular::CARET_UP
+                        } else {
+                            regular::CARET_DOWN
+                        };
+
                         if ui.button(format!("{} {}", icon, text)).clicked() {
                             self.show_advanced_search = !self.show_advanced_search;
                         }
@@ -196,7 +218,7 @@ impl MainArea {
                                     ui.selectable_value(
                                         &mut self.search_column,
                                         column,
-                                        column.display_name_for_locale(loc)
+                                        column.display_name_for_locale(loc),
                                     );
                                 }
                             });
@@ -206,38 +228,35 @@ impl MainArea {
                     });
                 }
             });
-            
+
         ui.add_space(4.0);
         ui.separator();
     }
-    
+
     /// Render toast notifications
     pub fn render_toasts(&self, ui: &mut Ui) {
         if self.toast_messages.is_empty() {
             return;
         }
-        
+
         // Calculate spacing from top
         let available_rect = ui.ctx().content_rect();
         let spacing = available_rect.height() * 0.08;
         let toast_offset = available_rect.height() * 0.06;
-        
+
         // Show toast messages
         for (i, toast) in self.toast_messages.iter().enumerate() {
             // Create a toast window at the top center of the screen
             let window_id = egui::Id::new("toast_message").with(i);
             let pos = [0.0, spacing + (i as f32 * toast_offset)];
-            
+
             egui::containers::Window::new("Toast")
                 .id(window_id)
                 .title_bar(false)
                 .resizable(false)
                 .movable(false)
                 .anchor(Align2::CENTER_TOP, pos)
-                .default_size([
-                    available_rect.width() * 0.4,
-                    available_rect.height() * 0.06,
-                ])
+                .default_size([available_rect.width() * 0.4, available_rect.height() * 0.06])
                 .show(ui.ctx(), |ui| {
                     ui.vertical_centered(|ui| {
                         ui.colored_label(toast.color, &toast.message);

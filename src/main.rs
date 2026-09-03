@@ -220,9 +220,8 @@ fn main() -> eframe::Result {
 
     // Window / taskbar icon (runtime). EXE file icon is embedded separately via
     // build.rs + assets/favicon.ico (winres).
-    let app_icon =
-        eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png"))
-            .expect("Failed to load app icon from assets/icon-256.png");
+    let app_icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png"))
+        .expect("Failed to load app icon from assets/icon-256.png");
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_icon(app_icon),
         ..Default::default()

@@ -1,5 +1,5 @@
-use crate::localized;
 use crate::Locale;
+use crate::localized;
 use crate::ui::main_area::Nus3audioFileUtils;
 use crate::ui::update_log;
 use egui::{Context, Id, Ui};
@@ -99,14 +99,11 @@ impl TopPanel {
 
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                if ui.button(localized::ok()).clicked() {
-                                    should_close_modal = true;
-                                }
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button(localized::ok()).clicked() {
+                                should_close_modal = true;
+                            }
+                        });
                     });
                 });
         }
@@ -151,19 +148,18 @@ impl TopPanel {
                                 return;
                             }
 
-                            // Check if there are any pending changes
-                            if !Nus3audioFileUtils::has_pending_changes() {
-                                println!("No pending changes to save");
-                                show_modal(
-                                    localized::no_changes_title(),
-                                    localized::no_pending_changes(),
-                                    false,
-                                );
-                                return;
-                            }
-
-                            // Save changes to the current file
                             if let Some(file_path) = selected_file_path {
+                                // Pending add/replace, or a NUS3BANK that still needs
+                                // WAV→BNSF / cloned-loop-clock repair.
+                                if !Nus3audioFileUtils::has_pending_changes_for_path(&file_path) {
+                                    println!("No pending changes to save");
+                                    show_modal(
+                                        localized::no_changes_title(),
+                                        localized::no_pending_changes(),
+                                        false,
+                                    );
+                                    return;
+                                }
                                 match Nus3audioFileUtils::save_changes_to_file(&file_path) {
                                     Ok(_) => {
                                         println!("Changes saved successfully to: {}", file_path);
@@ -256,7 +252,11 @@ impl TopPanel {
                                     // Execute save operation with selected file path
                                     if let Some(original_path) = selected_file_path {
                                         // Save using unified method (supports both file types)
-                                        TopPanel::save_nus3audio_file(ui.ctx(), &original_path, &path_str);
+                                        TopPanel::save_nus3audio_file(
+                                            ui.ctx(),
+                                            &original_path,
+                                            &path_str,
+                                        );
                                     }
                                 }
                             }
@@ -267,7 +267,11 @@ impl TopPanel {
                 ui.menu_button(localized::settings_menu(), |ui| {
                     if ui.button(localized::reset_layout()).clicked() {
                         TopPanel::reset_layout(&ctx);
-                        show_modal(localized::layout_reset_title(), localized::layout_reset_msg(), false);
+                        show_modal(
+                            localized::layout_reset_title(),
+                            localized::layout_reset_msg(),
+                            false,
+                        );
                         ui.close();
                     }
 
@@ -343,7 +347,8 @@ impl TopPanel {
     /// Reset resizable panel layout to defaults
     fn reset_layout(ctx: &Context) {
         ctx.memory_mut(|mem| {
-            mem.data.remove::<egui::PanelState>(Id::new("file_list_panel"));
+            mem.data
+                .remove::<egui::PanelState>(Id::new("file_list_panel"));
             mem.data
                 .remove::<egui::PanelState>(Id::new("audio_player_panel"));
         });

@@ -25,7 +25,9 @@ impl SearchColumn {
             SearchColumn::Name => rust_i18n::t!("search_column_name", locale = tag).to_string(),
             SearchColumn::Id => rust_i18n::t!("search_column_id", locale = tag).to_string(),
             SearchColumn::Size => rust_i18n::t!("search_column_size", locale = tag).to_string(),
-            SearchColumn::Filename => rust_i18n::t!("search_column_filename", locale = tag).to_string(),
+            SearchColumn::Filename => {
+                rust_i18n::t!("search_column_filename", locale = tag).to_string()
+            }
             SearchColumn::Type => rust_i18n::t!("search_column_type", locale = tag).to_string(),
         }
     }

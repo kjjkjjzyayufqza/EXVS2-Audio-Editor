@@ -72,14 +72,14 @@ impl AudioPlayer {
             .show(ui, |ui| {
                 self.render(ui);
             });
-            
+
         action
     }
 
     /// Check if a track transition is needed
     fn check_for_transitions(&mut self) -> AudioPlayerAction {
         let mut state = self.audio_state.lock().unwrap();
-        
+
         if state.should_play_next {
             state.should_play_next = false;
             AudioPlayerAction::PlayNext
@@ -115,7 +115,10 @@ impl AudioPlayer {
         let replacement_audio_data = ReplaceUtils::get_replacement_data_unified(file_info);
         let pending_added_data =
             Nus3audioFileUtils::get_pending_added_data(&file_info.name, &file_info.id);
-        println!("[PERF] replacement data lookup: {}ms", t_lookup.elapsed().as_millis());
+        println!(
+            "[PERF] replacement data lookup: {}ms",
+            t_lookup.elapsed().as_millis()
+        );
 
         // Determine which audio data to use (replacement or original)
         let playback_path = if let Some(replacement_data) = replacement_audio_data {
@@ -144,7 +147,10 @@ impl AudioPlayer {
                 &added_data,
                 "pending",
             )?;
-            println!("[PERF] write_temp_audio_bytes (pending): {}ms", t_write.elapsed().as_millis());
+            println!(
+                "[PERF] write_temp_audio_bytes (pending): {}ms",
+                t_write.elapsed().as_millis()
+            );
             path
         } else {
             log::info!(
@@ -160,26 +166,36 @@ impl AudioPlayer {
                     file_info.hex_id.as_ref().unwrap_or(&file_info.id)
                 );
                 let t_conv = Instant::now();
-                let path = crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path)
-                    .map_err(|e| {
-                        log::error!(
-                            "Failed to convert NUS3BANK audio to WAV format for track '{}' ({}): {}",
-                            file_info.name,
-                            file_info.hex_id.as_ref().unwrap_or(&file_info.id),
-                            e
-                        );
-                        format!("Failed to convert NUS3BANK audio to WAV format: {}", e)
-                    })?;
-                println!("[PERF] convert_to_wav_temp_path (NUS3BANK): {}ms", t_conv.elapsed().as_millis());
+                let path = crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(
+                    file_info, file_path,
+                )
+                .map_err(|e| {
+                    log::error!(
+                        "Failed to convert NUS3BANK audio to WAV format for track '{}' ({}): {}",
+                        file_info.name,
+                        file_info.hex_id.as_ref().unwrap_or(&file_info.id),
+                        e
+                    );
+                    format!("Failed to convert NUS3BANK audio to WAV format: {}", e)
+                })?;
+                println!(
+                    "[PERF] convert_to_wav_temp_path (NUS3BANK): {}ms",
+                    t_conv.elapsed().as_millis()
+                );
                 path
             } else {
                 log::info!("Processing NUS3AUDIO file for: {}", file_info.name);
                 let t_conv = Instant::now();
-                match crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(file_info, file_path) {
+                match crate::ui::main_area::ExportUtils::convert_to_wav_temp_path(
+                    file_info, file_path,
+                ) {
                     Ok(temp_path) => {
-                        println!("[PERF] convert_to_wav_temp_path (NUS3AUDIO): {}ms", t_conv.elapsed().as_millis());
+                        println!(
+                            "[PERF] convert_to_wav_temp_path (NUS3AUDIO): {}ms",
+                            t_conv.elapsed().as_millis()
+                        );
                         temp_path
-                    },
+                    }
                     Err(e) => {
                         log::warn!(
                             "Failed to convert NUS3AUDIO audio to WAV format: {}. Using original format instead.",
@@ -203,7 +219,10 @@ impl AudioPlayer {
                             &audio_file.data,
                             "fallback",
                         )?;
-                        println!("[PERF] fallback write_temp_audio_bytes: {}ms", t_fallback.elapsed().as_millis());
+                        println!(
+                            "[PERF] fallback write_temp_audio_bytes: {}ms",
+                            t_fallback.elapsed().as_millis()
+                        );
                         path
                     }
                 }
@@ -232,7 +251,10 @@ impl AudioPlayer {
         let t_set = Instant::now();
         let mut state = self.audio_state.lock().unwrap();
         state.set_audio(audio);
-        println!("[PERF] state.set_audio (incl. backend.play_audio): {}ms", t_set.elapsed().as_millis());
+        println!(
+            "[PERF] state.set_audio (incl. backend.play_audio): {}ms",
+            t_set.elapsed().as_millis()
+        );
 
         // Queue sound-wave peaks on a background thread (never block UI / first paint)
         state.load_waveform_async(&playback_path);
@@ -245,8 +267,7 @@ impl AudioPlayer {
         let duration = state.total_duration.max(0.0);
         let mut applied_loop = false;
 
-        if let Some(loop_cfg) =
-            crate::ui::main_area::ReplaceUtils::lookup_loop_settings(file_info)
+        if let Some(loop_cfg) = crate::ui::main_area::ReplaceUtils::lookup_loop_settings(file_info)
         {
             println!(
                 "Applied stored loop settings for {}: start={:?} end={:?} custom={} enable={}",
@@ -274,15 +295,12 @@ impl AudioPlayer {
         if !applied_loop {
             // Prefer querying the playback WAV (smpl from vgmstream -L after replace),
             // then fall back to original container with stream index.
-            let from_playback = crate::ui::main_area::ExportUtils::query_vgmstream_loop_info(
-                &playback_path,
-                None,
-            );
+            let from_playback =
+                crate::ui::main_area::ExportUtils::query_vgmstream_loop_info(&playback_path, None);
 
             let from_source = if from_playback.is_none() {
                 let stream_idx = crate::ui::main_area::ExportUtils::vgmstream_stream_index_for(
-                    file_info,
-                    file_path,
+                    file_info, file_path,
                 );
                 crate::ui::main_area::ExportUtils::query_vgmstream_loop_info(
                     file_path,
@@ -293,7 +311,9 @@ impl AudioPlayer {
             };
 
             if let Some(lp) = from_playback.or(from_source) {
-                let start = lp.loop_start_secs.clamp(0.0, duration.max(lp.loop_end_secs));
+                let start = lp
+                    .loop_start_secs
+                    .clamp(0.0, duration.max(lp.loop_end_secs));
                 let end = lp
                     .loop_end_secs
                     .min(if duration > 0.0 {
@@ -313,7 +333,10 @@ impl AudioPlayer {
         }
 
         if !applied_loop {
-            println!("No loop points for: {} (stored settings + vgmstream)", file_info.name);
+            println!(
+                "No loop points for: {} (stored settings + vgmstream)",
+                file_info.name
+            );
         }
 
         // Queue modes None/All: do not A-B loop by default so auto-next works.
@@ -332,7 +355,11 @@ impl AudioPlayer {
             ));
         }
 
-        println!("[PERF] load_audio total: {}ms ({})", t_total.elapsed().as_millis(), file_info.name);
+        println!(
+            "[PERF] load_audio total: {}ms ({})",
+            t_total.elapsed().as_millis(),
+            file_info.name
+        );
         Ok(())
     }
 
@@ -349,5 +376,28 @@ impl AudioPlayer {
     /// Get a reference to the audio state
     pub fn get_audio_state(&self) -> Arc<Mutex<AudioState>> {
         Arc::clone(&self.audio_state)
+    }
+
+    /// Keyboard / transport: toggle play/pause of the loaded main-player buffer.
+    pub fn toggle_play(&mut self) {
+        self.audio_state.lock().expect("audio state").toggle_play();
+    }
+
+    /// Keyboard / transport: stop (unloads the playing handle).
+    pub fn stop(&mut self) {
+        self.audio_state.lock().expect("audio state").stop();
+    }
+
+    /// Keyboard / transport: request previous track (handled after `show`).
+    pub fn request_previous_track(&mut self) {
+        self.audio_state
+            .lock()
+            .expect("audio state")
+            .previous_track();
+    }
+
+    /// Keyboard / transport: request next track (handled after `show`).
+    pub fn request_next_track(&mut self) {
+        self.audio_state.lock().expect("audio state").next_track();
     }
 }

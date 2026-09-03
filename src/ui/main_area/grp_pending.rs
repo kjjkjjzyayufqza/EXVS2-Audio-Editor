@@ -60,7 +60,10 @@ mod tests {
 
         set(path, vec!["A".to_string(), "".to_string(), "B".to_string()]).unwrap();
         assert!(has(path));
-        assert_eq!(get(path), Some(vec!["A".to_string(), "".to_string(), "B".to_string()]));
+        assert_eq!(
+            get(path),
+            Some(vec!["A".to_string(), "".to_string(), "B".to_string()])
+        );
 
         clear(path).unwrap();
         assert!(!has(path));
@@ -80,4 +83,3 @@ mod tests {
         assert!(!has(p1));
     }
 }
-

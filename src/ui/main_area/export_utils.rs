@@ -1,27 +1,25 @@
 use super::audio_file_info::AudioFileInfo;
-use nus3audio::Nus3audioFile;
 use crate::nus3bank::Nus3bankExporter;
+use nus3audio::Nus3audioFile;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::fs;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use once_cell::sync::Lazy;
 
 // Cache for indexing patterns to avoid re-analyzing the same file multiple times
-static INDEXING_PATTERN_CACHE: Lazy<Mutex<HashMap<String, bool>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static INDEXING_PATTERN_CACHE: Lazy<Mutex<HashMap<String, bool>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 // Cache for converted WAV temp files: "file_path::name::id" -> temp_wav_path
 // Avoids re-running vgmstream-cli for the same track within a session.
-static WAV_CONVERSION_CACHE: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static WAV_CONVERSION_CACHE: Lazy<Mutex<HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Utility functions for exporting audio files
 pub struct ExportUtils;
@@ -44,7 +42,12 @@ impl ExportUtils {
         if let Ok(mut cache) = INDEXING_PATTERN_CACHE.lock() {
             cache.insert(file_path.to_string(), starts_from_zero);
         }
-        println!("[PERF] primed indexing cache for {} ({} tracks, starts_from_zero={})", file_path, track_ids.len(), starts_from_zero);
+        println!(
+            "[PERF] primed indexing cache for {} ({} tracks, starts_from_zero={})",
+            file_path,
+            track_ids.len(),
+            starts_from_zero
+        );
     }
 
     fn build_temp_audio_path(base_name: &str, extension: &str) -> PathBuf {
@@ -92,76 +95,85 @@ impl ExportUtils {
         Ok(temp_output_path_str)
     }
     /// Determine the correct vgmstream index based on the nus3audio file's indexing pattern
-    /// 
+    ///
     /// This function analyzes the nus3audio file to detect whether it uses:
     /// - 0-based indexing (0,1,2,3...) -> needs +1 conversion for vgmstream
     /// - 1-based indexing (1,2,3,4...) -> direct mapping to vgmstream
-    /// 
+    ///
     /// Uses caching to avoid re-analyzing the same file multiple times.
     fn get_vgmstream_index(
         audio_file_id: &str,
         original_file_path: &str,
     ) -> Result<String, String> {
         // Parse the audio file ID
-        let id_num = audio_file_id.parse::<u32>()
+        let id_num = audio_file_id
+            .parse::<u32>()
             .map_err(|_| format!("Invalid audio file ID: {}", audio_file_id))?;
-        
+
         // Check cache first
         let cache_key = original_file_path.to_string();
         let starts_from_zero = if let Ok(cache) = INDEXING_PATTERN_CACHE.lock() {
             if let Some(&cached_pattern) = cache.get(&cache_key) {
-                println!("Using cached indexing pattern for {}: starts_from_zero={}", original_file_path, cached_pattern);
+                println!(
+                    "Using cached indexing pattern for {}: starts_from_zero={}",
+                    original_file_path, cached_pattern
+                );
                 cached_pattern
             } else {
                 // Cache miss, need to analyze the file
                 drop(cache); // Release the lock before file operations
-                
+
                 // Load the nus3audio file to analyze the indexing pattern
                 let nus3_file = Nus3audioFile::open(original_file_path)
                     .map_err(|e| format!("Failed to open nus3audio file: {}", e))?;
-                
+
                 if nus3_file.files.is_empty() {
                     return Err("No audio files found in nus3audio file".to_string());
                 }
-                
+
                 // Collect all IDs and sort them
                 let mut all_ids: Vec<u32> = nus3_file.files.iter().map(|f| f.id).collect();
                 all_ids.sort();
-                
+
                 // Determine the indexing pattern
                 let pattern = all_ids[0] == 0;
-                
-                println!("Analyzed indexing pattern for {}: IDs={:?}, starts_from_zero={}", 
-                        original_file_path, all_ids, pattern);
-                
+
+                println!(
+                    "Analyzed indexing pattern for {}: IDs={:?}, starts_from_zero={}",
+                    original_file_path, all_ids, pattern
+                );
+
                 // Cache the result
                 if let Ok(mut cache) = INDEXING_PATTERN_CACHE.lock() {
                     cache.insert(cache_key, pattern);
                 }
-                
+
                 pattern
             }
         } else {
             // Fallback if cache lock fails - analyze without caching
             println!("Warning: Failed to access indexing pattern cache, analyzing without caching");
-            
+
             let nus3_file = Nus3audioFile::open(original_file_path)
                 .map_err(|e| format!("Failed to open nus3audio file: {}", e))?;
-            
+
             if nus3_file.files.is_empty() {
                 return Err("No audio files found in nus3audio file".to_string());
             }
-            
+
             let mut all_ids: Vec<u32> = nus3_file.files.iter().map(|f| f.id).collect();
             all_ids.sort();
             all_ids[0] == 0
         };
-        
+
         if starts_from_zero {
             // 0-based indexing: convert to 1-based for vgmstream
             // 0 -> 1, 1 -> 2, 2 -> 3, etc.
             let vgmstream_index = id_num + 1;
-            println!("0-based indexing detected: {} -> {}", id_num, vgmstream_index);
+            println!(
+                "0-based indexing detected: {} -> {}",
+                id_num, vgmstream_index
+            );
             Ok(vgmstream_index.to_string())
         } else {
             // 1-based indexing: direct mapping
@@ -377,11 +389,17 @@ impl ExportUtils {
         }
 
         // Check WAV conversion cache before running vgmstream
-        let cache_key = format!("{}::{}::{}", original_file_path, audio_file_info.name, audio_file_info.id);
+        let cache_key = format!(
+            "{}::{}::{}",
+            original_file_path, audio_file_info.name, audio_file_info.id
+        );
         if let Ok(cache) = WAV_CONVERSION_CACHE.lock() {
             if let Some(cached_path) = cache.get(&cache_key) {
                 if Path::new(cached_path).exists() {
-                    println!("[PERF] NUS3AUDIO WAV cache hit: {} -> {}", audio_file_info.name, cached_path);
+                    println!(
+                        "[PERF] NUS3AUDIO WAV cache hit: {} -> {}",
+                        audio_file_info.name, cached_path
+                    );
                     return Ok(cached_path.clone());
                 }
             }
@@ -392,10 +410,8 @@ impl ExportUtils {
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
         // Create a temporary output file path
-        let temp_output_path = Self::build_temp_audio_path(
-            &format!("temp_convert_{}", audio_file_info.id),
-            "wav",
-        );
+        let temp_output_path =
+            Self::build_temp_audio_path(&format!("temp_convert_{}", audio_file_info.id), "wav");
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
         // Run vgmstream-cli to convert audio to WAV
@@ -410,7 +426,11 @@ impl ExportUtils {
         // Get the correct vgmstream index using intelligent detection
         let t_index = Instant::now();
         let vgmstream_index = Self::get_vgmstream_index(&audio_file_info.id, original_file_path)?;
-        println!("[PERF] NUS3AUDIO get_vgmstream_index: {}ms (index={})", t_index.elapsed().as_millis(), vgmstream_index);
+        println!(
+            "[PERF] NUS3AUDIO get_vgmstream_index: {}ms (index={})",
+            t_index.elapsed().as_millis(),
+            vgmstream_index
+        );
 
         // Build args vector so we can print full command before execution
         let args_vec: Vec<String> = vec![
@@ -423,10 +443,11 @@ impl ExportUtils {
         ];
 
         let t_vgm = Instant::now();
-        let result = command
-            .args(&args_vec)
-            .output();
-        println!("[PERF] NUS3AUDIO vgmstream-cli: {}ms", t_vgm.elapsed().as_millis());
+        let result = command.args(&args_vec).output();
+        println!(
+            "[PERF] NUS3AUDIO vgmstream-cli: {}ms",
+            t_vgm.elapsed().as_millis()
+        );
 
         match result {
             Ok(output) => {
@@ -471,7 +492,7 @@ impl ExportUtils {
 
         // Get the correct vgmstream index using intelligent detection
         let vgmstream_index = Self::get_vgmstream_index(&audio_file_info.id, original_file_path)?;
-        
+
         // println!("Original ID: {}, Detected vgmstream index: {}", audio_file_info.id, vgmstream_index);
 
         let args_vec: Vec<String> = vec![
@@ -488,9 +509,7 @@ impl ExportUtils {
         //     args_vec.join(" ")
         // );
 
-        let result = command
-            .args(&args_vec)
-            .output();
+        let result = command.args(&args_vec).output();
 
         // println!("Exporting command result: {:?}", result);
         match result {
@@ -553,13 +572,17 @@ impl ExportUtils {
             }
 
             // Get the correct vgmstream index using intelligent detection
-            let vgmstream_index = match Self::get_vgmstream_index(&audio_file.id.to_string(), original_file_path) {
-                Ok(index) => index,
-                Err(e) => {
-                    return Err(format!("Failed to determine vgmstream index for audio file {}: {}", audio_file.id, e));
-                }
-            };
-            
+            let vgmstream_index =
+                match Self::get_vgmstream_index(&audio_file.id.to_string(), original_file_path) {
+                    Ok(index) => index,
+                    Err(e) => {
+                        return Err(format!(
+                            "Failed to determine vgmstream index for audio file {}: {}",
+                            audio_file.id, e
+                        ));
+                    }
+                };
+
             // println!("Original ID: {}, Detected vgmstream index: {}", audio_file.id, vgmstream_index);
 
             let args_vec: Vec<String> = vec![
@@ -575,9 +598,7 @@ impl ExportUtils {
             //     args_vec.join(" ")
             // );
 
-            let result = command
-                .args(&args_vec)
-                .output();
+            let result = command.args(&args_vec).output();
 
             match result {
                 Ok(output) => {
@@ -603,18 +624,24 @@ impl ExportUtils {
 
         Ok(exported_paths)
     }
-    
+
     /// Convert NUS3BANK track to WAV format and return the temp file path
     fn convert_nus3bank_to_wav_temp_path(
         audio_file_info: &AudioFileInfo,
         original_file_path: &str,
     ) -> Result<String, String> {
         // Check WAV conversion cache before running vgmstream
-        let cache_key = format!("{}::{}::{}", original_file_path, audio_file_info.name, audio_file_info.id);
+        let cache_key = format!(
+            "{}::{}::{}",
+            original_file_path, audio_file_info.name, audio_file_info.id
+        );
         if let Ok(cache) = WAV_CONVERSION_CACHE.lock() {
             if let Some(cached_path) = cache.get(&cache_key) {
                 if Path::new(cached_path).exists() {
-                    println!("[PERF] NUS3BANK WAV cache hit: {} -> {}", audio_file_info.name, cached_path);
+                    println!(
+                        "[PERF] NUS3BANK WAV cache hit: {} -> {}",
+                        audio_file_info.name, cached_path
+                    );
                     return Ok(cached_path.clone());
                 }
             }
@@ -622,7 +649,9 @@ impl ExportUtils {
 
         // Use vgmstream-cli to decode specific subsong into a temporary WAV
         // Compute subsong index for vgmstream (1-based). Our UI id is 0-based.
-        let id_num = audio_file_info.id.parse::<u32>()
+        let id_num = audio_file_info
+            .id
+            .parse::<u32>()
             .map_err(|_| format!("Invalid audio file ID: {}", audio_file_info.id))?;
         let vgmstream_index = id_num + 1;
 
@@ -630,10 +659,8 @@ impl ExportUtils {
         let vgmstream_path = Path::new("tools").join("vgmstream-cli.exe");
 
         // Create a temporary output file path
-        let temp_output_path = Self::build_temp_audio_path(
-            &format!("temp_convert_bank_{}", vgmstream_index),
-            "wav",
-        );
+        let temp_output_path =
+            Self::build_temp_audio_path(&format!("temp_convert_bank_{}", vgmstream_index), "wav");
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
         // Run vgmstream-cli to convert audio to WAV
@@ -654,10 +681,12 @@ impl ExportUtils {
         ];
 
         let t_vgm = Instant::now();
-        let result = command
-            .args(&args_vec)
-            .output();
-        println!("[PERF] NUS3BANK vgmstream-cli (subsong {}): {}ms", vgmstream_index, t_vgm.elapsed().as_millis());
+        let result = command.args(&args_vec).output();
+        println!(
+            "[PERF] NUS3BANK vgmstream-cli (subsong {}): {}ms",
+            vgmstream_index,
+            t_vgm.elapsed().as_millis()
+        );
 
         match result {
             Ok(output) => {
@@ -683,7 +712,9 @@ impl ExportUtils {
         output_dir: &str,
     ) -> Result<String, String> {
         // Compute subsong index for vgmstream (1-based). Our UI id is 0-based.
-        let id_num = audio_file_info.id.parse::<u32>()
+        let id_num = audio_file_info
+            .id
+            .parse::<u32>()
             .map_err(|_| format!("Invalid audio file ID: {}", audio_file_info.id))?;
         let vgmstream_index = id_num + 1;
 
@@ -718,9 +749,7 @@ impl ExportUtils {
         //     args_vec.join(" ")
         // );
 
-        let result = command
-            .args(&args_vec)
-            .output();
+        let result = command.args(&args_vec).output();
 
         // println!("Exporting command (NUS3BANK) result: {:?}", result);
         match result {
@@ -736,7 +765,7 @@ impl ExportUtils {
             Err(e) => Err(format!("Failed to run vgmstream-cli: {}", e)),
         }
     }
-    
+
     /// Export all tracks from NUS3BANK file
     pub fn export_all_nus3bank_to_wav(
         original_file_path: &str,
@@ -744,7 +773,7 @@ impl ExportUtils {
     ) -> Result<Vec<String>, String> {
         Nus3bankExporter::export_all_tracks(original_file_path, output_dir)
     }
-    
+
     /// Unified export method that works with both NUS3AUDIO and NUS3BANK files
     pub fn export_to_wav_with_custom_dir_unified(
         audio_file_info: &AudioFileInfo,
@@ -752,12 +781,16 @@ impl ExportUtils {
         output_dir: &str,
     ) -> Result<String, String> {
         if audio_file_info.is_nus3bank {
-            Self::export_nus3bank_to_wav_with_custom_dir(audio_file_info, original_file_path, output_dir)
+            Self::export_nus3bank_to_wav_with_custom_dir(
+                audio_file_info,
+                original_file_path,
+                output_dir,
+            )
         } else {
             Self::export_to_wav_with_custom_dir(audio_file_info, original_file_path, output_dir)
         }
     }
-    
+
     /// Unified export all method that works with both file types
     pub fn export_all_to_wav_unified(
         original_file_path: &str,
@@ -805,7 +838,10 @@ mod tests {
             .cloned();
 
         assert_eq!(found, Some(tmp_str));
-        WAV_CONVERSION_CACHE.lock().unwrap().remove(&cache_key("hit"));
+        WAV_CONVERSION_CACHE
+            .lock()
+            .unwrap()
+            .remove(&cache_key("hit"));
         let _ = std::fs::remove_file(&tmp);
     }
 
@@ -830,17 +866,32 @@ mod tests {
             .filter(|p| Path::new(p).exists())
             .cloned();
 
-        assert_eq!(found, None, "stale cache entry must miss when file is absent");
-        WAV_CONVERSION_CACHE.lock().unwrap().remove(&cache_key("miss"));
+        assert_eq!(
+            found, None,
+            "stale cache entry must miss when file is absent"
+        );
+        WAV_CONVERSION_CACHE
+            .lock()
+            .unwrap()
+            .remove(&cache_key("miss"));
     }
 
     #[test]
     fn clear_wav_cache_for_file_removes_only_matching_entries() {
         {
             let mut c = WAV_CONVERSION_CACHE.lock().unwrap();
-            c.insert("myfile.nus3audio::track_a::0".to_string(), "/tmp/a.wav".to_string());
-            c.insert("myfile.nus3audio::track_b::1".to_string(), "/tmp/b.wav".to_string());
-            c.insert("otherfile.nus3audio::track_c::0".to_string(), "/tmp/c.wav".to_string());
+            c.insert(
+                "myfile.nus3audio::track_a::0".to_string(),
+                "/tmp/a.wav".to_string(),
+            );
+            c.insert(
+                "myfile.nus3audio::track_b::1".to_string(),
+                "/tmp/b.wav".to_string(),
+            );
+            c.insert(
+                "otherfile.nus3audio::track_c::0".to_string(),
+                "/tmp/c.wav".to_string(),
+            );
         }
 
         ExportUtils::clear_wav_cache_for_file("myfile.nus3audio");
@@ -848,17 +899,27 @@ mod tests {
         let c = WAV_CONVERSION_CACHE.lock().unwrap();
         assert!(!c.contains_key("myfile.nus3audio::track_a::0"), "cleared");
         assert!(!c.contains_key("myfile.nus3audio::track_b::1"), "cleared");
-        assert!(c.contains_key("otherfile.nus3audio::track_c::0"), "unrelated entry must survive");
+        assert!(
+            c.contains_key("otherfile.nus3audio::track_c::0"),
+            "unrelated entry must survive"
+        );
         drop(c);
 
-        WAV_CONVERSION_CACHE.lock().unwrap().remove("otherfile.nus3audio::track_c::0");
+        WAV_CONVERSION_CACHE
+            .lock()
+            .unwrap()
+            .remove("otherfile.nus3audio::track_c::0");
     }
 
     #[test]
     fn prime_indexing_cache_zero_based() {
         ExportUtils::prime_indexing_cache("test_zero_idx.nus3audio", &[0, 1, 2]);
         assert_eq!(
-            INDEXING_PATTERN_CACHE.lock().unwrap().get("test_zero_idx.nus3audio").copied(),
+            INDEXING_PATTERN_CACHE
+                .lock()
+                .unwrap()
+                .get("test_zero_idx.nus3audio")
+                .copied(),
             Some(true)
         );
     }
@@ -867,7 +928,11 @@ mod tests {
     fn prime_indexing_cache_one_based() {
         ExportUtils::prime_indexing_cache("test_one_idx.nus3audio", &[1, 2, 3]);
         assert_eq!(
-            INDEXING_PATTERN_CACHE.lock().unwrap().get("test_one_idx.nus3audio").copied(),
+            INDEXING_PATTERN_CACHE
+                .lock()
+                .unwrap()
+                .get("test_one_idx.nus3audio")
+                .copied(),
             Some(false)
         );
     }

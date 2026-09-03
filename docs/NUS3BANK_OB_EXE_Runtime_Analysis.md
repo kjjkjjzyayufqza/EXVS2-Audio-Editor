@@ -57,6 +57,10 @@ The OB EXE is suitable for continuing the NUS3BANK investigation. It contains th
 
 IDA comments were added for the confirmed functions, and the IDB was saved after renaming.
 
+BGM append follow-up (2026-09-02): keep-slot TONE add for `COLORS_Flow` survives
+`nus3_decode_tone_descriptor` but the unit jingle still AVs at `0x141CA4A1`.
+Owner: [`ob-bgm-jingle-resolve-tone-av.md`](ob-bgm-jingle-resolve-tone-av.md).
+
 ## Section Loading Model
 
 `nus3_parse_banktoc_bank` validates:

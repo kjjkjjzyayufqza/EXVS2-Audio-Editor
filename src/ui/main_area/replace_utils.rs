@@ -13,12 +13,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
-use super::grp_list_modal::apply_grp_names_to_file;
-use super::grp_pending;
 use super::dton_pending;
 use super::dton_tones_modal::apply_dton_tones_to_file;
-use super::prop_pending;
+use super::grp_list_modal::apply_grp_names_to_file;
+use super::grp_pending;
 use super::prop_edit_modal::apply_prop_to_file;
+use super::prop_pending;
 
 // Store replaced audio data in a static HashMap.
 // Key format: "file_path:audio_name"; value: replaced audio bytes.
@@ -67,7 +67,8 @@ impl ReplaceUtils {
         while p + 8 <= data.len() {
             let cid = &data[p..p + 4];
             p += 4;
-            let clen = u32::from_le_bytes([data[p], data[p + 1], data[p + 2], data[p + 3]]) as usize;
+            let clen =
+                u32::from_le_bytes([data[p], data[p + 1], data[p + 2], data[p + 3]]) as usize;
             p += 4;
 
             if p + clen > data.len() {
@@ -161,7 +162,7 @@ impl ReplaceUtils {
                 return Err(format!(
                     "Failed to read replacement file '{}': {}",
                     replacement_file_path, e
-                ))
+                ));
             }
         };
 
@@ -265,12 +266,7 @@ impl ReplaceUtils {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
-        let temp_filename = format!(
-            "looping_{}_{}_{}.wav",
-            stem_safe,
-            std::process::id(),
-            stamp
-        );
+        let temp_filename = format!("looping_{}_{}_{}.wav", stem_safe, std::process::id(), stamp);
         let temp_output_path = temp_dir.join(&temp_filename);
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
@@ -329,11 +325,7 @@ impl ReplaceUtils {
         let file_path_str = file_path.to_string_lossy().into_owned();
         args.push(file_path_str);
 
-        println!(
-            "Running command: {:?} {}",
-            vgmstream_path,
-            args.join(" ")
-        );
+        println!("Running command: {:?} {}", vgmstream_path, args.join(" "));
 
         // 将Vec<String>转换为Vec<&str>以传递给command.args()
         let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -348,28 +340,35 @@ impl ReplaceUtils {
                         "Successfully processed file with vgmstream: {:?}",
                         temp_output_path
                     );
-                    
+
                     // Apply custom loop points if specified (after vgmstream processing)
                     if use_custom_loop {
                         if let Some(start) = loop_start {
                             // Get the sample rate from the processed WAV file
                             let sample_rate = Self::get_wav_sample_rate(&temp_output_path)?;
                             let start_sample = (start * sample_rate as f32) as u32;
-                            
+
                             let end_sample = if let Some(end) = loop_end {
                                 (end * sample_rate as f32) as u32
                             } else {
                                 // If no end specified, use the total samples
                                 Self::get_wav_total_samples(&temp_output_path)?
                             };
-                            
+
                             // Modify the WAV file's smpl chunk with custom loop points
-                            Self::modify_wav_smpl_chunk(&temp_output_path, start_sample, end_sample)?;
-                            
-                            println!("Applied custom loop points: start={} samples, end={} samples", start_sample, end_sample);
+                            Self::modify_wav_smpl_chunk(
+                                &temp_output_path,
+                                start_sample,
+                                end_sample,
+                            )?;
+
+                            println!(
+                                "Applied custom loop points: start={} samples, end={} samples",
+                                start_sample, end_sample
+                            );
                         }
                     }
-                    
+
                     Ok(temp_output_path)
                 } else {
                     let error = String::from_utf8_lossy(&output.stderr);
@@ -391,7 +390,7 @@ impl ReplaceUtils {
     }
 
     /// Apply gain in decibels to a WAV file and write to a new temporary WAV file
-    fn apply_wav_gain(input_path: &Path, gain_db: f32) -> Result<PathBuf, String> {
+    pub(crate) fn apply_wav_gain(input_path: &Path, gain_db: f32) -> Result<PathBuf, String> {
         if gain_db.abs() < std::f32::EPSILON {
             return Ok(input_path.to_path_buf());
         }
@@ -589,9 +588,7 @@ impl ReplaceUtils {
                 if lower == "wav" {
                     actual_file_path.clone()
                 } else {
-                    return Err(format!(
-                        "Failed to decode replacement with vgmstream: {e}"
-                    ));
+                    return Err(format!("Failed to decode replacement with vgmstream: {e}"));
                 }
             }
         };
@@ -603,10 +600,7 @@ impl ReplaceUtils {
                     p
                 }
                 Err(e) => {
-                    println!(
-                        "Warning: Failed to apply gain: {}. Using decoded file.",
-                        e
-                    );
+                    println!("Warning: Failed to apply gain: {}. Using decoded file.", e);
                     decoded_path.clone()
                 }
             }
@@ -651,10 +645,7 @@ impl ReplaceUtils {
     pub fn get_replacement_data_unified(audio_file_info: &AudioFileInfo) -> Option<Vec<u8>> {
         let keys = Self::loop_setting_keys(audio_file_info);
 
-        println!(
-            "Looking for replacement data with keys: {:?}",
-            keys
-        );
+        println!("Looking for replacement data with keys: {:?}", keys);
         if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
             for key in &keys {
                 if let Some(data) = map.get(key) {
@@ -763,8 +754,7 @@ impl ReplaceUtils {
         // Fallback: scan by name / id
         for (k, v) in settings.iter() {
             if k.contains(&info.name)
-                && (k.contains(&info.id)
-                    || info.hex_id.as_ref().is_some_and(|h| k.contains(h)))
+                && (k.contains(&info.id) || info.hex_id.as_ref().is_some_and(|h| k.contains(h)))
             {
                 println!(
                     "Found loop settings for {} via fuzzy key {}: custom={} enable={}",
@@ -793,7 +783,7 @@ impl ReplaceUtils {
             paths.clear();
             println!("Cleared all replacement file paths from memory");
         }
-        
+
         // Clear NUS3BANK replacements
         Nus3bankReplacer::clear_replacements();
     }
@@ -902,7 +892,14 @@ impl ReplaceUtils {
         // Store into in-memory replacement map using consistent key format
         let key = if audio_file_info.is_nus3bank {
             // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
-            format!("{}:{}", audio_file_info.hex_id.as_ref().unwrap_or(&audio_file_info.id), audio_file_info.name)
+            format!(
+                "{}:{}",
+                audio_file_info
+                    .hex_id
+                    .as_ref()
+                    .unwrap_or(&audio_file_info.id),
+                audio_file_info.name
+            )
         } else {
             // For NUS3AUDIO, use original name:id format
             format!("{}:{}", audio_file_info.name, audio_file_info.id)
@@ -927,154 +924,170 @@ impl ReplaceUtils {
 
     /// Get the sample rate from a WAV file
     fn get_wav_sample_rate(wav_path: &Path) -> Result<u32, String> {
-        let data = std::fs::read(wav_path)
-            .map_err(|e| format!("Failed to read WAV file: {}", e))?;
-        
+        let data =
+            std::fs::read(wav_path).map_err(|e| format!("Failed to read WAV file: {}", e))?;
+
         // Check for RIFF header (52 49 46 46)
         if data.len() < 44 || &data[0..4] != b"RIFF" {
             return Err("Invalid WAV file: missing RIFF header".to_string());
         }
-        
+
         // Check for WAVE format
         if &data[8..12] != b"WAVE" {
             return Err("Invalid WAV file: not WAVE format".to_string());
         }
-        
+
         // Find fmt chunk and extract sample rate
         let mut offset = 12;
         while offset + 8 <= data.len() {
             let chunk_id = &data[offset..offset + 4];
             let chunk_size = u32::from_le_bytes([
-                data[offset + 4], data[offset + 5], 
-                data[offset + 6], data[offset + 7]
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
             ]);
-            
+
             if chunk_id == b"fmt " {
                 if offset + 8 + 24 <= data.len() {
                     // Sample rate is at offset 24 in fmt chunk (offset + 8 + 24 - 8 = offset + 24)
                     let sample_rate = u32::from_le_bytes([
-                        data[offset + 8 + 4], data[offset + 8 + 5],
-                        data[offset + 8 + 6], data[offset + 8 + 7]
+                        data[offset + 8 + 4],
+                        data[offset + 8 + 5],
+                        data[offset + 8 + 6],
+                        data[offset + 8 + 7],
                     ]);
                     return Ok(sample_rate);
                 }
                 break;
             }
-            
+
             offset += 8 + chunk_size as usize;
             // Ensure 16-bit alignment
             if chunk_size % 2 != 0 {
                 offset += 1;
             }
         }
-        
+
         Err("Could not find fmt chunk in WAV file".to_string())
     }
 
     /// Get the total samples from a WAV file
     fn get_wav_total_samples(wav_path: &Path) -> Result<u32, String> {
-        let data = std::fs::read(wav_path)
-            .map_err(|e| format!("Failed to read WAV file: {}", e))?;
-        
+        let data =
+            std::fs::read(wav_path).map_err(|e| format!("Failed to read WAV file: {}", e))?;
+
         // Check for RIFF header
         if data.len() < 44 || &data[0..4] != b"RIFF" {
             return Err("Invalid WAV file: missing RIFF header".to_string());
         }
-        
+
         let mut fmt_chunk_info: Option<(u16, u32, u16)> = None; // (channels, sample_rate, bits_per_sample)
         let mut data_chunk_size: Option<u32> = None;
-        
+
         // Parse chunks to find fmt and data
         let mut offset = 12; // Skip RIFF header
         while offset + 8 <= data.len() {
             let chunk_id = &data[offset..offset + 4];
             let chunk_size = u32::from_le_bytes([
-                data[offset + 4], data[offset + 5], 
-                data[offset + 6], data[offset + 7]
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
             ]);
-            
+
             if chunk_id == b"fmt " && offset + 8 + 16 <= data.len() {
                 let channels = u16::from_le_bytes([data[offset + 8 + 2], data[offset + 8 + 3]]);
                 let sample_rate = u32::from_le_bytes([
-                    data[offset + 8 + 4], data[offset + 8 + 5],
-                    data[offset + 8 + 6], data[offset + 8 + 7]
+                    data[offset + 8 + 4],
+                    data[offset + 8 + 5],
+                    data[offset + 8 + 6],
+                    data[offset + 8 + 7],
                 ]);
-                let bits_per_sample = u16::from_le_bytes([data[offset + 8 + 14], data[offset + 8 + 15]]);
+                let bits_per_sample =
+                    u16::from_le_bytes([data[offset + 8 + 14], data[offset + 8 + 15]]);
                 fmt_chunk_info = Some((channels, sample_rate, bits_per_sample));
             } else if chunk_id == b"data" {
                 data_chunk_size = Some(chunk_size);
             }
-            
+
             offset += 8 + chunk_size as usize;
             if chunk_size % 2 != 0 {
                 offset += 1;
             }
         }
-        
+
         match (fmt_chunk_info, data_chunk_size) {
             (Some((channels, _sample_rate, bits_per_sample)), Some(data_size)) => {
                 let bytes_per_sample = (bits_per_sample / 8) as u32;
                 let total_samples = data_size / (channels as u32 * bytes_per_sample);
                 Ok(total_samples)
             }
-            _ => Err("Could not find required chunks to calculate total samples".to_string())
+            _ => Err("Could not find required chunks to calculate total samples".to_string()),
         }
     }
 
     /// Modify the smpl chunk in a WAV file to set custom loop points
-    fn modify_wav_smpl_chunk(wav_path: &Path, start_sample: u32, end_sample: u32) -> Result<(), String> {
-        let mut data = std::fs::read(wav_path)
-            .map_err(|e| format!("Failed to read WAV file: {}", e))?;
-        
+    fn modify_wav_smpl_chunk(
+        wav_path: &Path,
+        start_sample: u32,
+        end_sample: u32,
+    ) -> Result<(), String> {
+        let mut data =
+            std::fs::read(wav_path).map_err(|e| format!("Failed to read WAV file: {}", e))?;
+
         // Check for RIFF header
         if data.len() < 12 || &data[0..4] != b"RIFF" {
             return Err("Invalid WAV file: missing RIFF header".to_string());
         }
-        
+
         // Find smpl chunk at 0x24 offset
         if data.len() < 0x24 + 4 {
             return Err("WAV file too small to contain smpl chunk".to_string());
         }
-        
+
         // Check if smpl chunk exists at expected position (0x24)
         if &data[0x24..0x24 + 4] != b"smpl" {
             return Err("smpl chunk not found at expected position 0x24".to_string());
         }
-        
+
         // Verify we have enough space for the loop points
         if data.len() < 0x58 + 8 {
             return Err("WAV file too small to contain loop point data".to_string());
         }
-        
+
         // Write start_sample at 0x58
         let start_bytes = start_sample.to_le_bytes();
         data[0x58] = start_bytes[0];
         data[0x59] = start_bytes[1];
         data[0x5A] = start_bytes[2];
         data[0x5B] = start_bytes[3];
-        
+
         // Write end_sample at 0x5C
         let end_bytes = end_sample.to_le_bytes();
         data[0x5C] = end_bytes[0];
         data[0x5D] = end_bytes[1];
         data[0x5E] = end_bytes[2];
         data[0x5F] = end_bytes[3];
-        
+
         // Save the modified WAV file
         std::fs::write(wav_path, &data)
             .map_err(|e| format!("Failed to write modified WAV file: {}", e))?;
-        
-        println!("Successfully modified smpl chunk: loop start={}, end={}", start_sample, end_sample);
+
+        println!(
+            "Successfully modified smpl chunk: loop start={}, end={}",
+            start_sample, end_sample
+        );
         Ok(())
     }
-    
+
     /// Apply all in-memory replacements and save (unified for both file types)
     pub fn apply_replacements_and_save_unified(
         original_file_path: &str,
         save_path: &str,
     ) -> Result<(), String> {
         if original_file_path.to_lowercase().ends_with(".nus3bank") {
-            // Handle NUS3BANK files
+            // NUS3BANK: WAV preview bytes are encoded to BNSF/IS14 in apply_to_file.
             // Bridge UI in-memory replacements into Nus3bankReplacer cache
             // Handle both "hex_id:name" and "name:hex_id" key formats
             // Skip ADD_ prefixed keys (handled by Add operations)
@@ -1085,12 +1098,14 @@ impl ReplaceUtils {
                         println!("Skipping ADD_ prefixed key: {}", key);
                         continue;
                     }
-                    
+
                     let parts: Vec<&str> = key.split(':').collect();
-                    if parts.len() != 2 { continue; }
+                    if parts.len() != 2 {
+                        continue;
+                    }
                     let left = parts[0];
                     let right = parts[1];
-                    
+
                     // Check both possible hex_id positions
                     let hex_id = if left.starts_with("0x") {
                         left
@@ -1099,7 +1114,7 @@ impl ReplaceUtils {
                     } else {
                         continue; // Skip if no hex_id found
                     };
-                    
+
                     // Feed into Nus3bankReplacer using the current file path scope
                     let _ = Nus3bankReplacer::replace_track_in_memory(
                         original_file_path,
@@ -1109,11 +1124,15 @@ impl ReplaceUtils {
                 }
             }
 
-            let mut nus3bank_file = crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
-                .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
+            let mut nus3bank_file =
+                crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
+                    .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
 
-            crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(original_file_path, &mut nus3bank_file)
-                .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
+            crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(
+                original_file_path,
+                &mut nus3bank_file,
+            )
+            .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
 
             if let Some(names) = grp_pending::get(original_file_path) {
                 apply_grp_names_to_file(&mut nus3bank_file, names);
@@ -1143,9 +1162,77 @@ impl ReplaceUtils {
 
             Ok(())
         } else {
-            // Handle NUS3AUDIO files (original implementation)
+            // NUS3AUDIO (and any non-bank path): write WAV bytes as-is. Never BNSF/IS14.
             Self::apply_replacements_and_save(original_file_path, save_path)
         }
     }
-    
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nus3audio::{AudioFile, Nus3audioFile};
+
+    fn unique_temp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("exvs2_audio_editor_nus3audio_{}_{}", name, nonce));
+        p
+    }
+
+    fn mini_wav() -> Vec<u8> {
+        vec![
+            0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d,
+            0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x40, 0x1f, 0x00, 0x00,
+            0x80, 0x3e, 0x00, 0x00, 0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00,
+            0x00, 0x00,
+        ]
+    }
+
+    #[test]
+    fn nus3audio_save_keeps_wav_not_bnsf() {
+        let wav = mini_wav();
+        let src = unique_temp_path("src.nus3audio");
+        let out = unique_temp_path("out.nus3audio");
+        let mut file = Nus3audioFile { files: vec![] };
+        file.files.push(AudioFile {
+            id: 7,
+            name: "voice_line".to_string(),
+            data: wav.clone(),
+        });
+        let mut buf = Vec::new();
+        file.write(&mut buf);
+        fs::write(&src, &buf).unwrap();
+
+        {
+            let mut map = REPLACED_AUDIO_DATA.lock().unwrap();
+            map.insert("voice_line:7".to_string(), wav.clone());
+        }
+
+        ReplaceUtils::apply_replacements_and_save_unified(
+            src.to_str().unwrap(),
+            out.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let saved = Nus3audioFile::open(out.to_str().unwrap()).unwrap();
+        assert_eq!(saved.files.len(), 1);
+        let data = &saved.files[0].data;
+        assert!(
+            data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WAVE",
+            "NUS3AUDIO payload must stay WAV, got {:?}",
+            &data[..data.len().min(12)]
+        );
+        assert_ne!(&data[..4], b"BNSF");
+
+        {
+            let mut map = REPLACED_AUDIO_DATA.lock().unwrap();
+            map.remove("voice_line:7");
+        }
+        let _ = fs::remove_file(&src);
+        let _ = fs::remove_file(&out);
+    }
 }

@@ -1,9 +1,9 @@
+use super::audio_file_info::AudioFileInfo;
 use egui::{
-    Button, Color32, CornerRadius, Grid, Layout, Rect, RichText, ScrollArea, Stroke, StrokeKind,
-    TextWrapMode, Ui, Vec2, Direction,
+    Button, Color32, CornerRadius, Direction, Grid, Layout, Rect, RichText, ScrollArea, Stroke,
+    StrokeKind, TextWrapMode, Ui, Vec2,
 };
 use std::collections::HashSet;
-use super::audio_file_info::AudioFileInfo;
 
 use crate::localized;
 
@@ -13,7 +13,7 @@ use super::sort_column::SortColumn;
 pub struct TableRenderer;
 
 impl TableRenderer {
-/// Render table UI with callbacks for export, play and replace buttons
+    /// Render table UI with callbacks for export, play and replace buttons
     pub fn render_table(
         ui: &mut Ui,
         audio_files: &[AudioFileInfo],
@@ -121,7 +121,10 @@ impl TableRenderer {
 
         let header_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(
-            Rect::from_min_size(header_rect.min, Vec2::new(header_rect.width(), header_height)),
+            Rect::from_min_size(
+                header_rect.min,
+                Vec2::new(header_rect.width(), header_height),
+            ),
             0.0,
             header_bg_color,
         );
@@ -138,24 +141,30 @@ impl TableRenderer {
                         persistent_selected.contains(&key)
                     });
                     let mut header_checked = all_selected;
-                    let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_width_checkbox, header_height));
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(cell_rect).layout(Layout::centered_and_justified(Direction::LeftToRight)), |ui| {
-                        let resp = ui.add(egui::Checkbox::new(&mut header_checked, ""));
-                        if resp.changed() {
-                            if header_checked {
-                                for f in audio_files.iter() {
-                                    persistent_selected.insert(format!("{}:{}", f.name, f.id));
-                                }
-                            } else {
-                                for f in audio_files.iter() {
-                                    persistent_selected.remove(&format!("{}:{}", f.name, f.id));
+                    let (_id, cell_rect) =
+                        ui.allocate_space(Vec2::new(col_width_checkbox, header_height));
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .max_rect(cell_rect)
+                            .layout(Layout::centered_and_justified(Direction::LeftToRight)),
+                        |ui| {
+                            let resp = ui.add(egui::Checkbox::new(&mut header_checked, ""));
+                            if resp.changed() {
+                                if header_checked {
+                                    for f in audio_files.iter() {
+                                        persistent_selected.insert(format!("{}:{}", f.name, f.id));
+                                    }
+                                } else {
+                                    for f in audio_files.iter() {
+                                        persistent_selected.remove(&format!("{}:{}", f.name, f.id));
+                                    }
                                 }
                             }
-                        }
-                        resp.on_hover_text(localized::select_all_filtered_tooltip());
-                    });
+                            resp.on_hover_text(localized::select_all_filtered_tooltip());
+                        },
+                    );
                 }
-                
+
                 // Name column header
                 let name_sort_icon = if *sort_column == SortColumn::Name {
                     if *sort_ascending {
@@ -166,12 +175,18 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let name_text = RichText::new(format!("{}{}", localized::col_name(), name_sort_icon)).size(heading_size).strong();
-                
-                if ui.add_sized(
-                    [col_width_name, header_height],
-                    Button::new(name_text).fill(header_bg_color)
-                ).clicked() {
+                let name_text =
+                    RichText::new(format!("{}{}", localized::col_name(), name_sort_icon))
+                        .size(heading_size)
+                        .strong();
+
+                if ui
+                    .add_sized(
+                        [col_width_name, header_height],
+                        Button::new(name_text).fill(header_bg_color),
+                    )
+                    .clicked()
+                {
                     if *sort_column == SortColumn::Name {
                         *sort_ascending = !*sort_ascending;
                     } else {
@@ -190,12 +205,17 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let id_text = RichText::new(format!("{}{}", localized::col_id(), id_sort_icon)).size(heading_size).strong();
-                
-                if ui.add_sized(
-                    [col_width_id, header_height],
-                    Button::new(id_text).fill(header_bg_color)
-                ).clicked() {
+                let id_text = RichText::new(format!("{}{}", localized::col_id(), id_sort_icon))
+                    .size(heading_size)
+                    .strong();
+
+                if ui
+                    .add_sized(
+                        [col_width_id, header_height],
+                        Button::new(id_text).fill(header_bg_color),
+                    )
+                    .clicked()
+                {
                     if *sort_column == SortColumn::Id {
                         *sort_ascending = !*sort_ascending;
                     } else {
@@ -214,12 +234,18 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let size_text = RichText::new(format!("{}{}", localized::col_size(), size_sort_icon)).size(heading_size).strong();
-                
-                if ui.add_sized(
-                    [col_width_size, header_height],
-                    Button::new(size_text).fill(header_bg_color)
-                ).clicked() {
+                let size_text =
+                    RichText::new(format!("{}{}", localized::col_size(), size_sort_icon))
+                        .size(heading_size)
+                        .strong();
+
+                if ui
+                    .add_sized(
+                        [col_width_size, header_height],
+                        Button::new(size_text).fill(header_bg_color),
+                    )
+                    .clicked()
+                {
                     if *sort_column == SortColumn::Size {
                         *sort_ascending = !*sort_ascending;
                     } else {
@@ -238,12 +264,21 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let filename_text = RichText::new(format!("{}{}", localized::col_filename(), filename_sort_icon)).size(heading_size).strong();
-                
-                if ui.add_sized(
-                    [col_width_filename, header_height],
-                    Button::new(filename_text).fill(header_bg_color)
-                ).clicked() {
+                let filename_text = RichText::new(format!(
+                    "{}{}",
+                    localized::col_filename(),
+                    filename_sort_icon
+                ))
+                .size(heading_size)
+                .strong();
+
+                if ui
+                    .add_sized(
+                        [col_width_filename, header_height],
+                        Button::new(filename_text).fill(header_bg_color),
+                    )
+                    .clicked()
+                {
                     if *sort_column == SortColumn::Filename {
                         *sort_ascending = !*sort_ascending;
                     } else {
@@ -262,12 +297,18 @@ impl TableRenderer {
                 } else {
                     "".to_string()
                 };
-                let type_text = RichText::new(format!("{}{}", localized::col_type(), type_sort_icon)).size(heading_size).strong();
-                
-                if ui.add_sized(
-                    [col_width_type, header_height],
-                    Button::new(type_text).fill(header_bg_color)
-                ).clicked() {
+                let type_text =
+                    RichText::new(format!("{}{}", localized::col_type(), type_sort_icon))
+                        .size(heading_size)
+                        .strong();
+
+                if ui
+                    .add_sized(
+                        [col_width_type, header_height],
+                        Button::new(type_text).fill(header_bg_color),
+                    )
+                    .clicked()
+                {
                     if *sort_column == SortColumn::Type {
                         *sort_ascending = !*sort_ascending;
                     } else {
@@ -282,10 +323,14 @@ impl TableRenderer {
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.add(
-                            egui::Button::new(RichText::new(localized::col_action()).size(heading_size).strong())
-                                .fill(header_bg_color)
+                            egui::Button::new(
+                                RichText::new(localized::col_action())
+                                    .size(heading_size)
+                                    .strong(),
+                            )
+                            .fill(header_bg_color),
                         );
-                    }
+                    },
                 );
                 ui.end_row();
             });
@@ -452,7 +497,7 @@ impl TableRenderer {
                         };
 
                         ui.add_sized([col_width_type, row_height], egui::Label::new(type_text));
-                        
+
                         // Column 6: Actions - responsive buttons with overflow menu, centered in the cell
                         let (_id, cell_rect) = ui.allocate_space(Vec2::new(col_action, row_height));
 
@@ -469,39 +514,64 @@ impl TableRenderer {
                                         .show(ui, |ui| {
                                             // Row 1: Play and Export
                                             let play_btn = Button::new(
-                                                RichText::new(egui_phosphor::regular::PLAY.to_string())
-                                                    .size(text_size)
-                                                    .color(Color32::from_rgb(100, 255, 150)),
+                                                RichText::new(
+                                                    egui_phosphor::regular::PLAY.to_string(),
+                                                )
+                                                .size(text_size)
+                                                .color(Color32::from_rgb(100, 255, 150)),
                                             );
-                                            if ui.add(play_btn).on_hover_text(localized::play_tooltip()).clicked() {
+                                            if ui
+                                                .add(play_btn)
+                                                .on_hover_text(localized::play_tooltip())
+                                                .clicked()
+                                            {
                                                 on_play_clicked(row_index);
                                             }
 
                                             let export_btn = Button::new(
-                                                RichText::new(egui_phosphor::regular::DOWNLOAD_SIMPLE.to_string())
-                                                    .size(text_size),
+                                                RichText::new(
+                                                    egui_phosphor::regular::DOWNLOAD_SIMPLE
+                                                        .to_string(),
+                                                )
+                                                .size(text_size),
                                             );
-                                            if ui.add(export_btn).on_hover_text(localized::export_tooltip()).clicked() {
+                                            if ui
+                                                .add(export_btn)
+                                                .on_hover_text(localized::export_tooltip())
+                                                .clicked()
+                                            {
                                                 on_export_clicked(row_index);
                                             }
                                             ui.end_row();
 
                                             // Row 2: Replace and Remove
                                             let replace_btn = Button::new(
-                                                RichText::new(egui_phosphor::regular::SWAP.to_string())
-                                                    .size(text_size)
-                                                    .color(Color32::from_rgb(255, 180, 100)),
+                                                RichText::new(
+                                                    egui_phosphor::regular::SWAP.to_string(),
+                                                )
+                                                .size(text_size)
+                                                .color(Color32::from_rgb(255, 180, 100)),
                                             );
-                                            if ui.add(replace_btn).on_hover_text(localized::replace_tooltip()).clicked() {
+                                            if ui
+                                                .add(replace_btn)
+                                                .on_hover_text(localized::replace_tooltip())
+                                                .clicked()
+                                            {
                                                 on_replace_clicked(row_index);
                                             }
 
                                             let remove_btn = Button::new(
-                                                RichText::new(egui_phosphor::regular::TRASH.to_string())
-                                                    .size(text_size)
-                                                    .color(Color32::from_rgb(255, 100, 100)),
+                                                RichText::new(
+                                                    egui_phosphor::regular::TRASH.to_string(),
+                                                )
+                                                .size(text_size)
+                                                .color(Color32::from_rgb(255, 100, 100)),
                                             );
-                                            if ui.add(remove_btn).on_hover_text(localized::remove_tooltip()).clicked() {
+                                            if ui
+                                                .add(remove_btn)
+                                                .on_hover_text(localized::remove_tooltip())
+                                                .clicked()
+                                            {
                                                 on_remove_clicked(row_index);
                                             }
                                             ui.end_row();
@@ -522,19 +592,18 @@ impl TableRenderer {
 
                                         // Always show Play as icon-only (highest priority)
                                         add_spacing(button_ui);
-                                        let play_button = button_ui.add(
-                                            Button::new(
-                                                RichText::new(egui_phosphor::regular::PLAY.to_string())
-                                                    .size(text_size)
-                                                    .color(Color32::from_rgb(100, 255, 150)),
-                                            ),
-                                        );
+                                        let play_button = button_ui.add(Button::new(
+                                            RichText::new(egui_phosphor::regular::PLAY.to_string())
+                                                .size(text_size)
+                                                .color(Color32::from_rgb(100, 255, 150)),
+                                        ));
                                         if play_button.clicked() {
                                             on_play_clicked(row_index);
                                         }
 
                                         // Track remaining width with simple estimates so we can reserve for overflow menu
-                                        let mut remaining_width = available_button_width - play_button.rect.width();
+                                        let mut remaining_width =
+                                            available_button_width - play_button.rect.width();
 
                                         // Estimated widths (px) for planning only; actual draw uses real sizes
                                         let est_icon = 30.0;
@@ -638,19 +707,28 @@ impl TableRenderer {
                                             let more_label = RichText::new("⋯").size(text_size);
                                             let _ = button_ui.menu_button(more_label, |ui| {
                                                 if overflow_export {
-                                                    if ui.button(localized::export_tooltip()).clicked() {
+                                                    if ui
+                                                        .button(localized::export_tooltip())
+                                                        .clicked()
+                                                    {
                                                         on_export_clicked(row_index);
                                                         ui.close();
                                                     }
                                                 }
                                                 if overflow_replace {
-                                                    if ui.button(localized::replace_tooltip()).clicked() {
+                                                    if ui
+                                                        .button(localized::replace_tooltip())
+                                                        .clicked()
+                                                    {
                                                         on_replace_clicked(row_index);
                                                         ui.close();
                                                     }
                                                 }
                                                 if overflow_remove {
-                                                    if ui.button(localized::remove_tooltip()).clicked() {
+                                                    if ui
+                                                        .button(localized::remove_tooltip())
+                                                        .clicked()
+                                                    {
                                                         on_remove_clicked(row_index);
                                                         ui.close();
                                                     }

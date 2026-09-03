@@ -1,4 +1,4 @@
-use egui::{Context, Window, Button, RichText, Color32};
+use egui::{Button, Color32, Context, RichText, Window};
 
 use crate::localized;
 
@@ -26,7 +26,7 @@ impl ConfirmModal {
             cancelled: false,
         }
     }
-    
+
     /// Open the confirm dialog
     pub fn open(&mut self, title: impl AsRef<str>, message: impl AsRef<str>) {
         self.title = title.as_ref().to_string();
@@ -35,18 +35,18 @@ impl ConfirmModal {
         self.confirmed = false;
         self.cancelled = false;
     }
-    
+
     /// Close the confirm dialog
     pub fn close(&mut self) {
         self.open = false;
     }
-    
+
     /// Reset the confirmed and cancelled state
     pub fn reset_state(&mut self) {
         self.confirmed = false;
         self.cancelled = false;
     }
-    
+
     /// Show the confirm dialog
     pub fn show(&mut self, ctx: &Context) {
         if !self.open {
@@ -103,4 +103,4 @@ impl ConfirmModal {
                 });
             });
     }
-} 
+}

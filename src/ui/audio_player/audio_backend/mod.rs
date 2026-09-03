@@ -8,4 +8,7 @@ mod native;
 // Export the native audio backend
 pub use native::NativeAudioBackend as PlatformAudioBackend;
 
+#[cfg(test)]
+pub(crate) mod recording;
+
 // Optionally expose the specific backends for advanced use cases

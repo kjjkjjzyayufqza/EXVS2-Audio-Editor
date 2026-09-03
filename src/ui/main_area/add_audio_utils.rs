@@ -1,6 +1,7 @@
 use super::add_audio_modal::AddAudioModal;
 use super::audio_file_info::AudioFileInfo;
-use crate::{localized, Locale};
+use super::replace_utils::ReplaceUtils;
+use crate::{Locale, localized};
 use rfd::FileDialog;
 use std::fs;
 #[cfg(windows)]
@@ -46,9 +47,7 @@ impl AddAudioUtils {
 
         println!(
             "Running command: {:?} -o {} {}",
-            vgmstream_path,
-            temp_output_path_str,
-            file_path
+            vgmstream_path, temp_output_path_str, file_path
         );
 
         let result = command
@@ -112,32 +111,72 @@ impl AddAudioUtils {
         Ok(())
     }
 
+    fn apply_gain_to_wav_bytes(wav_data: Vec<u8>, gain_db: f32) -> Result<Vec<u8>, String> {
+        if gain_db.abs() < f32::EPSILON {
+            return Ok(wav_data);
+        }
+
+        let temp_dir = std::env::temp_dir();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let temp_path = temp_dir.join(format!("add_gain_src_{}.wav", nonce));
+        fs::write(&temp_path, &wav_data)
+            .map_err(|e| format!("Failed to write temp WAV for gain: {}", e))?;
+
+        let gained_path = match ReplaceUtils::apply_wav_gain(&temp_path, gain_db) {
+            Ok(path) => path,
+            Err(e) => {
+                let _ = fs::remove_file(&temp_path);
+                return Err(e);
+            }
+        };
+
+        let gained = fs::read(&gained_path)
+            .map_err(|e| format!("Failed to read gained WAV: {}", e));
+        let _ = fs::remove_file(&temp_path);
+        if gained_path != temp_path {
+            let _ = fs::remove_file(&gained_path);
+        }
+        gained
+    }
+
     /// Process the new audio file after the modal is confirmed
     /// The is_nus3bank flag will be determined by the caller based on the current file type
     pub fn process_new_audio(
         add_audio_modal: &AddAudioModal,
         is_nus3bank: bool,
         _locale: Locale,
-    ) -> Result<AudioFileInfo, String> {
+    ) -> Result<(AudioFileInfo, Vec<u8>), String> {
         // Check if file path exists
         let file_path = match &add_audio_modal.settings.file_path {
             Some(path) => path,
             None => return Err(localized::no_audio_path().to_string()),
         };
 
+        let gain_db = add_audio_modal.settings.gain_db;
+
         // Convert the audio file to WAV format using vgmstream
         let file_data = match Self::convert_to_wav(file_path) {
             Ok(wav_data) => wav_data,
             Err(e) => {
+                if gain_db.abs() > f32::EPSILON {
+                    return Err(format!(
+                        "Cannot apply gain: WAV conversion failed: {}",
+                        e
+                    ));
+                }
                 println!("Warning: Failed to convert to WAV: {}", e);
                 println!("Falling back to original file data");
-                // Fall back to the original file data if conversion fails
                 match &add_audio_modal.file_data {
                     Some(data) => data.clone(),
                     None => return Err(localized::no_audio_data().to_string()),
                 }
             }
         };
+
+        let file_data = Self::apply_gain_to_wav_bytes(file_data, gain_db)?;
 
         // Get name and ID from settings
         let name = add_audio_modal.settings.name.clone();
@@ -160,16 +199,7 @@ impl AddAudioUtils {
             .to_string_lossy()
             .to_string();
 
-        // Create a new AudioFileInfo for the UI
-        let hex_id = if is_nus3bank {
-            // Generate a temporary hex_id for NUS3BANK files
-            Some(format!("0x{:x}", std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap().as_secs() & 0xFFFF))
-        } else {
-            None
-        };
-        
+        // NUS3BANK hex_id is reserved later by Nus3bankReplacer::register_add.
         let new_audio_info = AudioFileInfo {
             name,
             id: id_val.to_string(),
@@ -182,11 +212,10 @@ impl AddAudioUtils {
                     .to_string_lossy()
             ),
             file_type: "WAV Audio".to_string(),
-            hex_id,
-            is_nus3bank,  // Determined by caller
+            hex_id: None,
+            is_nus3bank,
         };
 
-        // Return the new AudioFileInfo and the converted WAV data
-        Ok(new_audio_info)
+        Ok((new_audio_info, file_data))
     }
 }

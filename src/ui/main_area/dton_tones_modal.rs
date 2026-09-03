@@ -1,7 +1,7 @@
 use egui::{Color32, Context, ScrollArea, Ui, Window};
 
-use crate::{localized, Locale};
 use crate::nus3bank::structures::{DtonSection, Nus3bankFile, ToneDes};
+use crate::{Locale, localized};
 
 use super::dton_pending;
 
@@ -137,8 +137,14 @@ impl DtonTonesModal {
             if ui.button(localized::reload_from_file()).clicked() {
                 self.reload_from_file();
             }
-            ui.checkbox(&mut self.keep_original_length, localized::keep_original_length());
-            ui.checkbox(&mut self.advanced_fields, localized::enable_advanced_fields());
+            ui.checkbox(
+                &mut self.keep_original_length,
+                localized::keep_original_length(),
+            );
+            ui.checkbox(
+                &mut self.advanced_fields,
+                localized::enable_advanced_fields(),
+            );
         });
 
         ui.add_space(8.0);
@@ -171,7 +177,12 @@ impl DtonTonesModal {
                     let name = self.tones.get(idx).map(|t| t.name.as_str()).unwrap_or("");
                     let len = self.tones.get(idx).map(|t| t.data.len()).unwrap_or(0);
                     let selected = self.selected_index == Some(idx);
-                    let label = format!("{:3}  {:<24}  {}", idx, name, localized::dton_len_label(len));
+                    let label = format!(
+                        "{:3}  {:<24}  {}",
+                        idx,
+                        name,
+                        localized::dton_len_label(len)
+                    );
                     if ui.selectable_label(selected, label).clicked() {
                         self.selected_index = Some(idx);
                         self.sync_data_text_from_selected();
@@ -462,7 +473,10 @@ impl DtonTonesModal {
 }
 
 pub fn apply_dton_tones_to_file(file: &mut Nus3bankFile, tones: Vec<ToneDes>) {
-    file.dton = Some(DtonSection { tones });
+    file.dton = Some(DtonSection {
+        tones,
+        raw_payload: None,
+    });
 }
 
 fn parse_f32_list(text: &str) -> Result<Vec<f32>, String> {

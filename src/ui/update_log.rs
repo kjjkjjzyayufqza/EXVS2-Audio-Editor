@@ -136,10 +136,7 @@ pub fn show_windows(ctx: &Context) {
     }
 
     // Apply UI results with a single lock
-    if notice_actions.close_notice
-        || notice_actions.open_history
-        || history_actions.close_history
-    {
+    if notice_actions.close_notice || notice_actions.open_history || history_actions.close_history {
         if let Ok(mut st) = UPDATE_LOG_STATE.lock() {
             if notice_actions.close_notice {
                 st.show_update_notice = false;

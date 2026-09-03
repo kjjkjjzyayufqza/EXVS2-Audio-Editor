@@ -56,8 +56,7 @@ impl WaveformPeaks {
         }
 
         let bins = max_bins.clamp(32, 4096).min(info.total_frames).max(1);
-        let frames_per_bin =
-            ((info.total_frames as f64 / bins as f64).ceil() as usize).max(1);
+        let frames_per_bin = ((info.total_frames as f64 / bins as f64).ceil() as usize).max(1);
         let samples_per_bin = 32usize;
         let mut peaks = vec![(0.0f32, 0.0f32); bins];
         let mut frame_buf = vec![0u8; info.block_align.max(4)];
@@ -137,8 +136,7 @@ impl WaveformPeaks {
         }
 
         let bins = max_bins.clamp(32, 4096).min(info.total_frames).max(1);
-        let frames_per_bin =
-            ((info.total_frames as f64 / bins as f64).ceil() as usize).max(1);
+        let frames_per_bin = ((info.total_frames as f64 / bins as f64).ceil() as usize).max(1);
         // Cap samples examined per bin — keeps long tracks near O(bins * 48).
         let samples_per_bin = 48usize;
 
@@ -289,8 +287,7 @@ impl WaveformPeaks {
     fn from_wav_via_hound(path: &Path, max_bins: usize) -> Result<Self, String> {
         use hound::{SampleFormat, WavReader};
 
-        let mut reader =
-            WavReader::open(path).map_err(|e| format!("hound open failed: {e}"))?;
+        let mut reader = WavReader::open(path).map_err(|e| format!("hound open failed: {e}"))?;
         let spec = reader.spec();
         let channels = spec.channels.max(1) as usize;
         let sample_rate = spec.sample_rate.max(1);
@@ -304,8 +301,7 @@ impl WaveformPeaks {
         }
 
         let bins = max_bins.clamp(32, 4096).min(total_frames).max(1);
-        let frames_per_bin =
-            ((total_frames as f64 / bins as f64).ceil() as usize).max(1);
+        let frames_per_bin = ((total_frames as f64 / bins as f64).ceil() as usize).max(1);
         let samples_per_bin = 48usize;
         let step = (frames_per_bin / samples_per_bin).max(1);
 
@@ -421,7 +417,10 @@ impl WaveformPeaks {
             PathBuf::from("tools").join("vgmstream-cli.exe"),
             std::env::current_exe()
                 .ok()
-                .and_then(|p| p.parent().map(|d| d.join("tools").join("vgmstream-cli.exe")))
+                .and_then(|p| {
+                    p.parent()
+                        .map(|d| d.join("tools").join("vgmstream-cli.exe"))
+                })
                 .unwrap_or_default(),
         ];
         let vgm = candidates.into_iter().find(|p| p.exists())?;
@@ -430,10 +429,8 @@ impl WaveformPeaks {
 
     fn run_vgmstream_peaks(vgm: &Path, path: &Path, max_bins: usize) -> Option<Self> {
         use std::process::Command;
-        let temp = std::env::temp_dir().join(format!(
-            "exvs2_wave_preview_{}.wav",
-            std::process::id()
-        ));
+        let temp =
+            std::env::temp_dir().join(format!("exvs2_wave_preview_{}.wav", std::process::id()));
         let mut cmd = Command::new(vgm);
         #[cfg(windows)]
         {
@@ -571,11 +568,8 @@ fn parse_wav_pcm(bytes: &[u8]) -> Result<WavPcmInfo, String> {
     }
 
     // 1 = PCM, 3 = IEEE float, 0xFFFE = extensible (treat as PCM/float via bits)
-    let is_float = fmt_audio_format == 3
-        || (fmt_audio_format == 0xFFFE && bits_per_sample == 32);
-    let is_pcm = fmt_audio_format == 1
-        || fmt_audio_format == 0xFFFE
-        || is_float;
+    let is_float = fmt_audio_format == 3 || (fmt_audio_format == 0xFFFE && bits_per_sample == 32);
+    let is_pcm = fmt_audio_format == 1 || fmt_audio_format == 0xFFFE || is_float;
     if !is_pcm {
         return Err(format!("Unsupported WAV format tag: {fmt_audio_format}"));
     }
@@ -748,7 +742,12 @@ impl WaveformWidget {
         let dim_overlay = Color32::from_rgba_unmultiplied(0, 0, 0, 90);
 
         painter.rect_filled(rect, 6.0, bg);
-        painter.rect_stroke(rect, 6.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        painter.rect_stroke(
+            rect,
+            6.0,
+            Stroke::new(1.0, border),
+            egui::StrokeKind::Inside,
+        );
 
         let inner = rect.shrink2(vec2(6.0, 8.0));
         if inner.width() < 4.0 || inner.height() < 4.0 {
@@ -864,7 +863,8 @@ impl WaveformWidget {
         } else if options.loading {
             // Lightweight loading bars
             let t = ui.input(|i| i.time) as f32;
-            let muted = Color32::from_rgba_unmultiplied(wave_color.r(), wave_color.g(), wave_color.b(), 80);
+            let muted =
+                Color32::from_rgba_unmultiplied(wave_color.r(), wave_color.g(), wave_color.b(), 80);
             for i in 0..24 {
                 let phase = (t * 3.0 + i as f32 * 0.35).sin().abs();
                 let x = inner.left() + (i as f32 + 0.5) / 24.0 * inner.width();
@@ -952,9 +952,10 @@ impl WaveformWidget {
         // Interaction — never emit hard Seek on every dragged frame (that spams the audio device).
         let mut action = WaveformAction::None;
         let drag_id = id.with("drag_target");
-        let mut drag_target = ui
-            .ctx()
-            .data_mut(|d| d.get_temp::<DragTarget>(drag_id).unwrap_or(DragTarget::None));
+        let mut drag_target = ui.ctx().data_mut(|d| {
+            d.get_temp::<DragTarget>(drag_id)
+                .unwrap_or(DragTarget::None)
+        });
 
         if response.drag_started() {
             if let Some(pos) = response.interact_pointer_pos() {
@@ -1173,11 +1174,10 @@ mod tests {
         // Optional: exercise a real vgmstream convert product left by the app (~55MB / 5min).
         let dir = std::env::temp_dir();
         let Some(entry) = std::fs::read_dir(&dir).ok().and_then(|rd| {
-            rd.filter_map(|e| e.ok())
-                .find(|e| {
-                    let n = e.file_name().to_string_lossy().into_owned();
-                    n.starts_with("temp_convert_") && n.ends_with(".wav")
-                })
+            rd.filter_map(|e| e.ok()).find(|e| {
+                let n = e.file_name().to_string_lossy().into_owned();
+                n.starts_with("temp_convert_") && n.ends_with(".wav")
+            })
         }) else {
             return;
         };

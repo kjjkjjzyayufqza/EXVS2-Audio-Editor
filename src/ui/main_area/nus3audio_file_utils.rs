@@ -20,11 +20,18 @@ pub struct Nus3audioFileUtils;
 
 impl Nus3audioFileUtils {
     /// Register a file removal (in memory only)
-    pub fn register_remove(audio_info: &AudioFileInfo, selected_file_path: Option<&str>) -> Result<(), String> {
+    pub fn register_remove(
+        audio_info: &AudioFileInfo,
+        selected_file_path: Option<&str>,
+    ) -> Result<(), String> {
         // Use consistent key format based on file type to match replace_in_memory
         let key = if audio_info.is_nus3bank {
             // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
-            format!("{}:{}", audio_info.hex_id.as_ref().unwrap_or(&audio_info.id), audio_info.name)
+            format!(
+                "{}:{}",
+                audio_info.hex_id.as_ref().unwrap_or(&audio_info.id),
+                audio_info.name
+            )
         } else {
             // For NUS3AUDIO, use original name:id format
             format!("{}:{}", audio_info.name, audio_info.id)
@@ -34,7 +41,8 @@ impl Nus3audioFileUtils {
         if audio_info.is_nus3bank || audio_info.id.starts_with("0x") {
             // Register with NUS3BANK replacer for proper removal (TONE update)
             let hex_id = audio_info.hex_id.as_ref().unwrap_or(&audio_info.id);
-            let file_path = selected_file_path.ok_or_else(|| "No .nus3bank file is selected".to_string())?;
+            let file_path =
+                selected_file_path.ok_or_else(|| "No .nus3bank file is selected".to_string())?;
             crate::nus3bank::replace::Nus3bankReplacer::register_remove(file_path, hex_id)?;
         }
 
@@ -67,7 +75,9 @@ impl Nus3audioFileUtils {
         }
 
         // Use unified method to apply all in-memory replacements and save the file (supports both NUS3AUDIO and NUS3BANK)
-        match super::replace_utils::ReplaceUtils::apply_replacements_and_save_unified(file_path, file_path) {
+        match super::replace_utils::ReplaceUtils::apply_replacements_and_save_unified(
+            file_path, file_path,
+        ) {
             Ok(_) => {
                 Self::clear_changes();
                 // Invalidate WAV cache for this file since on-disk content changed
@@ -86,14 +96,29 @@ impl Nus3audioFileUtils {
         } else {
             false
         };
-        
+
         // Check for replacement data in ReplaceUtils (NUS3AUDIO)
         let has_replacements = super::replace_utils::ReplaceUtils::has_replacement_data();
-        
+
         // Check for NUS3BANK replacement data
-        let has_nus3bank_replacements = crate::nus3bank::replace::Nus3bankReplacer::has_replacement_data();
-        
+        let has_nus3bank_replacements =
+            crate::nus3bank::replace::Nus3bankReplacer::has_replacement_data();
+
         has_file_changes || has_replacements || has_nus3bank_replacements
+    }
+
+    /// NUS3BANK File→Save also needs to run when PACK still has WAV or cloned loop clocks.
+    pub fn has_pending_changes_for_path(file_path: &str) -> bool {
+        if Self::has_pending_changes() {
+            return true;
+        }
+        if !file_path.to_lowercase().ends_with(".nus3bank") {
+            return false;
+        }
+        match crate::nus3bank::structures::Nus3bankFile::open(file_path) {
+            Ok(file) => crate::nus3bank::replace::Nus3bankReplacer::bank_needs_save_repair(&file),
+            Err(_) => false,
+        }
     }
 
     /// Get the number of pending changes
@@ -104,13 +129,14 @@ impl Nus3audioFileUtils {
         } else {
             0
         };
-        
+
         // Count replacement data in ReplaceUtils (NUS3AUDIO)
         let replacements_count = super::replace_utils::ReplaceUtils::get_replacement_count();
-        
+
         // Count NUS3BANK replacement data
-        let nus3bank_replacements_count = crate::nus3bank::replace::Nus3bankReplacer::get_replacement_count();
-        
+        let nus3bank_replacements_count =
+            crate::nus3bank::replace::Nus3bankReplacer::get_replacement_count();
+
         file_changes_count + replacements_count + nus3bank_replacements_count
     }
 
@@ -147,28 +173,30 @@ impl Nus3audioFileUtils {
     /// Register an audio file to be added to the NUS3BANK file
     pub fn register_add_nus3bank(
         selected_file_path: &str,
-        audio_info: &AudioFileInfo,
+        audio_info: &mut AudioFileInfo,
         audio_data: Vec<u8>,
     ) -> Result<(), String> {
         // For NUS3BANK files, register with Nus3bankReplacer
         if audio_info.is_nus3bank {
-            // Register with Nus3bankReplacer for file operations
-            let _temp_hex_id = crate::nus3bank::replace::Nus3bankReplacer::register_add(
+            let reserved_hex_id = crate::nus3bank::replace::Nus3bankReplacer::register_add(
                 selected_file_path,
                 &audio_info.name,
-                audio_data.clone()
+                audio_data.clone(),
             )?;
-            
+            audio_info.hex_id = Some(reserved_hex_id.clone());
+
             // Also store in ReplaceUtils for audio playback
             // Use special prefix for Add operations to avoid conflict with Replace operations
-            let key = format!("ADD_{}:{}", audio_info.hex_id.as_ref().unwrap_or(&audio_info.id), audio_info.name);
+            let key = format!("ADD_{}:{}", reserved_hex_id, audio_info.name);
             super::replace_utils::ReplaceUtils::store_audio_data_for_playback(key, audio_data)?;
-            println!("Stored audio data for playback: {} (NUS3BANK)", audio_info.name);
-            
+            println!(
+                "Stored audio data for playback: {} (NUS3BANK {})",
+                audio_info.name, reserved_hex_id
+            );
+
             return Ok(());
         }
-        
-        // Fallback to existing NUS3AUDIO logic
+
         Self::register_add_audio(audio_info, audio_data)
     }
 

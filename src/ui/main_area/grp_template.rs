@@ -2585,10 +2585,9 @@ pub const GRP_TEMPLATE: &[&str] = &[
     "SE_STAGE",
     "SE_AMB",
     "SE_SYSTEM",
-    "SE_SYSTEM_OUT"
-  ];
+    "SE_SYSTEM_OUT",
+];
 
 pub fn grp_template_names() -> Vec<String> {
     GRP_TEMPLATE.iter().map(|s| (*s).to_string()).collect()
 }
-

@@ -28,13 +28,21 @@ impl fmt::Display for Nus3bankError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Nus3bankError::InvalidMagic { expected, found } => {
-                write!(f, "Invalid magic number: expected {}, found {}", expected, found)
+                write!(
+                    f,
+                    "Invalid magic number: expected {}, found {}",
+                    expected, found
+                )
             }
             Nus3bankError::SectionValidation { section } => {
                 write!(f, "Section validation failed: {}", section)
             }
             Nus3bankError::StringAlignment { size, padding } => {
-                write!(f, "String alignment error: size {}, padding {}", size, padding)
+                write!(
+                    f,
+                    "String alignment error: size {}, padding {}",
+                    size, padding
+                )
             }
             Nus3bankError::Reconstruction { reason } => {
                 write!(f, "File reconstruction failed: {}", reason)

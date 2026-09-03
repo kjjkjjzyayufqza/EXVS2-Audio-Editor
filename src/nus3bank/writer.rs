@@ -5,7 +5,7 @@ use super::{
     error::Nus3bankError,
     structures::{
         BinfSection, DtonSection, GrpSection, Nus3bankFile, PropLayout, PropSection, RawSection,
-        TocEntry, ToneMeta,
+        TocEntry, ToneMeta, detect_pack_alignment,
     },
 };
 
@@ -18,9 +18,11 @@ impl Nus3bankWriter {
         path: P,
     ) -> Result<(), Nus3bankError> {
         let mut active_tones: Vec<ToneMeta> = file.tone.tones.clone();
+        let pack_align = detect_pack_alignment(&active_tones);
 
-        // Rebuild PACK and update each tone's offset/size (offset is relative to PACK payload start).
-        let pack_payload = Self::build_pack_payload(&mut active_tones);
+        // Rebuild PACK and update each live tone's offset/size (offset is relative to PACK payload start).
+        // Stub / removed slots stay in the TONE pointer table but do not consume PACK bytes.
+        let pack_payload = Self::build_pack_payload(&mut active_tones, pack_align);
 
         // Rebuild sections in TOC order.
         let toc = file.toc.clone();
@@ -52,7 +54,11 @@ impl Nus3bankWriter {
                             .ok_or_else(|| Nus3bankError::SectionValidation {
                                 section: "GRP section missing".to_string(),
                             })?;
-                    Self::build_grp(grp)
+                    if let Some(raw) = grp.raw_payload.as_ref() {
+                        raw.clone()
+                    } else {
+                        Self::build_grp(grp)
+                    }
                 }
                 b"DTON" => {
                     let dton =
@@ -128,15 +134,19 @@ impl Nus3bankWriter {
             })
     }
 
-    fn build_pack_payload(tones: &mut [ToneMeta]) -> Vec<u8> {
+    fn build_pack_payload(tones: &mut [ToneMeta], align: usize) -> Vec<u8> {
+        let align = align.max(1);
         let mut pack: Vec<u8> = Vec::new();
         for t in tones.iter_mut() {
+            if t.removed || t.payload.is_empty() {
+                continue;
+            }
             t.offset = pack.len() as i32;
             t.size = t.payload.len() as i32;
             pack.extend_from_slice(&t.payload);
-            let pad = BinaryReader::calculate_padding(pack.len());
-            if pad > 0 {
-                pack.extend(std::iter::repeat(0u8).take(pad));
+            let rem = pack.len() % align;
+            if rem != 0 {
+                pack.extend(std::iter::repeat(0u8).take(align - rem));
             }
         }
         pack
@@ -309,6 +319,9 @@ impl Nus3bankWriter {
     }
 
     fn build_dton(dton: &DtonSection) -> Vec<u8> {
+        if let Some(raw) = dton.raw_payload.as_ref() {
+            return raw.clone();
+        }
         let mut payload = Vec::new();
         payload.extend_from_slice(&BinaryReader::write_u32_le(dton.tones.len() as u32));
 
@@ -348,17 +361,13 @@ impl Nus3bankWriter {
     }
 
     fn build_dton_raw_data(tone: &super::structures::ToneDes) -> Vec<u8> {
+        if !tone.raw_data.is_empty() {
+            return tone.raw_data.clone();
+        }
         let mut data_bytes = Vec::with_capacity(tone.data.len() * 4);
         for f in &tone.data {
             data_bytes.extend_from_slice(&BinaryReader::write_f32_le(*f));
         }
-
-        if tone.raw_data.len() >= data_bytes.len()
-            && tone.raw_data[..data_bytes.len()] == data_bytes[..]
-        {
-            return tone.raw_data.clone();
-        }
-
         data_bytes
     }
 
@@ -383,7 +392,15 @@ impl Nus3bankWriter {
             payload.extend_from_slice(&BinaryReader::write_u32_le(off));
             payload.extend_from_slice(&BinaryReader::write_u32_le(sz));
         }
-        payload.extend_from_slice(&BinaryReader::write_u32_le(0));
+        // Vanilla OB (BGM and SE) has no pad after the pointer table. Keep the
+        // extra 0 only for C# / sample banks whose offsets start after count.
+        let unshifted = tones.iter().any(|t| {
+            super::ob_tone_decode::unshifted_name_len_pos(&t.raw_meta).is_some()
+                || super::ob_tone_decode::is_bgm_tone_descriptor(&t.raw_meta)
+        });
+        if !unshifted {
+            payload.extend_from_slice(&BinaryReader::write_u32_le(0));
+        }
         payload.extend_from_slice(&data);
         Ok(payload)
     }
@@ -399,6 +416,7 @@ impl Nus3bankWriter {
                         .copy_from_slice(&BinaryReader::write_i32_le(t.offset));
                     raw[size_pos..size_pos + 4]
                         .copy_from_slice(&BinaryReader::write_i32_le(t.size));
+                    Self::probe_built_meta(&raw, &t.name)?;
                     return Ok(raw);
                 }
                 return Err(Nus3bankError::InvalidFormat {
@@ -409,6 +427,7 @@ impl Nus3bankWriter {
                 });
             }
 
+            Self::probe_built_meta(&t.raw_meta, &t.name)?;
             return Ok(t.raw_meta.clone());
         }
 
@@ -470,6 +489,11 @@ impl Nus3bankWriter {
             b.extend_from_slice(&BinaryReader::write_i32_le(*v));
         }
 
+        Self::probe_built_meta(&b, &t.name)?;
         Ok(b)
+    }
+
+    fn probe_built_meta(raw: &[u8], name: &str) -> Result<(), Nus3bankError> {
+        super::ob_tone_decode::probe_live_tone(raw, name)
     }
 }

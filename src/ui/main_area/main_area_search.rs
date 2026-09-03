@@ -1,5 +1,5 @@
 use crate::localized;
-use egui::{RichText, Ui, Color32};
+use egui::{Color32, RichText, Ui};
 use egui_phosphor::regular;
 
 use super::main_area_core::MainArea;
@@ -11,12 +11,16 @@ impl MainArea {
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.search_query)
                     .hint_text(localized::search_audio_hint())
-                    .desired_width(250.0)
+                    .desired_width(250.0),
             );
             let _ = response; // Avoid unused variable warning
 
             if !self.search_query.is_empty() {
-                if ui.button(RichText::new(regular::X.to_string()).color(Color32::GRAY)).on_hover_text(localized::clear_search_main_tooltip()).clicked() {
+                if ui
+                    .button(RichText::new(regular::X.to_string()).color(Color32::GRAY))
+                    .on_hover_text(localized::clear_search_main_tooltip())
+                    .clicked()
+                {
                     self.search_query.clear();
                 }
             }

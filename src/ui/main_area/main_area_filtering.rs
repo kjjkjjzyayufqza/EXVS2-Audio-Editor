@@ -1,14 +1,14 @@
+use super::{
+    audio_file_info::AudioFileInfo,
+    main_area_core::{FileLoadResult, MainArea},
+    replace_utils::ReplaceUtils,
+    search_column::SearchColumn,
+    sort_column::SortColumn,
+};
+use crate::nus3bank::Nus3bankFile;
 use nus3audio::Nus3audioFile;
 use std::sync::mpsc;
 use std::time::Instant;
-use super::{
-    main_area_core::{FileLoadResult, MainArea},
-    audio_file_info::AudioFileInfo,
-    search_column::SearchColumn,
-    sort_column::SortColumn,
-    replace_utils::ReplaceUtils
-};
-use crate::nus3bank::Nus3bankFile;
 
 impl MainArea {
     /// Get filtered audio files based on search query and column, then sort them
@@ -23,26 +23,24 @@ impl MainArea {
                 let query = self.search_query.to_lowercase();
                 audio_files
                     .iter()
-                    .filter(|file| {
-                        match self.search_column {
-                            SearchColumn::All => {
-                                file.name.to_lowercase().contains(&query) ||
-                                file.id.to_lowercase().contains(&query) ||
-                                self.size_matches(file.size, &query) ||
-                                file.filename.to_lowercase().contains(&query) ||
-                                file.file_type.to_lowercase().contains(&query)
-                            },
-                            SearchColumn::Name => file.name.to_lowercase().contains(&query),
-                            SearchColumn::Id => file.id.to_lowercase().contains(&query),
-                            SearchColumn::Size => self.size_matches(file.size, &query),
-                            SearchColumn::Filename => file.filename.to_lowercase().contains(&query),
-                            SearchColumn::Type => file.file_type.to_lowercase().contains(&query),
+                    .filter(|file| match self.search_column {
+                        SearchColumn::All => {
+                            file.name.to_lowercase().contains(&query)
+                                || file.id.to_lowercase().contains(&query)
+                                || self.size_matches(file.size, &query)
+                                || file.filename.to_lowercase().contains(&query)
+                                || file.file_type.to_lowercase().contains(&query)
                         }
+                        SearchColumn::Name => file.name.to_lowercase().contains(&query),
+                        SearchColumn::Id => file.id.to_lowercase().contains(&query),
+                        SearchColumn::Size => self.size_matches(file.size, &query),
+                        SearchColumn::Filename => file.filename.to_lowercase().contains(&query),
+                        SearchColumn::Type => file.file_type.to_lowercase().contains(&query),
                     })
                     .cloned()
                     .collect()
             };
-            
+
             // Then sort the filtered files based on sort column and direction
             if self.sort_column != SortColumn::None {
                 filtered_files.sort_by(|a, b| {
@@ -52,7 +50,7 @@ impl MainArea {
                             // Try to parse IDs as numbers for numeric sorting
                             let parse_a = a.id.parse::<usize>();
                             let parse_b = b.id.parse::<usize>();
-                            
+
                             match (parse_a, parse_b) {
                                 // If both can be parsed as numbers, sort numerically
                                 (Ok(num_a), Ok(num_b)) => num_a.cmp(&num_b),
@@ -62,13 +60,17 @@ impl MainArea {
                                 // If neither can be parsed as numbers, fall back to string comparison
                                 (Err(_), Err(_)) => a.id.to_lowercase().cmp(&b.id.to_lowercase()),
                             }
-                        },
+                        }
                         SortColumn::Size => a.size.cmp(&b.size),
-                        SortColumn::Filename => a.filename.to_lowercase().cmp(&b.filename.to_lowercase()),
-                        SortColumn::Type => a.file_type.to_lowercase().cmp(&b.file_type.to_lowercase()),
+                        SortColumn::Filename => {
+                            a.filename.to_lowercase().cmp(&b.filename.to_lowercase())
+                        }
+                        SortColumn::Type => {
+                            a.file_type.to_lowercase().cmp(&b.file_type.to_lowercase())
+                        }
                         SortColumn::None => std::cmp::Ordering::Equal,
                     };
-                    
+
                     if self.sort_ascending {
                         ordering
                     } else {
@@ -76,27 +78,27 @@ impl MainArea {
                     }
                 });
             }
-            
+
             filtered_files
         } else {
             Vec::new()
         }
     }
-    
+
     /// Helper function to match size values in different formats
     pub fn size_matches(&self, size: usize, query: &str) -> bool {
         // Convert size to different formats for more flexible searching
         let size_bytes = format!("{} B", size).to_lowercase();
         let size_kb = format!("{:.1} KB", size as f32 / 1024.0).to_lowercase();
         let size_mb = format!("{:.1} MB", size as f32 / (1024.0 * 1024.0)).to_lowercase();
-        
+
         // Also check raw size value as string
         let size_raw = size.to_string();
-        
-        size_bytes.contains(query) ||
-        size_kb.contains(query) || 
-        size_mb.contains(query) ||
-        size_raw.contains(query)
+
+        size_bytes.contains(query)
+            || size_kb.contains(query)
+            || size_mb.contains(query)
+            || size_raw.contains(query)
     }
 
     /// Poll for background file load completion. Call once per frame.
@@ -108,12 +110,20 @@ impl MainArea {
         if let Some(result) = result {
             self.file_load_receiver = None;
             match result {
-                FileLoadResult::Nus3audio { file_name, file_count, audio_files, track_ids } => {
+                FileLoadResult::Nus3audio {
+                    file_name,
+                    file_count,
+                    audio_files,
+                    track_ids,
+                } => {
                     super::export_utils::ExportUtils::prime_indexing_cache(&file_name, &track_ids);
                     self.file_count = Some(file_count);
                     self.audio_files = Some(audio_files);
                 }
-                FileLoadResult::Nus3bank { file_count, audio_files } => {
+                FileLoadResult::Nus3bank {
+                    file_count,
+                    audio_files,
+                } => {
                     self.file_count = Some(file_count);
                     self.audio_files = Some(audio_files);
                 }
@@ -179,7 +189,11 @@ impl MainArea {
         match Nus3audioFile::open(file_name) {
             Ok(nus3_file) => {
                 let open_ms = t_open.elapsed().as_millis();
-                println!("[PERF] NUS3AUDIO open: {}ms ({} tracks)", open_ms, nus3_file.files.len());
+                println!(
+                    "[PERF] NUS3AUDIO open: {}ms ({} tracks)",
+                    open_ms,
+                    nus3_file.files.len()
+                );
 
                 let track_ids: Vec<u32> = nus3_file.files.iter().map(|f| f.id).collect();
                 let file_count = nus3_file.files.len();
@@ -209,8 +223,14 @@ impl MainArea {
                     ));
                 }
 
-                println!("[PERF] NUS3AUDIO process tracks: {}ms", t_process.elapsed().as_millis());
-                println!("[PERF] NUS3AUDIO load total: {}ms", t_open.elapsed().as_millis());
+                println!(
+                    "[PERF] NUS3AUDIO process tracks: {}ms",
+                    t_process.elapsed().as_millis()
+                );
+                println!(
+                    "[PERF] NUS3AUDIO load total: {}ms",
+                    t_open.elapsed().as_millis()
+                );
 
                 FileLoadResult::Nus3audio {
                     file_name: file_name.to_string(),
@@ -220,7 +240,10 @@ impl MainArea {
                 }
             }
             Err(e) => {
-                println!("[PERF] NUS3AUDIO open FAILED: {}ms", t_open.elapsed().as_millis());
+                println!(
+                    "[PERF] NUS3AUDIO open FAILED: {}ms",
+                    t_open.elapsed().as_millis()
+                );
                 FileLoadResult::Error(format!("Error loading NUS3AUDIO file: {}", e))
             }
         }
@@ -231,7 +254,11 @@ impl MainArea {
         match Nus3bankFile::open(file_name) {
             Ok(nus3bank_file) => {
                 let open_ms = t_open.elapsed().as_millis();
-                println!("[PERF] NUS3BANK open: {}ms ({} tracks)", open_ms, nus3bank_file.tracks.len());
+                println!(
+                    "[PERF] NUS3BANK open: {}ms ({} tracks)",
+                    open_ms,
+                    nus3bank_file.tracks.len()
+                );
 
                 let t_process = Instant::now();
                 let file_count = nus3bank_file.tracks.len();
@@ -247,8 +274,14 @@ impl MainArea {
                     ));
                 }
 
-                println!("[PERF] NUS3BANK process tracks: {}ms", t_process.elapsed().as_millis());
-                println!("[PERF] NUS3BANK load total: {}ms", t_open.elapsed().as_millis());
+                println!(
+                    "[PERF] NUS3BANK process tracks: {}ms",
+                    t_process.elapsed().as_millis()
+                );
+                println!(
+                    "[PERF] NUS3BANK load total: {}ms",
+                    t_open.elapsed().as_millis()
+                );
 
                 FileLoadResult::Nus3bank {
                     file_count,
@@ -256,7 +289,10 @@ impl MainArea {
                 }
             }
             Err(e) => {
-                println!("[PERF] NUS3BANK open FAILED: {}ms", t_open.elapsed().as_millis());
+                println!(
+                    "[PERF] NUS3BANK open FAILED: {}ms",
+                    t_open.elapsed().as_millis()
+                );
                 FileLoadResult::Error(format!("Error loading NUS3BANK file: {}", e))
             }
         }

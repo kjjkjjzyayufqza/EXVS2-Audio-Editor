@@ -119,7 +119,7 @@ impl FileList {
 
         // Show confirm modal
         self.confirm_clear_modal.show(ui.ctx());
-        
+
         // Handle confirm modal result
         if self.confirm_clear_modal.confirmed {
             self.clear_all();
@@ -138,10 +138,17 @@ impl FileList {
                     // Add Button (Always visible at the top for better UX)
                     let add_btn =
                         Button::new(RichText::new(regular::PLUS_CIRCLE).size(20.0)).frame(false);
-                    if ui.add(add_btn).on_hover_text(localized::add_files_tooltip()).clicked() {
+                    if ui
+                        .add(add_btn)
+                        .on_hover_text(localized::add_files_tooltip())
+                        .clicked()
+                    {
                         if let Some(paths) = rfd::FileDialog::new()
                             .set_title(localized::select_audio_files_title())
-                            .add_filter(localized::audio_files_filter(), &["nus3audio", "nus3bank", "wav", "mp3"])
+                            .add_filter(
+                                localized::audio_files_filter(),
+                                &["nus3audio", "nus3bank", "wav", "mp3"],
+                            )
                             .pick_files()
                         {
                             for path in paths {
@@ -157,10 +164,14 @@ impl FileList {
                             RichText::new(regular::TRASH).color(Color32::from_rgb(255, 100, 100)),
                         )
                         .frame(false);
-                        if ui.add(clear_btn).on_hover_text(localized::clear_all_files_title()).clicked() {
+                        if ui
+                            .add(clear_btn)
+                            .on_hover_text(localized::clear_all_files_title())
+                            .clicked()
+                        {
                             self.confirm_clear_modal.open(
                                 localized::clear_all_files_title(),
-                                &localized::clear_all_files_confirm(self.files.len())
+                                &localized::clear_all_files_confirm(self.files.len()),
                             );
                         }
 
@@ -247,9 +258,8 @@ impl FileList {
                                         .input(|i| i.pointer.hover_pos())
                                         .or(ui.ctx().pointer_interact_pos());
 
-                                    let hovered_row = ptr_pos
-                                        .map(|p| rect.contains(p))
-                                        .unwrap_or(false);
+                                    let hovered_row =
+                                        ptr_pos.map(|p| rect.contains(p)).unwrap_or(false);
 
                                     let row_pick = ui.interact(
                                         rect,
@@ -273,13 +283,16 @@ impl FileList {
                                     }
 
                                     ui.scope_builder(
-                                        egui::UiBuilder::new()
-                                            .max_rect(rect)
-                                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                                        egui::UiBuilder::new().max_rect(rect).layout(
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                        ),
                                         |ui| {
                                             ui.add_space(8.0);
 
-                                            let icon = if file.path.to_lowercase().ends_with(".nus3audio")
+                                            let icon = if file
+                                                .path
+                                                .to_lowercase()
+                                                .ends_with(".nus3audio")
                                                 || file.path.to_lowercase().ends_with(".nus3bank")
                                             {
                                                 regular::MUSIC_NOTES
@@ -319,7 +332,8 @@ impl FileList {
                                                         if ui
                                                             .add(remove_btn)
                                                             .on_hover_text(
-                                                                localized::remove_from_list_tooltip(),
+                                                                localized::remove_from_list_tooltip(
+                                                                ),
                                                             )
                                                             .clicked()
                                                         {
@@ -339,8 +353,7 @@ impl FileList {
                                             {
                                                 ui.ctx().set_cursor_icon(CursorIcon::Text);
                                             } else if rect.contains(p) {
-                                                ui.ctx()
-                                                    .set_cursor_icon(CursorIcon::PointingHand);
+                                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                                             }
                                         }
                                     }

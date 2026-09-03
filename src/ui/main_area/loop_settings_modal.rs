@@ -1,6 +1,6 @@
 use super::audio_file_info::AudioFileInfo;
 use crate::localized;
-use crate::ui::audio_player::audio_backend::{AudioBackend, PlatformAudioBackend};
+use crate::ui::audio_player::PreviewTransport;
 use crate::ui::waveform::{
     DEFAULT_PEAK_BINS, WaveformAction, WaveformOptions, WaveformPeaks, WaveformWidget,
 };
@@ -37,224 +37,6 @@ impl Default for LoopSettings {
             enable_loop: true,
             estimated_duration: 0.0,
             gain_db: 0.0,
-        }
-    }
-}
-
-/// Dedicated preview transport for the replace / loop modal (independent of main player).
-struct PreviewTransport {
-    backend: PlatformAudioBackend,
-    path: String,
-    is_playing: bool,
-    position: f32,
-    duration: f32,
-    /// User volume slider (0.0–1.0), independent of import gain.
-    volume: f32,
-    /// Import gain preview in dB (applied live on top of `volume`).
-    gain_db: f32,
-    loaded: bool,
-    last_scrub_seek: Option<std::time::Instant>,
-    last_scrub_pos: f32,
-}
-
-impl PreviewTransport {
-    fn new() -> Self {
-        let mut backend = PlatformAudioBackend::new();
-        if let Err(e) = backend.init() {
-            log::error!("Failed to init loop-preview backend: {e}");
-        }
-        Self {
-            backend,
-            path: String::new(),
-            is_playing: false,
-            position: 0.0,
-            duration: 0.0,
-            volume: 0.8,
-            gain_db: 0.0,
-            loaded: false,
-            last_scrub_seek: None,
-            last_scrub_pos: f32::NAN,
-        }
-    }
-
-    /// Linear amplitude = user volume × 10^(gain_db/20).
-    fn effective_linear(&self) -> f32 {
-        let gain = 10f32.powf(self.gain_db / 20.0);
-        (self.volume * gain).clamp(0.0, 32.0)
-    }
-
-    fn apply_output_level(&mut self) {
-        if let Err(e) = self.backend.set_volume(self.effective_linear()) {
-            log::warn!("Preview output level: {e}");
-        }
-    }
-
-    fn load(&mut self, path: &str) -> Result<(), String> {
-        self.stop();
-        self.path = path.to_string();
-        self.gain_db = 0.0;
-        self.apply_output_level();
-        // Load + start then immediately pause so duration is known and ready to play
-        self.backend.play_audio(path)?;
-        self.duration = self.backend.get_duration().max(0.0);
-        self.position = 0.0;
-        self.loaded = self.duration > 0.0 || self.backend.is_available();
-        // Pause so opening the modal does not blast audio; user hits play
-        let _ = self.backend.pause();
-        self.is_playing = false;
-        // Keep handle loaded at position 0
-        let _ = self.backend.set_position(0.0);
-        self.apply_output_level();
-        // Re-read duration after pause (backend may finalize length on load)
-        let d = self.backend.get_duration();
-        if d > 0.0 {
-            self.duration = d;
-        }
-        if self.duration <= 0.0 {
-            log::warn!("Preview duration is 0 for {path}; playhead may be unreliable");
-        }
-        Ok(())
-    }
-
-    fn toggle_play(&mut self) {
-        if !self.loaded {
-            return;
-        }
-        if self.is_playing {
-            if let Err(e) = self.backend.pause() {
-                log::warn!("Preview pause: {e}");
-            }
-            self.is_playing = false;
-            self.position = self.backend.get_position();
-        } else {
-            self.start_playback();
-        }
-    }
-
-    fn start_playback(&mut self) {
-        if !self.loaded {
-            return;
-        }
-        // If ended, restart from beginning
-        if self.position >= self.duration - 0.05 && self.duration > 0.0 {
-            let _ = self.backend.set_position(0.0);
-            self.position = 0.0;
-        }
-        if let Err(e) = self.backend.resume() {
-            log::debug!("Preview resume failed ({e}), replaying");
-            if let Err(e2) = self.backend.play_audio(&self.path) {
-                log::error!("Preview play failed: {e2}");
-                return;
-            }
-            self.apply_output_level();
-            if self.position > 0.0 {
-                let _ = self.backend.set_position(self.position);
-            }
-        } else {
-            self.apply_output_level();
-        }
-        self.is_playing = true;
-    }
-
-    /// Start playback if idle so the user can hear gain changes immediately.
-    fn ensure_audible(&mut self) {
-        if self.loaded && !self.is_playing {
-            self.start_playback();
-        }
-    }
-
-    fn stop(&mut self) {
-        let _ = self.backend.stop();
-        self.is_playing = false;
-        self.position = 0.0;
-        self.loaded = false;
-    }
-
-    fn seek(&mut self, t: f32) {
-        if !self.loaded {
-            return;
-        }
-        let t = if self.duration > 0.0 {
-            t.clamp(0.0, self.duration)
-        } else {
-            t.max(0.0)
-        };
-        self.position = t;
-        self.last_scrub_pos = t;
-        self.last_scrub_seek = Some(std::time::Instant::now());
-        if let Err(e) = self.backend.set_position(t) {
-            log::warn!("Preview seek: {e}");
-        }
-    }
-
-    /// Drag scrub: update UI always; backend at most ~12 Hz and only if position moved.
-    fn scrub(&mut self, t: f32) {
-        if !self.loaded {
-            return;
-        }
-        let t = if self.duration > 0.0 {
-            t.clamp(0.0, self.duration)
-        } else {
-            t.max(0.0)
-        };
-        self.position = t;
-
-        if self.last_scrub_pos.is_finite() && (t - self.last_scrub_pos).abs() < 0.04 {
-            return;
-        }
-        const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(80);
-        if let Some(prev) = self.last_scrub_seek {
-            if prev.elapsed() < MIN_INTERVAL {
-                return;
-            }
-        }
-        self.last_scrub_pos = t;
-        self.last_scrub_seek = Some(std::time::Instant::now());
-        if let Err(e) = self.backend.set_position(t) {
-            log::warn!("Preview scrub: {e}");
-        }
-    }
-
-    fn set_volume(&mut self, volume: f32) {
-        self.volume = volume.clamp(0.0, 1.0);
-        self.apply_output_level();
-    }
-
-    /// Live gain preview (dB). Updates output immediately and starts audio if needed.
-    fn set_gain_db(&mut self, gain_db: f32) {
-        self.gain_db = gain_db.clamp(-24.0, 24.0);
-        self.apply_output_level();
-        self.ensure_audible();
-    }
-
-    fn tick(&mut self, loop_start: Option<f32>, loop_end: Option<f32>, use_custom: bool) {
-        if !self.loaded {
-            return;
-        }
-        if self.is_playing {
-            self.position = self.backend.get_position();
-            self.is_playing = self.backend.is_playing();
-
-            if use_custom && self.duration > 0.0 {
-                let start = loop_start.unwrap_or(0.0).clamp(0.0, self.duration);
-                let end = loop_end
-                    .unwrap_or(self.duration)
-                    .clamp(0.0, self.duration)
-                    .max(start + 0.05);
-                if self.position >= end - 0.03 {
-                    self.seek(start);
-                    if !self.is_playing {
-                        // seek while paused is fine; if was playing ensure resume
-                        let _ = self.backend.resume();
-                        self.is_playing = true;
-                    }
-                }
-            } else if self.duration > 0.0 && self.position >= self.duration - 0.05 {
-                self.is_playing = false;
-                self.position = self.duration;
-            }
-        } else {
-            self.position = self.backend.get_position();
         }
     }
 }
@@ -372,12 +154,13 @@ impl LoopSettingsModal {
         // Load preview audio immediately (paused). Kira/symphonia handles common formats.
         match self.preview.load(file_path) {
             Ok(()) => {
-                if self.preview.duration > 0.0 {
-                    self.settings.estimated_duration = self.preview.duration;
+                if self.preview.duration() > 0.0 {
+                    self.settings.estimated_duration = self.preview.duration();
                 }
                 println!(
                     "Preview loaded: duration={:.2}s path={}",
-                    self.preview.duration, file_path
+                    self.preview.duration(),
+                    file_path
                 );
             }
             Err(e) => {
@@ -396,6 +179,22 @@ impl LoopSettingsModal {
         self.waveform_rx = None;
         self.waveform_loading = false;
         self.open = false;
+    }
+
+    /// Dismiss without confirming (Escape / window close).
+    pub fn dismiss_without_confirm(&mut self) {
+        self.confirmed = false;
+        self.close();
+    }
+
+    /// Keyboard: play/pause the dialog preview.
+    pub fn toggle_preview_play(&mut self) {
+        self.preview.toggle_play();
+    }
+
+    /// Keyboard: stop preview without unloading (next play resumes the buffer).
+    pub fn stop_preview(&mut self) {
+        self.preview.stop_to_start();
     }
 
     /// Reset the confirmed flag
@@ -418,9 +217,7 @@ impl LoopSettingsModal {
                     if peaks.duration_secs > 0.0 {
                         // Prefer real PCM duration for wave / loop scrubbing
                         self.settings.estimated_duration = peaks.duration_secs;
-                        if self.preview.duration <= 0.0 {
-                            self.preview.duration = peaks.duration_secs;
-                        }
+                        self.preview.set_duration_if_unknown(peaks.duration_secs);
                     }
                     println!(
                         "Loop modal waveform ready: {} bins, {:.2}s",
@@ -451,11 +248,8 @@ impl LoopSettingsModal {
 
         // Tick preview; always repaint while modal is open so playhead + async wave update
         let use_custom = self.settings.enable_loop && self.settings.use_custom_loop;
-        self.preview.tick(
-            self.settings.loop_start,
-            self.settings.loop_end,
-            use_custom,
-        );
+        self.preview
+            .tick(self.settings.loop_start, self.settings.loop_end, use_custom);
         // Keep UI live: position counter, wave worker, loading shimmer
         ctx.request_repaint();
 
@@ -496,8 +290,8 @@ impl LoopSettingsModal {
         };
 
         // Prefer live backend duration
-        if self.preview.loaded && self.preview.duration > 0.0 {
-            self.settings.estimated_duration = self.preview.duration;
+        if self.preview.is_loaded() && self.preview.duration() > 0.0 {
+            self.settings.estimated_duration = self.preview.duration();
         }
 
         // Header strip
@@ -564,8 +358,8 @@ impl LoopSettingsModal {
 
         let wave_opts = WaveformOptions {
             height: 120.0,
-            playhead_secs: if self.preview.loaded {
-                Some(self.preview.position)
+            playhead_secs: if self.preview.is_loaded() {
+                Some(self.preview.position())
             } else {
                 None
             },
@@ -573,8 +367,12 @@ impl LoopSettingsModal {
             loop_end_secs: self.settings.loop_end,
             show_loop,
             interactive_loop: show_loop,
-            interactive_seek: self.preview.loaded,
-            duration_override: Some(self.settings.estimated_duration.max(self.preview.duration)),
+            interactive_seek: self.preview.is_loaded(),
+            duration_override: Some(
+                self.settings
+                    .estimated_duration
+                    .max(self.preview.duration()),
+            ),
             loading: self.waveform_loading && self.waveform.is_none(),
         };
 
@@ -696,7 +494,7 @@ impl LoopSettingsModal {
                             .on_hover_text(localized::loop_set_start_hint())
                             .clicked()
                         {
-                            let t = self.preview.position.clamp(0.0, max_dur);
+                            let t = self.preview.position().clamp(0.0, max_dur);
                             self.settings.loop_start = Some(t);
                             if let Some(end) = self.settings.loop_end {
                                 if t > end {
@@ -731,7 +529,7 @@ impl LoopSettingsModal {
                             .on_hover_text(localized::loop_set_end_hint())
                             .clicked()
                         {
-                            let t = self.preview.position.clamp(min_end, max_dur);
+                            let t = self.preview.position().clamp(min_end, max_dur);
                             self.settings.loop_end = Some(t);
                         }
                     });
@@ -751,7 +549,7 @@ impl LoopSettingsModal {
                         if ui.button(localized::loop_preview_ab()).clicked() {
                             let start = self.settings.loop_start.unwrap_or(0.0);
                             self.preview.seek(start);
-                            if !self.preview.is_playing {
+                            if !self.preview.is_playing() {
                                 self.preview.toggle_play();
                             }
                         }
@@ -774,11 +572,7 @@ impl LoopSettingsModal {
                 ui.separator();
                 ui.add_space(10.0);
 
-                ui.label(
-                    RichText::new(localized::gain_heading())
-                        .strong()
-                        .size(14.0),
-                );
+                ui.label(RichText::new(localized::gain_heading()).strong().size(14.0));
                 ui.add_space(6.0);
 
                 ui.horizontal(|ui| {
@@ -863,13 +657,13 @@ impl LoopSettingsModal {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 10.0;
 
-                    let play_icon = if self.preview.is_playing {
+                    let play_icon = if self.preview.is_playing() {
                         regular::PAUSE_CIRCLE
                     } else {
                         regular::PLAY_CIRCLE
                     };
-                    let play_color = if self.preview.loaded {
-                        if self.preview.is_playing {
+                    let play_color = if self.preview.is_loaded() {
+                        if self.preview.is_playing() {
                             Color32::from_rgb(255, 200, 100)
                         } else {
                             Color32::from_rgb(100, 220, 150)
@@ -887,13 +681,13 @@ impl LoopSettingsModal {
                             )
                             .frame(false),
                         )
-                        .on_hover_text(if self.preview.is_playing {
+                        .on_hover_text(if self.preview.is_playing() {
                             localized::pause_tooltip()
                         } else {
                             localized::play_tooltip_player()
                         })
                         .clicked()
-                        && self.preview.loaded
+                        && self.preview.is_loaded()
                     {
                         self.preview.toggle_play();
                     }
@@ -909,25 +703,15 @@ impl LoopSettingsModal {
                         )
                         .on_hover_text(localized::stop_playback_tooltip())
                         .clicked()
-                        && self.preview.loaded
+                        && self.preview.is_loaded()
                     {
-                        let _ = self.preview.backend.stop();
-                        // Reload paused so transport stays usable; keep volume + gain
-                        if let Some(path) = self.source_path.clone() {
-                            let vol = self.preview.volume;
-                            let gain = self.settings.gain_db;
-                            let _ = self.preview.load(&path);
-                            self.preview.volume = vol;
-                            self.preview.gain_db = gain;
-                            self.preview.apply_output_level();
-                            // Stay stopped after Stop
-                        }
+                        self.preview.stop_to_start();
                     }
 
-                    let pos = format_mmss(self.preview.position);
+                    let pos = format_mmss(self.preview.position());
                     let dur = format_mmss(
                         self.preview
-                            .duration
+                            .duration()
                             .max(self.settings.estimated_duration),
                     );
                     ui.label(
@@ -940,16 +724,20 @@ impl LoopSettingsModal {
                     ui.add_space(8.0);
 
                     // Volume
-                    let (vol_icon, vol_color) = if self.preview.volume <= 0.001 {
+                    let (vol_icon, vol_color) = if self.preview.volume() <= 0.001 {
                         (regular::SPEAKER_X, Color32::from_gray(150))
-                    } else if self.preview.volume < 0.33 {
+                    } else if self.preview.volume() < 0.33 {
                         (regular::SPEAKER_LOW, Color32::from_rgb(100, 150, 255))
                     } else {
                         (regular::SPEAKER_HIGH, Color32::from_rgb(100, 150, 255))
                     };
-                    ui.label(RichText::new(vol_icon.to_string()).size(16.0).color(vol_color));
+                    ui.label(
+                        RichText::new(vol_icon.to_string())
+                            .size(16.0)
+                            .color(vol_color),
+                    );
 
-                    let mut vol_pct = self.preview.volume * 100.0;
+                    let mut vol_pct = self.preview.volume() * 100.0;
                     ui.spacing_mut().slider_width = 110.0;
                     if ui
                         .add(
@@ -962,7 +750,7 @@ impl LoopSettingsModal {
                         self.preview.set_volume(vol_pct / 100.0);
                     }
 
-                    if !self.preview.loaded {
+                    if !self.preview.is_loaded() {
                         ui.label(
                             RichText::new(localized::preview_unavailable())
                                 .size(11.0)

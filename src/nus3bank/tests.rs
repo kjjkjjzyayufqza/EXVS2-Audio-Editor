@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::replace::{Nus3bankReplacer, ReplaceOperation};
 use super::structures::{
     BinfSection, DtonSection, GrpSection, JunkSection, Nus3bankFile, PropLayout, PropSection,
     TocEntry, ToneDes, ToneMeta, ToneSection, UnkvaluesPairOrder,
@@ -80,6 +81,7 @@ fn make_sample_file() -> Nus3bankFile {
 
     let grp = GrpSection {
         names: vec!["group_a".to_string(), "group_b".to_string()],
+        raw_payload: None,
     };
 
     let dton = DtonSection::default();
@@ -97,6 +99,8 @@ fn make_sample_file() -> Nus3bankFile {
         raw_meta: Vec::new(),
         pack_offset_field_pos: None,
         pack_size_field_pos: None,
+        name_len_pos: None,
+        descriptor_words: Vec::new(),
         hash: 0x1111,
         unk1: 0,
         name: "track_a".to_string(),
@@ -120,6 +124,8 @@ fn make_sample_file() -> Nus3bankFile {
         raw_meta: Vec::new(),
         pack_offset_field_pos: None,
         pack_size_field_pos: None,
+        name_len_pos: None,
+        descriptor_words: Vec::new(),
         hash: 0x2222,
         unk1: 0,
         name: "track_b".to_string(),
@@ -402,6 +408,7 @@ fn remove_track_preserves_tone_indices() {
 fn add_track_clones_dton_descriptor() {
     let mut file = make_sample_file();
     file.dton = Some(DtonSection {
+        raw_payload: None,
         tones: vec![
             ToneDes {
                 hash: 0x1111,
@@ -550,11 +557,13 @@ fn roundtrip_sections_and_tracks() {
     assert_eq!(parsed.binf.as_ref().unwrap().flag, 0x05);
     assert_eq!(parsed.tracks.len(), 2);
     assert_eq!(parsed.tracks[0].name, "track_a");
-    assert!(parsed.tracks[0]
-        .audio_data
-        .as_ref()
-        .unwrap()
-        .starts_with(b"RIFF"));
+    assert!(
+        parsed.tracks[0]
+            .audio_data
+            .as_ref()
+            .unwrap()
+            .starts_with(b"RIFF")
+    );
     assert_eq!(parsed.tone.tones.len(), 2);
     assert_eq!(parsed.tone.tones[0].name, "track_a");
     assert_eq!(parsed.tone.tones[1].name, "track_b");
@@ -620,4 +629,1108 @@ fn mutate_add_and_save_appends_track() {
     let reparsed = Nus3bankFile::open(&out_path2).unwrap();
     assert_eq!(reparsed.tracks.len(), 3);
     assert_eq!(reparsed.tracks[2].name, "track_c");
+}
+
+#[test]
+fn add_track_template_dton_does_not_grow() {
+    let mut file = make_sample_file();
+    file.dton = Some(DtonSection {
+        raw_payload: None,
+        tones: vec![ToneDes {
+            hash: 1,
+            unk1: 123456,
+            name: "Default".to_string(),
+            data: Vec::new(),
+            raw_data: vec![1, 2, 3, 4],
+            descriptor_words: Vec::new(),
+        }],
+    });
+    file.rebuild_tracks_view();
+    file.add_track("track_c".to_string(), minimal_wav_bytes())
+        .unwrap();
+    let dton = file.dton.as_ref().unwrap();
+    assert_eq!(dton.tones.len(), 1);
+    assert_eq!(dton.tones[0].name, "Default");
+    assert_eq!(dton.tones[0].raw_data, vec![1, 2, 3, 4]);
+    assert!(file.tracks.iter().any(|t| t.name == "track_c"));
+}
+
+fn sample_tone_raw_meta(name: &str, pack_off: i32, pack_sz: i32) -> (Vec<u8>, usize, usize) {
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&0x1111i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    let name_bytes = name.as_bytes();
+    raw.push((name_bytes.len() + 1) as u8);
+    raw.extend_from_slice(name_bytes);
+    raw.push(0);
+    while raw.len() % 4 != 0 {
+        raw.push(0);
+    }
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&8i32.to_le_bytes());
+    let off_pos = raw.len();
+    raw.extend_from_slice(&pack_off.to_le_bytes());
+    let sz_pos = raw.len();
+    raw.extend_from_slice(&pack_sz.to_le_bytes());
+    raw.extend_from_slice(&[0xAA; 32]);
+    (raw, off_pos, sz_pos)
+}
+
+#[test]
+fn rewrite_name_keeps_descriptor_tail_and_shifts_pack_fields() {
+    let (raw, off_pos, sz_pos) =
+        sample_tone_raw_meta("SE_CHR_GUNW_01ZERO_BUSTER_SHOT", 32352, 18664);
+    let tail = raw[raw.len() - 32..].to_vec();
+    let mut tone = ToneMeta {
+        meta_prefix: Vec::new(),
+        raw_meta: raw,
+        pack_offset_field_pos: Some(off_pos),
+        pack_size_field_pos: Some(sz_pos),
+        name_len_pos: Some(8),
+        descriptor_words: Vec::new(),
+        hash: 0x1111,
+        unk1: 0,
+        name: "SE_CHR_GUNW_01ZERO_BUSTER_SHOT".to_string(),
+        reserved0: 0,
+        reserved8: 8,
+        offset: 32352,
+        size: 18664,
+        param: [0.0; 12],
+        offsets: Vec::new(),
+        unkvalues: Vec::new(),
+        unkvalues_pair_order: UnkvaluesPairOrder::IndexThenValue,
+        unkending: vec![-1],
+        end: Vec::new(),
+        payload: minimal_wav_bytes(),
+        meta_size: 0,
+        removed: false,
+    };
+    tone.rewrite_name_in_raw_meta("new_test_audio").unwrap();
+    assert_eq!(tone.name, "new_test_audio");
+    assert!(tone.raw_meta.len() > 40);
+    assert_eq!(&tone.raw_meta[tone.raw_meta.len() - 32..], &tail);
+    let off = i32::from_le_bytes(
+        tone.raw_meta[tone.pack_offset_field_pos.unwrap()..][..4]
+            .try_into()
+            .unwrap(),
+    );
+    let sz = i32::from_le_bytes(
+        tone.raw_meta[tone.pack_size_field_pos.unwrap()..][..4]
+            .try_into()
+            .unwrap(),
+    );
+    assert_eq!(off, 32352);
+    assert_eq!(sz, 18664);
+
+    tone.rewrite_name_in_raw_meta("SE_CHR_016GUNDMW_001WGZERO_001_01")
+        .unwrap();
+    assert_eq!(&tone.raw_meta[tone.raw_meta.len() - 32..], &tail);
+}
+
+fn make_stub_tone() -> ToneMeta {
+    ToneMeta {
+        meta_prefix: Vec::new(),
+        raw_meta: vec![0u8; 32],
+        pack_offset_field_pos: None,
+        pack_size_field_pos: None,
+        name_len_pos: None,
+        descriptor_words: Vec::new(),
+        hash: 0,
+        unk1: 0,
+        name: String::new(),
+        reserved0: 0,
+        reserved8: 8,
+        offset: 0,
+        size: 0,
+        param: [0.0; 12],
+        offsets: Vec::new(),
+        unkvalues: Vec::new(),
+        unkvalues_pair_order: UnkvaluesPairOrder::IndexThenValue,
+        unkending: vec![-1],
+        end: Vec::new(),
+        payload: Vec::new(),
+        meta_size: 32,
+        removed: true,
+    }
+}
+
+#[test]
+fn sparse_template_bank_add_roundtrip() {
+    let mut file = make_sample_file();
+    file.dton = Some(DtonSection {
+        raw_payload: None,
+        tones: vec![ToneDes {
+            hash: 1,
+            unk1: 123456,
+            name: "Default".to_string(),
+            data: Vec::new(),
+            raw_data: vec![7u8; 200],
+            descriptor_words: Vec::new(),
+        }],
+    });
+    file.tone.tones.insert(1, make_stub_tone());
+    file.tone.tones.push(make_stub_tone());
+    file.tone.tones[0].offset = 0;
+    file.tone.tones[2].offset = 16;
+    file.rebuild_tracks_view();
+    assert_eq!(file.tone.tones.len(), 4);
+
+    let out = unique_temp_path("sparse_in.nus3bank");
+    file.save(&out).unwrap();
+    let mut parsed = Nus3bankFile::open(&out).unwrap();
+    let slots = parsed.tone.tones.len();
+    parsed
+        .add_track("new_test_audio".to_string(), minimal_wav_bytes())
+        .unwrap();
+    let out2 = unique_temp_path("sparse_out.nus3bank");
+    parsed.save(&out2).unwrap();
+    let reparsed = Nus3bankFile::open(&out2).unwrap();
+    let _ = std::fs::remove_file(&out);
+    let _ = std::fs::remove_file(&out2);
+
+    assert_eq!(reparsed.tone.tones.len(), slots);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones.len(), 1);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones[0].name, "Default");
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones[0].raw_data.len(), 200);
+    assert!(reparsed.tracks.iter().any(|t| t.name == "new_test_audio"));
+    let added = reparsed
+        .tone
+        .tones
+        .iter()
+        .find(|t| t.name == "new_test_audio")
+        .expect("added cue missing");
+    assert!(
+        !added.raw_meta.is_empty(),
+        "added cue must keep a TONE descriptor blob"
+    );
+    assert!(
+        added.pack_offset_field_pos.is_some() && added.pack_size_field_pos.is_some(),
+        "added cue must keep patchable PACK fields"
+    );
+}
+
+#[test]
+fn add_track_reuses_removed_slot() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    file.remove_track("0x0").unwrap();
+    assert_eq!(file.tone.tones.len(), 2);
+    assert!(file.tone.tones[0].removed);
+
+    let id = file
+        .add_track("track_c".to_string(), minimal_wav_bytes())
+        .unwrap();
+    assert_eq!(id, "0x0");
+    assert_eq!(file.tone.tones.len(), 2);
+    assert!(!file.tone.tones[0].removed);
+    assert_eq!(file.tone.tones[0].name, "track_c");
+}
+
+fn original_se_bank_path() -> Option<PathBuf> {
+    let p = PathBuf::from(
+        r"E:\XB\mod\090sound\016gundmw_001wgzero_001\SE_CHR_016GUNDMW_001WGZERO_001.nus3bank",
+    );
+    p.exists().then_some(p)
+}
+
+fn bundled_se_bank_path() -> Option<PathBuf> {
+    let p =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("se_chr_654gexvs2_003glfunl_001.nus3bank");
+    p.exists().then_some(p)
+}
+
+fn live_named_meta_lens(file: &Nus3bankFile) -> Vec<(usize, String, usize)> {
+    file.tone
+        .tones
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| !t.removed && !t.name.is_empty())
+        .map(|(i, t)| (i, t.name.clone(), t.raw_meta.len()))
+        .collect()
+}
+
+fn assert_live_pack_16_aligned(file: &Nus3bankFile) {
+    for t in file
+        .tone
+        .tones
+        .iter()
+        .filter(|t| !t.removed && t.size > 0 && t.offset >= 0)
+    {
+        assert_eq!(
+            t.offset % 16,
+            0,
+            "PACK offset {} for {} is not 16-aligned",
+            t.offset,
+            t.name
+        );
+    }
+}
+
+#[test]
+fn original_se_bank_noop_save_preserves_layout() {
+    let Some(src) = original_se_bank_path() else {
+        eprintln!("skip: original Wing Zero SE bank not found");
+        return;
+    };
+    let parsed = Nus3bankFile::open(&src).unwrap();
+    assert_eq!(parsed.tone.tones.len(), 86);
+    assert_eq!(parsed.dton.as_ref().unwrap().tones.len(), 1);
+    assert_eq!(parsed.dton.as_ref().unwrap().tones[0].name, "Default");
+    let default_raw = parsed.dton.as_ref().unwrap().tones[0].raw_data.len();
+    let before = live_named_meta_lens(&parsed);
+    assert_eq!(before.len(), 18);
+
+    let out = unique_temp_path("se_noop.nus3bank");
+    parsed.save(&out).unwrap();
+    let reparsed = Nus3bankFile::open(&out).unwrap();
+    let _ = std::fs::remove_file(&out);
+
+    assert_eq!(reparsed.tone.tones.len(), 86);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones.len(), 1);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones[0].name, "Default");
+    assert_eq!(
+        reparsed.dton.as_ref().unwrap().tones[0].raw_data.len(),
+        default_raw
+    );
+    assert_eq!(live_named_meta_lens(&reparsed), before);
+    assert_live_pack_16_aligned(&reparsed);
+    assert_eq!(
+        reparsed.dton.as_ref().unwrap().raw_payload,
+        parsed.dton.as_ref().unwrap().raw_payload,
+        "template DTON payload must round-trip"
+    );
+    for t in &reparsed.tone.tones {
+        if t.removed {
+            continue;
+        }
+        super::ob_tone_decode::probe_live_tone(&t.raw_meta, &t.name)
+            .unwrap_or_else(|e| panic!("probe failed after noop save: {e}"));
+    }
+}
+
+#[test]
+fn original_se_bank_add_keeps_dton_and_slots() {
+    let Some(src) = original_se_bank_path() else {
+        eprintln!("skip: original Wing Zero SE bank not found");
+        return;
+    };
+    let mut parsed = Nus3bankFile::open(&src).unwrap();
+    let before = live_named_meta_lens(&parsed);
+    let default_raw = parsed.dton.as_ref().unwrap().tones[0].raw_data.len();
+
+    parsed
+        .add_track("new_test_audio".to_string(), minimal_wav_bytes())
+        .unwrap();
+    let out = unique_temp_path("se_add.nus3bank");
+    parsed.save(&out).unwrap();
+    let reparsed = Nus3bankFile::open(&out).unwrap();
+    let _ = std::fs::remove_file(&out);
+
+    assert_eq!(reparsed.tone.tones.len(), 86);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones.len(), 1);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones[0].name, "Default");
+    assert_eq!(
+        reparsed.dton.as_ref().unwrap().tones[0].raw_data.len(),
+        default_raw
+    );
+    assert!(reparsed.tracks.iter().any(|t| t.name == "new_test_audio"));
+    let after = live_named_meta_lens(&reparsed);
+    for (idx, name, len) in &before {
+        let found = after.iter().find(|(i, n, _)| i == idx && n == name);
+        assert!(found.is_some(), "missing original cue {} at {}", name, idx);
+        assert_eq!(found.unwrap().2, *len, "raw_meta size changed for {}", name);
+    }
+    assert_live_pack_16_aligned(&reparsed);
+    for t in &reparsed.tone.tones {
+        if t.removed {
+            continue;
+        }
+        super::ob_tone_decode::probe_live_tone(&t.raw_meta, &t.name)
+            .unwrap_or_else(|e| panic!("probe failed after add: {e}"));
+    }
+    let added = reparsed
+        .tone
+        .tones
+        .iter()
+        .find(|t| t.name == "new_test_audio")
+        .expect("added cue missing");
+    assert_eq!(
+        added.raw_meta.get(added.name_len_pos.unwrap()),
+        Some(&((added.name.len() + 1) as u8))
+    );
+}
+
+#[test]
+fn original_se_bank_remove_keeps_slot_count() {
+    let Some(src) = original_se_bank_path() else {
+        eprintln!("skip: original Wing Zero SE bank not found");
+        return;
+    };
+    let mut parsed = Nus3bankFile::open(&src).unwrap();
+    let hex = parsed.tracks[0].hex_id.clone();
+    parsed.remove_track(&hex).unwrap();
+    let out = unique_temp_path("se_remove.nus3bank");
+    parsed.save(&out).unwrap();
+    let reparsed = Nus3bankFile::open(&out).unwrap();
+    let _ = std::fs::remove_file(&out);
+
+    assert_eq!(reparsed.tone.tones.len(), 86);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones.len(), 1);
+    assert_eq!(reparsed.tracks.len(), 17);
+}
+
+#[test]
+fn original_se_bank_replace_keeps_identity() {
+    let Some(src) = original_se_bank_path() else {
+        eprintln!("skip: original Wing Zero SE bank not found");
+        return;
+    };
+    let mut parsed = Nus3bankFile::open(&src).unwrap();
+    let hex = parsed.tracks[0].hex_id.clone();
+    let name = parsed.tracks[0].name.clone();
+    let mut wav = minimal_wav_bytes();
+    wav.extend_from_slice(&[1, 2, 3, 4]);
+    parsed.replace_track_data(&hex, wav.clone()).unwrap();
+    let out = unique_temp_path("se_replace.nus3bank");
+    parsed.save(&out).unwrap();
+    let reparsed = Nus3bankFile::open(&out).unwrap();
+    let _ = std::fs::remove_file(&out);
+
+    assert_eq!(reparsed.tone.tones.len(), 86);
+    assert_eq!(reparsed.dton.as_ref().unwrap().tones.len(), 1);
+    let track = reparsed.get_track_by_hex_id(&hex).unwrap();
+    assert_eq!(track.name, name);
+    assert_eq!(track.audio_data.as_ref().unwrap(), &wav);
+    assert_live_pack_16_aligned(&reparsed);
+}
+
+#[test]
+fn unshifted_name_pos_accepts_se_flags0_variants_not_bgm() {
+    fn header(flags0: u32, flags1: u32, name: &str) -> Vec<u8> {
+        let mut raw = vec![0u8; 120];
+        raw[4..8].copy_from_slice(&flags0.to_le_bytes());
+        raw[8..12].copy_from_slice(&flags1.to_le_bytes());
+        let nlen = (name.len() + 1) as u8;
+        raw[12] = nlen;
+        raw[13..13 + name.len()].copy_from_slice(name.as_bytes());
+        raw[13 + name.len()] = 0;
+        raw
+    }
+
+    let bgm = header(0x8427_FFFF, 0x000C_989F, "COLORS_Flow");
+    assert_eq!(super::ob_tone_decode::unshifted_name_len_pos(&bgm), Some(12));
+    assert!(super::ob_tone_decode::is_bgm_tone_descriptor(&bgm));
+
+    let se_link = header(0x8627_FFFF, 0x000C_981F, "SE_CHR_654_link01");
+    assert_eq!(
+        super::ob_tone_decode::unshifted_name_len_pos(&se_link),
+        Some(12)
+    );
+    assert_eq!(super::ob_tone_decode::ob_name_len_pos(&se_link), Some(12));
+    assert!(!super::ob_tone_decode::is_bgm_tone_descriptor(&se_link));
+
+    let se_bfff = header(0x8427_BFFF, 0x000C_981F, "SE_CHR_654_08");
+    assert_eq!(
+        super::ob_tone_decode::unshifted_name_len_pos(&se_bfff),
+        Some(12)
+    );
+    assert!(!super::ob_tone_decode::is_bgm_tone_descriptor(&se_bfff));
+
+    // flags0 >= 0: name lives at +8 (se_chr_654 0x7F family), not +12.
+    let name_at_8 = header(0x0000_007F, 0x5F45_5322, "XXXXXXXX");
+    assert_eq!(super::ob_tone_decode::unshifted_name_len_pos(&name_at_8), None);
+}
+
+#[test]
+fn bundled_se_bank_opens_unshifted_flag_variants() {
+    let Some(src) = bundled_se_bank_path() else {
+        eprintln!("skip: bundled se_chr_654gexvs2 bank not found");
+        return;
+    };
+    let parsed = Nus3bankFile::open(&src).unwrap();
+    assert_eq!(parsed.tone.tones.len(), 483);
+    let live: Vec<_> = parsed
+        .tone
+        .tones
+        .iter()
+        .filter(|t| !t.removed && t.offset >= 0 && t.size > 0)
+        .collect();
+    assert!(live.len() >= 70, "expected many live cues, got {}", live.len());
+    assert!(
+        live.iter()
+            .any(|t| t.name.contains("link01") && t.name_len_pos == Some(12)),
+        "0x8627FFFF cues must parse name at +12"
+    );
+    for t in &live {
+        assert!(
+            (t.offset as u64) + (t.size as u64) <= parsed.pack.data.len() as u64,
+            "live cue {} PACK {}+{} overruns {}",
+            t.name,
+            t.offset,
+            t.size,
+            parsed.pack.data.len()
+        );
+    }
+}
+
+#[test]
+fn bundled_se_bank_add_does_not_grow_dton_or_slots() {
+    let Some(src) = bundled_se_bank_path() else {
+        eprintln!("skip: bundled se_chr_654gexvs2 bank not found");
+        return;
+    };
+    let mut parsed = Nus3bankFile::open(&src).unwrap();
+    let slots = parsed.tone.tones.len();
+    let dton_len = parsed.dton.as_ref().map(|d| d.tones.len()).unwrap_or(0);
+    assert!(dton_len >= 1);
+    parsed
+        .add_track("new_test_audio".to_string(), minimal_wav_bytes())
+        .unwrap();
+    let out = unique_temp_path("bundled_se_add.nus3bank");
+    parsed.save(&out).unwrap();
+    let reparsed = Nus3bankFile::open(&out).unwrap();
+    let _ = std::fs::remove_file(&out);
+
+    assert_eq!(reparsed.tone.tones.len(), slots);
+    assert_eq!(
+        reparsed.dton.as_ref().map(|d| d.tones.len()).unwrap_or(0),
+        dton_len
+    );
+    assert!(reparsed.tracks.iter().any(|t| t.name == "new_test_audio"));
+    assert_live_pack_16_aligned(&reparsed);
+}
+
+#[test]
+fn add_track_at_honors_reserved_index_out_of_order() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+
+    let later = file
+        .add_track_at(3, "later".to_string(), minimal_wav_bytes())
+        .unwrap();
+    assert_eq!(later, "0x3");
+    assert!(file.tone.tones[2].removed);
+
+    let earlier = file
+        .add_track_at(2, "earlier".to_string(), minimal_wav_bytes())
+        .unwrap();
+    assert_eq!(earlier, "0x2");
+    assert_eq!(file.tone.tones[2].name, "earlier");
+    assert_eq!(file.tone.tones[3].name, "later");
+    assert!(!file.tone.tones[2].removed);
+    assert!(!file.tone.tones[3].removed);
+}
+
+#[test]
+fn add_track_at_rejects_occupied_slot() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let err = file
+        .add_track_at(0, "taken".to_string(), minimal_wav_bytes())
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("already occupied"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn register_add_uses_real_tone_slot_not_temp_id() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let path = unique_temp_path("register_add_slot.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let hex = Nus3bankReplacer::register_add(&path_str, "new_test_audio", minimal_wav_bytes())
+        .unwrap();
+    assert_eq!(hex, "0x2");
+    assert!(!hex.contains("8000"));
+
+    let ops = Nus3bankReplacer::operations_for_file(&path_str);
+    assert_eq!(ops.len(), 1);
+    match &ops[0] {
+        ReplaceOperation::Add(name, hid, _) => {
+            assert_eq!(name, "new_test_audio");
+            assert_eq!(hid, "0x2");
+        }
+        other => panic!("expected Add, got {other:?}"),
+    }
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn replace_pending_add_merges_instead_of_replace_op() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let path = unique_temp_path("replace_pending_add.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let hex = Nus3bankReplacer::register_add(&path_str, "new_test_audio", minimal_wav_bytes())
+        .unwrap();
+    let mut gained = minimal_wav_bytes();
+    gained.extend_from_slice(&[9, 9, 9, 9]);
+    Nus3bankReplacer::replace_track_in_memory(&path_str, &hex, gained.clone()).unwrap();
+
+    let ops = Nus3bankReplacer::operations_for_file(&path_str);
+    assert_eq!(ops.len(), 1, "replace must merge into the pending Add");
+    match &ops[0] {
+        ReplaceOperation::Add(name, hid, data) => {
+            assert_eq!(name, "new_test_audio");
+            assert_eq!(hid, &hex);
+            assert_eq!(data, &gained);
+        }
+        other => panic!("expected merged Add, got {other:?}"),
+    }
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn apply_add_then_replace_does_not_fail_track_not_found() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let path = unique_temp_path("add_then_replace_save.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let hex = Nus3bankReplacer::register_add(&path_str, "new_test_audio", minimal_wav_bytes())
+        .unwrap();
+    let mut gained = minimal_wav_bytes();
+    gained.extend_from_slice(&[1, 2, 3, 4]);
+    // UI save path also feeds replacement bytes after skipping ADD_ keys.
+    Nus3bankReplacer::replace_track_in_memory(&path_str, &hex, gained.clone()).unwrap();
+
+    let mut parsed = Nus3bankFile::open(&path).unwrap();
+    Nus3bankReplacer::apply_to_file(&path_str, &mut parsed).unwrap();
+
+    let track = parsed
+        .get_track_by_hex_id(&hex)
+        .expect("added track should exist after save");
+    assert_eq!(track.name, "new_test_audio");
+    assert_eq!(track.audio_data.as_ref().unwrap(), &gained);
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn two_pending_adds_keep_reserved_slots_when_applied_by_name() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let path = unique_temp_path("two_pending_adds.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let zebra = Nus3bankReplacer::register_add(&path_str, "zebra", minimal_wav_bytes()).unwrap();
+    let apple = Nus3bankReplacer::register_add(&path_str, "apple", minimal_wav_bytes()).unwrap();
+    assert_eq!(zebra, "0x2");
+    assert_eq!(apple, "0x3");
+
+    let mut parsed = Nus3bankFile::open(&path).unwrap();
+    Nus3bankReplacer::apply_to_file(&path_str, &mut parsed).unwrap();
+
+    assert_eq!(parsed.get_track_by_hex_id("0x2").unwrap().name, "zebra");
+    assert_eq!(parsed.get_track_by_hex_id("0x3").unwrap().name, "apple");
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+}
+
+fn parse_bnsf_sfmt(payload: &[u8]) -> (u16, u32, u32, u16, u16) {
+    assert!(payload.starts_with(b"BNSF"));
+    assert_eq!(&payload[8..12], b"IS14");
+    assert_eq!(&payload[12..16], b"sfmt");
+    let flags_ch = u32::from_be_bytes(payload[20..24].try_into().unwrap());
+    let rate = u32::from_be_bytes(payload[24..28].try_into().unwrap());
+    let nsamp = u32::from_be_bytes(payload[28..32].try_into().unwrap());
+    let bsz = u16::from_be_bytes(payload[36..38].try_into().unwrap());
+    let bsam = u16::from_be_bytes(payload[38..40].try_into().unwrap());
+    ((flags_ch & 0xFFFF) as u16, rate, nsamp, bsz, bsam)
+}
+
+#[test]
+fn wav_save_encodes_bnsf_is14() {
+    if !super::bnsf::encode_exe_available() {
+        panic!("tools/encode.exe is required to write EXVS2 character SE");
+    }
+    let wav_path = unique_temp_path("bnsf_src.wav");
+    super::bnsf::write_minimal_wav_sine(&wav_path, 44100, 22050);
+    let wav = std::fs::read(&wav_path).unwrap();
+    let bnsf = super::bnsf::wav_to_bnsf_is14(&wav).unwrap();
+    let _ = std::fs::remove_file(&wav_path);
+
+    assert!(super::bnsf::is_bnsf_is14(&bnsf), "payload must be BNSF/IS14");
+    let (ch, rate, nsamp, bsz, bsam) = parse_bnsf_sfmt(&bnsf);
+    assert_eq!(ch, 1);
+    assert_eq!(rate, 48000);
+    assert!(nsamp > 0);
+    assert_eq!(bsz, 120);
+    assert_eq!(bsam, 640);
+    assert_ne!(&bnsf[..4], b"RIFF");
+}
+
+#[test]
+fn apply_add_wav_writes_bnsf_not_riff() {
+    if !super::bnsf::encode_exe_available() {
+        panic!("tools/encode.exe is required to write EXVS2 character SE");
+    }
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let path = unique_temp_path("add_wav_to_bnsf.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let wav_path = unique_temp_path("add_src.wav");
+    super::bnsf::write_minimal_wav_sine(&wav_path, 48000, 640 * 4);
+    let wav = std::fs::read(&wav_path).unwrap();
+    let hex = Nus3bankReplacer::register_add(&path_str, "new_test_audio", wav).unwrap();
+
+    let mut parsed = Nus3bankFile::open(&path).unwrap();
+    Nus3bankReplacer::apply_to_file(&path_str, &mut parsed).unwrap();
+    let track = parsed.get_track_by_hex_id(&hex).unwrap();
+    let payload = track.audio_data.as_ref().expect("added payload");
+    assert!(
+        super::bnsf::is_bnsf_is14(payload),
+        "saved PACK must be BNSF/IS14, got {:?}",
+        &payload[..payload.len().min(12)]
+    );
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&wav_path);
+}
+
+#[test]
+fn nus3bank_save_converts_existing_wav_pack_payload() {
+    if !super::bnsf::encode_exe_available() {
+        panic!("tools/encode.exe is required to write EXVS2 character SE");
+    }
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let hex = file.tracks[0].hex_id.clone();
+    let wav_path = unique_temp_path("leftover_src.wav");
+    super::bnsf::write_minimal_wav_sine(&wav_path, 48000, 640 * 4);
+    let wav = std::fs::read(&wav_path).unwrap();
+    file.replace_track_data(&hex, wav).unwrap();
+    assert!(
+        file.get_track_by_hex_id(&hex)
+            .unwrap()
+            .audio_data
+            .as_ref()
+            .unwrap()
+            .starts_with(b"RIFF")
+    );
+    let path = unique_temp_path("leftover_wav.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let mut parsed = Nus3bankFile::open(&path).unwrap();
+    Nus3bankReplacer::apply_to_file(&path_str, &mut parsed).unwrap();
+    parsed.save(&path).unwrap();
+
+    let reparsed = Nus3bankFile::open(&path).unwrap();
+    let payload = reparsed
+        .get_track_by_hex_id(&hex)
+        .unwrap()
+        .audio_data
+        .as_ref()
+        .unwrap();
+    assert!(
+        super::bnsf::is_bnsf_is14(payload),
+        "open+save must convert leftover WAV, got {:?}",
+        &payload[..payload.len().min(12)]
+    );
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&wav_path);
+}
+
+fn looping_clock_raw_meta() -> Vec<u8> {
+    let mut v = vec![0u8; 220];
+    v.extend_from_slice(&[0x80, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+    v.extend_from_slice(&172148i32.to_le_bytes());
+    v.extend_from_slice(&112640i32.to_le_bytes());
+    v.extend_from_slice(&172147i32.to_le_bytes());
+    v.extend_from_slice(&1i32.to_le_bytes());
+    v.extend_from_slice(&0i32.to_le_bytes());
+    v.extend_from_slice(&0i32.to_le_bytes());
+    v.extend_from_slice(&(-1i32).to_le_bytes());
+    v.extend_from_slice(&4i32.to_le_bytes());
+    v
+}
+
+fn tone_with_raw_meta(raw_meta: Vec<u8>) -> ToneMeta {
+    ToneMeta {
+        meta_prefix: Vec::new(),
+        raw_meta,
+        pack_offset_field_pos: None,
+        pack_size_field_pos: None,
+        name_len_pos: None,
+        descriptor_words: Vec::new(),
+        hash: 0,
+        unk1: 0x000C_989F,
+        name: "new_test_audio".to_string(),
+        reserved0: 0,
+        reserved8: 8,
+        offset: 0,
+        size: 0,
+        param: [0.0; 12],
+        offsets: Vec::new(),
+        unkvalues: Vec::new(),
+        unkvalues_pair_order: UnkvaluesPairOrder::IndexThenValue,
+        unkending: vec![-1],
+        end: Vec::new(),
+        payload: Vec::new(),
+        meta_size: 0,
+        removed: false,
+    }
+}
+
+#[test]
+fn patch_sample_clock_overwrites_cloned_loop_window() {
+    let mut tone = tone_with_raw_meta(looping_clock_raw_meta());
+    assert!(tone.patch_sample_clock(36362, 0, 0, 0));
+    let pos = 220 + 8;
+    assert_eq!(i32::from_le_bytes(tone.raw_meta[pos..pos + 4].try_into().unwrap()), 36362);
+    assert_eq!(i32::from_le_bytes(tone.raw_meta[pos + 4..pos + 8].try_into().unwrap()), 0);
+    assert_eq!(i32::from_le_bytes(tone.raw_meta[pos + 8..pos + 12].try_into().unwrap()), 0);
+    assert_eq!(i32::from_le_bytes(tone.raw_meta[pos + 12..pos + 16].try_into().unwrap()), 0);
+    assert_eq!(tone.clock_pad_count(), Some(1), "one-shot must drop the extra looping pad");
+    let term = pos + 16 + 4;
+    assert_eq!(i32::from_le_bytes(tone.raw_meta[term..term + 4].try_into().unwrap()), -1);
+    assert_eq!(i32::from_le_bytes(tone.raw_meta[term + 4..term + 8].try_into().unwrap()), 4);
+}
+
+#[test]
+fn patch_sample_clock_repairs_oneshot_values_with_looping_pads() {
+    let mut raw = vec![0u8; 220];
+    raw.extend_from_slice(&[0x80, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+    raw.extend_from_slice(&36362i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&(-1i32).to_le_bytes());
+    let mut tone = tone_with_raw_meta(raw);
+    assert_eq!(tone.clock_pad_count(), Some(2));
+    assert!(tone.patch_sample_clock(36362, 0, 0, 0));
+    assert_eq!(tone.clock_pad_count(), Some(1));
+    assert_eq!(tone.sample_clock_from_raw_meta(), Some((36362, 0, 0, 0)));
+}
+
+#[test]
+fn bank_needs_save_repair_when_cloned_loop_clock_remains() {
+    if !super::bnsf::encode_exe_available() {
+        panic!("tools/encode.exe is required to write EXVS2 character SE");
+    }
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let wav_path = unique_temp_path("repair_detect.wav");
+    super::bnsf::write_minimal_wav_sine(&wav_path, 48000, 640 * 4);
+    let wav = std::fs::read(&wav_path).unwrap();
+    let bnsf = super::bnsf::wav_to_bnsf_is14(&wav).unwrap();
+    let clock = super::bnsf::parse_bnsf_clock(&bnsf).unwrap();
+    file.replace_track_data(&file.tracks[0].hex_id.clone(), bnsf).unwrap();
+    let mut raw = vec![0u8; 220];
+    raw.extend_from_slice(&[0x80, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+    raw.extend_from_slice(&172148i32.to_le_bytes());
+    raw.extend_from_slice(&112640i32.to_le_bytes());
+    raw.extend_from_slice(&172147i32.to_le_bytes());
+    raw.extend_from_slice(&1i32.to_le_bytes());
+    file.tone.tones[0].raw_meta = raw;
+    file.tone.tones[0].unk1 = 0x000C_981F;
+    assert!(
+        crate::nus3bank::replace::Nus3bankReplacer::bank_needs_save_repair(&file),
+        "cloned loop window must count as save-repair even with no pending add"
+    );
+    assert_eq!(clock.loop_flag, 0);
+    let _ = std::fs::remove_file(&wav_path);
+}
+
+fn handmade_oneshot_bnsf(n_samples: u32) -> Vec<u8> {
+    let sdat = vec![0u8; 120];
+    let size_field = sdat.len() as u32 + 40;
+    let mut out = Vec::new();
+    out.extend_from_slice(b"BNSF");
+    out.extend_from_slice(&size_field.to_be_bytes());
+    out.extend_from_slice(b"IS14");
+    out.extend_from_slice(b"sfmt");
+    out.extend_from_slice(&0x14u32.to_be_bytes());
+    out.extend_from_slice(&1u32.to_be_bytes());
+    out.extend_from_slice(&48000u32.to_be_bytes());
+    out.extend_from_slice(&n_samples.to_be_bytes());
+    out.extend_from_slice(&0u32.to_be_bytes());
+    out.extend_from_slice(&120u16.to_be_bytes());
+    out.extend_from_slice(&640u16.to_be_bytes());
+    out.extend_from_slice(b"sdat");
+    out.extend_from_slice(&(sdat.len() as u32).to_be_bytes());
+    out.extend_from_slice(&sdat);
+    out
+}
+
+#[test]
+fn bank_needs_save_repair_when_oneshot_keeps_looping_clock_record() {
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let bnsf = handmade_oneshot_bnsf(36362);
+    file.replace_track_data(&file.tracks[0].hex_id.clone(), bnsf).unwrap();
+    let mut raw = vec![0u8; 220];
+    raw.extend_from_slice(&[0x80, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+    raw.extend_from_slice(&36362i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&0i32.to_le_bytes());
+    raw.extend_from_slice(&(-1i32).to_le_bytes());
+    file.tone.tones[0].raw_meta = raw;
+    file.tone.tones[0].unk1 = 0x000C_981F;
+    assert!(
+        crate::nus3bank::replace::Nus3bankReplacer::bank_needs_save_repair(&file),
+        "one-shot values with looping pad count must still enable Save"
+    );
+}
+
+#[test]
+fn one_shot_bnsf_clears_cloned_loop_unk1_bit() {
+    if !super::bnsf::encode_exe_available() {
+        panic!("tools/encode.exe is required to write EXVS2 character SE");
+    }
+    let wav_path = unique_temp_path("oneshot.wav");
+    super::bnsf::write_minimal_wav_sine(&wav_path, 48000, 640 * 4);
+    let wav = std::fs::read(&wav_path).unwrap();
+    let bnsf = super::bnsf::wav_to_bnsf_is14(&wav).unwrap();
+    assert!(!super::bnsf::bnsf_has_loop_chunk(&bnsf));
+
+    let mut file = make_sample_file();
+    file.rebuild_tracks_view();
+    let hex = file.tracks[0].hex_id.clone();
+    file.replace_track_data(&hex, bnsf).unwrap();
+    file.tone.tones[0].set_unk1(0x000C_989F);
+    assert_ne!(file.tone.tones[0].unk1 & 0x80, 0);
+
+    let path = unique_temp_path("oneshot_unk1.nus3bank");
+    file.save(&path).unwrap();
+    let path_str = path.to_string_lossy().to_string();
+    Nus3bankReplacer::clear_for_file(&path_str);
+
+    let mut parsed = Nus3bankFile::open(&path).unwrap();
+    parsed.tone.tones[0].set_unk1(0x000C_989F);
+    Nus3bankReplacer::apply_to_file(&path_str, &mut parsed).unwrap();
+    assert_eq!(
+        parsed.tone.tones[0].unk1 & 0x80,
+        0,
+        "one-shot BNSF must drop loop bit 0x80, unk1=0x{:x}",
+        parsed.tone.tones[0].unk1 as u32
+    );
+
+    parsed.save(&path).unwrap();
+    let reparsed = Nus3bankFile::open(&path).unwrap();
+    assert_eq!(reparsed.tone.tones[0].unk1 & 0x80, 0);
+    let clock = super::bnsf::parse_bnsf_clock(reparsed.tone.tones[0].payload.as_slice()).unwrap();
+    let raw = &reparsed.tone.tones[0].raw_meta;
+    let marker = [0x80u8, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
+    if let Some(pos) = raw.windows(8).position(|w| w == marker) {
+        let nsamp = i32::from_le_bytes(raw[pos + 8..pos + 12].try_into().unwrap());
+        let lstart = i32::from_le_bytes(raw[pos + 12..pos + 16].try_into().unwrap());
+        let lend = i32::from_le_bytes(raw[pos + 16..pos + 20].try_into().unwrap());
+        let lflag = i32::from_le_bytes(raw[pos + 20..pos + 24].try_into().unwrap());
+        assert_eq!(nsamp, clock.n_samples);
+        assert_eq!(lstart, 0);
+        assert_eq!(lend, 0);
+        assert_eq!(lflag, 0);
+    }
+
+    Nus3bankReplacer::clear_for_file(&path_str);
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&wav_path);
+}
+
+fn decode_hex(hex: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(hex.len() / 2);
+    let bytes = hex.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        let hi = hex_nibble(bytes[i]);
+        let lo = hex_nibble(bytes[i + 1]);
+        out.push((hi << 4) | lo);
+        i += 2;
+    }
+    out
+}
+
+fn hex_nibble(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => panic!("bad hex"),
+    }
+}
+
+#[test]
+fn crashing_editor_tone14_fails_ob_probe() {
+    let raw = decode_hex(
+        "00000000ffffffff00000000ffff67841f980c000f6e65775f746573745f617564696f000000000008000000003c0600e81a00000000004000000000000000000000803f0000803f0000b4c2000000000000803f000000001400000000000000030000000500000067080000ca0900006d08000002000000130a00000a000000000000000000b4c20100000000000000020000000000b4c2030000000000b4c2040000000000b4c2050000000000b4c2060000000000b4c2070000000000b4c2080000000000b4c2090000000000b4c2090000000000803f0000803f0000000001000000ffffffff80bb0000010000000a8e000000000000000000000000000000000000ffffffff04000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0400000000000000ffffffff00000000ffffffff00000000ffffffff",
+    );
+    assert_eq!(raw.len(), 328);
+    assert!(super::ob_tone_decode::looks_like_ob_descriptor(&raw));
+    assert_eq!(raw[20], 0x0f, "old editor stored strlen without the NUL");
+    let name_end = 20 + ((0x0fu8 as usize + 4) & !3);
+    assert_eq!(
+        &raw[name_end..name_end + 8],
+        &[0, 0, 0, 0, 8, 0, 0, 0],
+        "old splice left type=0 extra_len=8 instead of reserved0/reserved8"
+    );
+}
+
+#[test]
+fn vanilla_tone13_probes_and_renames_without_breaking_mask() {
+    let raw = decode_hex(
+        "00000000ffffffff00000000ffff67849f980c001653455f4348525f47554e575f30315a45524f5f30380000000000000800000030000600c83b00000000c03f00000000000000000000803f0000803f0000b4c2000000000000803f000000001400000000000000030000000400000067080000130a00006d080000020000000a000000000000000000b4c20100000000000000020000000000b4c2030000000000b4c2040000000000b4c2050000000000b4c2060000000000b4c2070000000000b4c2080000000000b4c2090000000000b4c2090000000000803f0000803f0000000001000000ffffffff80bb000001000000ef3c0100006e0000ee3c0100010000000000000000000000ffffffff04000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0400000000000000ffffffff00000000ffffffff00000000ffffffff",
+    );
+    assert_eq!(raw.len(), 336);
+    super::ob_tone_decode::probe_tone_record(&raw).unwrap();
+    let name_at = super::ob_tone_decode::ob_name_len_pos(&raw).unwrap();
+    assert_eq!(raw[name_at] as usize, "SE_CHR_GUNW_01ZERO_08".len() + 1);
+    let mut tone = tone_with_raw_meta(raw);
+    tone.name_len_pos = Some(name_at);
+    tone.rewrite_name_in_raw_meta("new_test_audio").unwrap();
+    assert_eq!(tone.name, "new_test_audio");
+    super::ob_tone_decode::probe_live_tone(&tone.raw_meta, &tone.name).unwrap();
+    let new_at = tone.name_len_pos.unwrap();
+    assert_eq!(tone.raw_meta[new_at] as usize, "new_test_audio".len() + 1);
+}
+
+#[test]
+fn vanilla_live_tone_probes_ok_if_present() {
+    let Some(src) = original_se_bank_path() else {
+        eprintln!("skip: original Wing Zero SE bank not found");
+        return;
+    };
+    let parsed = Nus3bankFile::open(&src).unwrap();
+    let live = parsed
+        .tone
+        .tones
+        .iter()
+        .find(|t| !t.removed && t.raw_meta.len() >= 104)
+        .expect("expected a live OB tone");
+    assert!(
+        live.name_len_pos.is_some(),
+        "OB parser must record the real name offset"
+    );
+    let pos = live.name_len_pos.unwrap();
+    assert_eq!(live.raw_meta[pos] as usize, live.name.len() + 1);
+    super::ob_tone_decode::probe_live_tone(&live.raw_meta, &live.name).unwrap();
+}
+
+fn bgm_update_02_backup_path() -> Option<PathBuf> {
+    let p = PathBuf::from(
+        r"E:\XB\mod\090sound\bgm_ac27_update_02\BGM_AC27_UPDATE_02.nus3bank.backup",
+    );
+    p.exists().then_some(p)
+}
+
+#[test]
+fn bgm_update_02_live_cues_are_bgm_descriptors() {
+    let Some(src) = bgm_update_02_backup_path() else {
+        eprintln!("skip: BGM_AC27_UPDATE_02 backup not found");
+        return;
+    };
+    let parsed = Nus3bankFile::open(&src).unwrap();
+    assert_eq!(parsed.tone.tones.len(), 3);
+    assert!(parsed.tone.tones[0].removed || parsed.tone.tones[0].raw_meta.len() < 104);
+    for t in parsed.tone.tones.iter().filter(|t| !t.removed) {
+        let raw = &t.raw_meta;
+        assert!(
+            super::ob_tone_decode::is_bgm_tone_descriptor(raw),
+            "live cue {} should use the BGM flags0/flags1/name layout (len={} b12={:02x} d4={:08x} d8={:08x} d12={:08x})",
+            t.name,
+            raw.len(),
+            raw.get(12).copied().unwrap_or(0),
+            u32::from_le_bytes(raw.get(4..8).unwrap_or(&[0; 4]).try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(raw.get(8..12).unwrap_or(&[0; 4]).try_into().unwrap_or([0; 4])),
+            u32::from_le_bytes(raw.get(12..16).unwrap_or(&[0; 4]).try_into().unwrap_or([0; 4])),
+        );
+        assert_eq!(t.name_len_pos, Some(12));
+        super::ob_tone_decode::probe_live_tone(&t.raw_meta, &t.name).unwrap();
+    }
+}
+
+#[test]
+fn bgm_update_02_add_appends_index_3_keeps_name_slot() {
+    let Some(src) = bgm_update_02_backup_path() else {
+        eprintln!("skip: BGM_AC27_UPDATE_02 backup not found");
+        return;
+    };
+    let mut parsed = Nus3bankFile::open(&src).unwrap();
+    let donor_len = parsed.tone.tones[2].raw_meta.len();
+    let donor_len_byte = parsed.tone.tones[2].raw_meta[12];
+    let dton_before = parsed
+        .dton
+        .as_ref()
+        .map(|d| d.tones.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
+    let id = parsed
+        .add_track("COLORS_Flow".to_string(), minimal_wav_bytes())
+        .unwrap();
+    assert_eq!(id, "0x3");
+    assert_eq!(parsed.tone.tones.len(), 4);
+    assert!(parsed.tone.tones[0].raw_meta.len() < 104);
+    assert_eq!(parsed.tone.tones[1].name, "vstg_ac_title_in_2000_v3");
+    assert_eq!(parsed.tone.tones[2].name, "vstg_ac_title_in_2000_v2");
+    let added = &parsed.tone.tones[3];
+    assert_eq!(added.name, "COLORS_Flow");
+    assert_eq!(added.raw_meta.len(), donor_len);
+    assert_eq!(added.raw_meta[12], donor_len_byte);
+    assert!(added.raw_meta[13..].starts_with(b"COLORS_Flow\0"));
+    super::ob_tone_decode::probe_live_tone(&added.raw_meta, &added.name).unwrap();
+    let dton_after = parsed
+        .dton
+        .as_ref()
+        .map(|d| d.tones.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
+    assert_eq!(dton_before, dton_after);
+
+    let out = unique_temp_path("bgm_add_out.nus3bank");
+    parsed.save(&out).unwrap();
+    let reparsed = Nus3bankFile::open(&out).unwrap();
+    let _ = std::fs::remove_file(&out);
+    assert_eq!(reparsed.tone.tones.len(), 4);
+    assert_eq!(reparsed.tone.tones[3].name, "COLORS_Flow");
+    assert_eq!(reparsed.tone.tones[3].raw_meta[12], donor_len_byte);
+    super::ob_tone_decode::probe_live_tone(
+        &reparsed.tone.tones[3].raw_meta,
+        &reparsed.tone.tones[3].name,
+    )
+    .unwrap();
+}
+
+#[test]
+fn bgm_editor_av_tone0_fails_probe() {
+    let src = PathBuf::from(
+        r"E:\XB\mod\090sound\bgm_ac27_update_02\BGM_AC27_UPDATE_02.nus3bank.editor-av",
+    );
+    if !src.exists() {
+        eprintln!("skip: editor-av BGM bank not found");
+        return;
+    }
+    let parsed = Nus3bankFile::open(&src).unwrap();
+    let raw = &parsed.tone.tones[0].raw_meta;
+    assert_eq!(parsed.tone.tones[0].name, "COLORS_Flow");
+    assert!(
+        super::ob_tone_decode::probe_bgm_tone_record(raw).is_err(),
+        "Audio Editor Add+Save BGM cue must fail the strict probe"
+    );
 }

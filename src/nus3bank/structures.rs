@@ -61,12 +61,42 @@ pub struct BinfSection {
 #[derive(Clone, Debug, Default)]
 pub struct GrpSection {
     pub names: Vec<String>,
+    /// Original GRP payload (excluding the 8-byte section header). Used for
+    /// byte-identical write-back when the UI has not edited group names.
+    pub raw_payload: Option<Vec<u8>>,
 }
 
 /// DTON section (C# `NusDton`)
 #[derive(Clone, Debug, Default)]
 pub struct DtonSection {
     pub tones: Vec<ToneDes>,
+    /// Original DTON payload excluding the 8-byte section header.
+    /// Template banks write this back byte-for-byte until the UI edits DTON.
+    pub raw_payload: Option<Vec<u8>>,
+}
+
+impl DtonSection {
+    /// EXVS2 character SE banks store one `Default` descriptor for the whole
+    /// bank. GVS / per-tone banks store one DTON row per live cue.
+    pub fn is_template(&self, tones: &[ToneMeta]) -> bool {
+        if self.tones.is_empty() {
+            return false;
+        }
+        let named_live = tones
+            .iter()
+            .filter(|t| !t.removed && !t.name.is_empty())
+            .count();
+        if self.tones.len() == named_live && named_live > 1 {
+            return false;
+        }
+        if self.tones.len() == 1 {
+            return true;
+        }
+        self.tones
+            .iter()
+            .any(|row| row.name.eq_ignore_ascii_case("Default"))
+            && self.tones.len() < named_live
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +133,10 @@ pub struct ToneMeta {
     pub pack_offset_field_pos: Option<usize>,
     /// Byte position of the PACK size field inside `raw_meta`.
     pub pack_size_field_pos: Option<usize>,
+    /// Byte position of the len-prefixed name inside `raw_meta`.
+    pub name_len_pos: Option<usize>,
+    /// OB presence-mask words (empty for C# / field-built records).
+    pub descriptor_words: Vec<u32>,
     pub hash: i32,
     pub unk1: i32,
     pub name: String,
@@ -119,6 +153,301 @@ pub struct ToneMeta {
     pub payload: Vec<u8>,
     pub meta_size: u32,
     pub removed: bool,
+}
+
+impl ToneMeta {
+    /// Rewrite the len-prefixed name inside `raw_meta` and keep the descriptor
+    /// tail bytes. Pack offset/size field positions are shifted by the name
+    /// length delta.
+    pub fn rewrite_name_in_raw_meta(&mut self, new_name: &str) -> Result<(), Nus3bankError> {
+        if self.raw_meta.is_empty() {
+            self.name = new_name.to_string();
+            return Ok(());
+        }
+        let prefix_len = self.meta_prefix.len();
+        let name_len_pos = if let Some(pos) = super::ob_tone_decode::bgm_name_len_pos(&self.raw_meta)
+        {
+            pos
+        } else {
+            self.name_len_pos.unwrap_or(prefix_len + 8)
+        };
+        if self.raw_meta.len() <= name_len_pos {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "TONE raw_meta too small to rewrite name".to_string(),
+            });
+        }
+        let old_name_len = self.raw_meta[name_len_pos] as usize;
+        if old_name_len == 0 {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "TONE raw_meta name_len is 0".to_string(),
+            });
+        }
+        let old_name_end = name_len_pos + 1 + old_name_len;
+        if old_name_end > self.raw_meta.len() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "TONE raw_meta name overruns the block".to_string(),
+            });
+        }
+        let old_aligned = (old_name_end + 3) & !3;
+        if old_aligned > self.raw_meta.len() {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: "TONE raw_meta name alignment overruns the block".to_string(),
+            });
+        }
+
+        let name_bytes = new_name.as_bytes();
+        if super::ob_tone_decode::is_bgm_tone_descriptor(&self.raw_meta) {
+            // EXE skip_name size is (len_byte + 4) & !3. Keep the donor length byte
+            // so flags0/flags1 payload after the name stays on the vanilla cursor.
+            let slot = (old_name_len + 4) & !3;
+            if name_bytes.len() + 1 > old_name_len {
+                return Err(Nus3bankError::InvalidFormat {
+                    reason: format!(
+                        "BGM cue name '{}' is longer than the donor name slot ({old_name_len})",
+                        new_name
+                    ),
+                });
+            }
+            let mut field = Vec::with_capacity(slot);
+            field.push(old_name_len as u8);
+            field.extend_from_slice(name_bytes);
+            field.push(0);
+            field.resize(old_name_len + 1, 0);
+            field.resize(slot, 0);
+            self.raw_meta[name_len_pos..name_len_pos + slot].copy_from_slice(&field);
+            self.name_len_pos = Some(name_len_pos);
+            self.name = new_name.to_string();
+            self.meta_size = self.raw_meta.len() as u32;
+            super::ob_tone_decode::probe_live_tone(&self.raw_meta, &self.name)?;
+            return Ok(());
+        }
+
+        let new_name_len = (name_bytes.len() + 1).min(255);
+        let stored_name = &name_bytes[..new_name_len.saturating_sub(1)];
+        let new_name_end = name_len_pos + 1 + new_name_len;
+        let new_aligned = (new_name_end + 3) & !3;
+
+        let mut out = Vec::with_capacity(
+            prefix_len + 8 + 1 + new_name_len + 3 + (self.raw_meta.len() - old_aligned),
+        );
+        out.extend_from_slice(&self.raw_meta[..name_len_pos]);
+        out.push(new_name_len as u8);
+        out.extend_from_slice(stored_name);
+        out.push(0);
+        while out.len() < new_aligned {
+            out.push(0);
+        }
+        out.extend_from_slice(&self.raw_meta[old_aligned..]);
+
+        let delta = new_aligned as isize - old_aligned as isize;
+        let shift = |pos: Option<usize>| -> Option<usize> {
+            pos.and_then(|p| {
+                let n = p as isize + delta;
+                if n >= 0 { Some(n as usize) } else { None }
+            })
+        };
+        self.pack_offset_field_pos = shift(self.pack_offset_field_pos);
+        self.pack_size_field_pos = shift(self.pack_size_field_pos);
+        self.name_len_pos = Some(name_len_pos);
+        self.raw_meta = out;
+        self.name = String::from_utf8_lossy(stored_name).into_owned();
+        self.meta_size = self.raw_meta.len() as u32;
+        if super::ob_tone_decode::looks_like_ob_descriptor(&self.raw_meta)
+            || super::ob_tone_decode::is_bgm_tone_descriptor(&self.raw_meta)
+        {
+            super::ob_tone_decode::probe_live_tone(&self.raw_meta, &self.name)?;
+        }
+        Ok(())
+    }
+
+    pub fn apply_new_cue_identity(
+        &mut self,
+        name: String,
+        payload: Vec<u8>,
+    ) -> Result<(), Nus3bankError> {
+        if !self.raw_meta.is_empty() {
+            self.rewrite_name_in_raw_meta(&name)?;
+        } else {
+            self.name = name;
+        }
+        self.payload = payload;
+        self.size = self.payload.len() as i32;
+        self.offset = 0;
+        self.removed = false;
+        self.meta_size = self.raw_meta.len() as u32;
+        Ok(())
+    }
+
+    /// Vanilla one-shot cues use unk1 without bit 0x80; looping cues set it.
+    /// Must patch `raw_meta` too: the writer prefers the original blob.
+    pub fn set_unk1(&mut self, unk1: i32) {
+        self.unk1 = unk1;
+        let pos = self.meta_prefix.len() + 4;
+        if self.raw_meta.len() >= pos + 4 {
+            self.raw_meta[pos..pos + 4].copy_from_slice(&unk1.to_le_bytes());
+        }
+    }
+
+    /// Patch the TONE clock block `48000, channels=1, n_samples, loopStart, loopEnd, loopFlag`.
+    /// Cloned looping templates leave the donor's sample count/loop here; the game
+    /// then seeks past the real BNSF length and plays silence.
+    ///
+    /// Looping records also keep two 0 pads before the `-1` terminator; vanilla
+    /// one-shots have one. Writing only the four clock ints leaves that extra
+    /// 0 in place and File→Save then thinks the bank is clean.
+    pub fn patch_sample_clock(
+        &mut self,
+        n_samples: i32,
+        loop_start: i32,
+        loop_end: i32,
+        loop_flag: i32,
+    ) -> bool {
+        if self.raw_meta.len() < 24 {
+            return false;
+        }
+        let Some(pos) = clock_marker_pos(&self.raw_meta) else {
+            return false;
+        };
+        let start = pos + 8;
+        if start + 16 > self.raw_meta.len() {
+            return false;
+        }
+        let mut changed = false;
+        let write_i32 = |raw: &mut [u8], at: usize, value: i32| {
+            raw[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        };
+        let current = (
+            i32::from_le_bytes(self.raw_meta[start..start + 4].try_into().unwrap()),
+            i32::from_le_bytes(self.raw_meta[start + 4..start + 8].try_into().unwrap()),
+            i32::from_le_bytes(self.raw_meta[start + 8..start + 12].try_into().unwrap()),
+            i32::from_le_bytes(self.raw_meta[start + 12..start + 16].try_into().unwrap()),
+        );
+        if current != (n_samples, loop_start, loop_end, loop_flag) {
+            write_i32(&mut self.raw_meta, start, n_samples);
+            write_i32(&mut self.raw_meta, start + 4, loop_start);
+            write_i32(&mut self.raw_meta, start + 8, loop_end);
+            write_i32(&mut self.raw_meta, start + 12, loop_flag);
+            changed = true;
+        }
+        let want_pads = expected_clock_pads(loop_flag);
+        let pads_start = start + 16;
+        if let Some(term) = terminator_after(&self.raw_meta, pads_start) {
+            let have_pads = (term - pads_start) / 4;
+            if have_pads != want_pads {
+                let mut out = Vec::with_capacity(
+                    pads_start + want_pads * 4 + (self.raw_meta.len() - term),
+                );
+                out.extend_from_slice(&self.raw_meta[..pads_start]);
+                for _ in 0..want_pads {
+                    out.extend_from_slice(&0i32.to_le_bytes());
+                }
+                out.extend_from_slice(&self.raw_meta[term..]);
+                self.raw_meta = out;
+                self.meta_size = self.raw_meta.len() as u32;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    pub fn sample_clock_from_raw_meta(&self) -> Option<(i32, i32, i32, i32)> {
+        let pos = clock_marker_pos(&self.raw_meta)?;
+        let start = pos + 8;
+        if start + 16 > self.raw_meta.len() {
+            return None;
+        }
+        Some((
+            i32::from_le_bytes(self.raw_meta[start..start + 4].try_into().ok()?),
+            i32::from_le_bytes(self.raw_meta[start + 4..start + 8].try_into().ok()?),
+            i32::from_le_bytes(self.raw_meta[start + 8..start + 12].try_into().ok()?),
+            i32::from_le_bytes(self.raw_meta[start + 12..start + 16].try_into().ok()?),
+        ))
+    }
+
+    /// 0-pads between the 4-int clock tuple and the `-1` terminator.
+    /// Vanilla one-shot = 1, looping = 2.
+    pub fn clock_pad_count(&self) -> Option<usize> {
+        let pos = clock_marker_pos(&self.raw_meta)?;
+        let pads_start = pos + 8 + 16;
+        let term = terminator_after(&self.raw_meta, pads_start)?;
+        Some((term - pads_start) / 4)
+    }
+
+    pub fn clock_layout_matches_loop_flag(&self, loop_flag: i32) -> bool {
+        self.clock_pad_count() == Some(expected_clock_pads(loop_flag))
+    }
+}
+
+fn clock_marker_pos(raw: &[u8]) -> Option<usize> {
+    const MARKER: [u8; 8] = [0x80, 0xBB, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
+    raw.windows(8).position(|w| w == MARKER)
+}
+
+fn expected_clock_pads(loop_flag: i32) -> usize {
+    if loop_flag != 0 {
+        2
+    } else {
+        1
+    }
+}
+
+fn terminator_after(raw: &[u8], pos: usize) -> Option<usize> {
+    let mut p = pos;
+    while p + 4 <= raw.len() {
+        let v = i32::from_le_bytes(raw.get(p..p + 4)?.try_into().ok()?);
+        if v == -1 {
+            return Some(p);
+        }
+        p += 4;
+    }
+    None
+}
+
+/// 12-byte empty TONE stub (hash + unk1 + padding). Matches the parser's
+/// `< 104` placeholder path so remove/add never leave a zero-length live cue.
+pub fn empty_tone_stub_raw_meta() -> Vec<u8> {
+    vec![0u8; 12]
+}
+
+pub fn empty_tone_stub() -> ToneMeta {
+    let raw_meta = empty_tone_stub_raw_meta();
+    ToneMeta {
+        meta_prefix: Vec::new(),
+        raw_meta: raw_meta.clone(),
+        pack_offset_field_pos: None,
+        pack_size_field_pos: None,
+        name_len_pos: None,
+        descriptor_words: Vec::new(),
+        hash: 0,
+        unk1: 0,
+        name: String::new(),
+        reserved0: 0,
+        reserved8: 8,
+        offset: 0,
+        size: 0,
+        param: [0.0; 12],
+        offsets: Vec::new(),
+        unkvalues: Vec::new(),
+        unkvalues_pair_order: UnkvaluesPairOrder::IndexThenValue,
+        unkending: vec![-1],
+        end: vec![0, 0, 0],
+        payload: Vec::new(),
+        meta_size: raw_meta.len() as u32,
+        removed: true,
+    }
+}
+
+pub fn detect_pack_alignment(tones: &[ToneMeta]) -> usize {
+    let offs: Vec<i32> = tones
+        .iter()
+        .filter(|t| !t.removed && t.size > 0 && t.offset >= 0)
+        .map(|t| t.offset)
+        .collect();
+    if !offs.is_empty() && offs.iter().all(|offset| offset % 16 == 0) {
+        16
+    } else {
+        4
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -252,9 +581,41 @@ impl Nus3bankFile {
 
         Ok(())
     }
+}
 
+fn bank_appends_new_cues(binf: Option<&BinfSection>) -> bool {
+    binf.is_some_and(|b| b.name.to_ascii_uppercase().starts_with("BGM"))
+}
+
+/// Next TONE index for Add. BGM banks keep the 12-byte stub at 0 and append.
+pub fn next_live_add_index(tones: &[ToneMeta], binf: Option<&BinfSection>) -> usize {
+    if bank_appends_new_cues(binf) {
+        return tones.len();
+    }
+    tones
+        .iter()
+        .position(|t| t.removed)
+        .unwrap_or(tones.len())
+}
+
+impl Nus3bankFile {
     pub fn add_track(
         &mut self,
+        name: String,
+        audio_data: Vec<u8>,
+    ) -> Result<String, Nus3bankError> {
+        let new_index = next_live_add_index(&self.tone.tones, self.binf.as_ref());
+        self.add_track_at(new_index, name, audio_data)
+    }
+
+    /// Insert a live cue at a reserved TONE index.
+    ///
+    /// Reuses a removed stub at `reserved_index`, appends when
+    /// `reserved_index == tones.len()`, or pads intermediate stubs when applying
+    /// pending adds out of index order.
+    pub fn add_track_at(
+        &mut self,
+        reserved_index: usize,
         name: String,
         audio_data: Vec<u8>,
     ) -> Result<String, Nus3bankError> {
@@ -276,24 +637,40 @@ impl Nus3bankFile {
             });
         }
 
-        // New track ID is the next index.
-        let new_index = self.tone.tones.len();
-        let hex_id = format!("0x{:x}", new_index as u32);
+        if reserved_index > self.tone.tones.len().saturating_add(1024) {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!(
+                    "Reserved TONE index {} is out of range",
+                    reserved_index
+                ),
+            });
+        }
+        if reserved_index < self.tone.tones.len() && !self.tone.tones[reserved_index].removed {
+            return Err(Nus3bankError::InvalidFormat {
+                reason: format!("TONE slot 0x{:x} is already occupied", reserved_index),
+            });
+        }
 
-        // Use an existing tone as a template when available to keep metadata shape compatible.
+        let dton_is_template = self
+            .dton
+            .as_ref()
+            .map(|dton| dton.is_template(&self.tone.tones))
+            .unwrap_or(false);
+        let bgm_bank = bank_appends_new_cues(self.binf.as_ref());
+
+        let existed = reserved_index < self.tone.tones.len();
+        let hex_id = format!("0x{:x}", reserved_index as u32);
+
         let template = self.tone.tones.iter().find(|t| !t.removed).cloned();
         let from_template = template.is_some();
         let mut new_tone = if let Some(t) = template {
             let mut cloned = t;
-            cloned.name = name.clone();
-            cloned.raw_meta.clear();
-            cloned.pack_offset_field_pos = None;
-            cloned.pack_size_field_pos = None;
-            cloned.payload = audio_data.clone();
-            cloned.size = audio_data.len() as i32;
-            cloned.offset = 0;
-            cloned.meta_size = 0;
-            cloned.removed = false;
+            cloned.apply_new_cue_identity(name.clone(), audio_data.clone())?;
+            if super::ob_tone_decode::looks_like_ob_descriptor(&cloned.raw_meta)
+                || super::ob_tone_decode::is_bgm_tone_descriptor(&cloned.raw_meta)
+            {
+                super::ob_tone_decode::probe_live_tone(&cloned.raw_meta, &cloned.name)?;
+            }
             cloned
         } else {
             ToneMeta {
@@ -301,6 +678,8 @@ impl Nus3bankFile {
                 raw_meta: Vec::new(),
                 pack_offset_field_pos: None,
                 pack_size_field_pos: None,
+                name_len_pos: None,
+                descriptor_words: Vec::new(),
                 hash: 0,
                 unk1: 0,
                 name: name.clone(),
@@ -320,8 +699,6 @@ impl Nus3bankFile {
             }
         };
 
-        // If we didn't have a template, fall back to the C#-derived end-length rule.
-        // If we used a template, preserve its `end` layout to maximize compatibility.
         if !from_template {
             let end_len = 3 + (((((new_tone.unk1 as u32) >> 8) & 0xFF) as usize) + 3) / 4;
             if new_tone.end.len() != end_len {
@@ -329,32 +706,42 @@ impl Nus3bankFile {
             }
         }
 
-        self.tone.tones.push(new_tone);
-
-        if let Some(dton) = self.dton.as_mut() {
-            let template_dton = if let Some(track) = self
-                .tracks
-                .iter()
-                .find(|t| !self.tone.tones[t.tone_index].removed)
-            {
-                dton.tones.get(track.tone_index).cloned()
-            } else {
-                dton.tones.iter().next().cloned()
-            };
-
-            let mut new_dton = template_dton.unwrap_or_else(|| ToneDes {
-                hash: 0,
-                unk1: 0,
-                name: name.clone(),
-                data: Vec::new(),
-                raw_data: Vec::new(),
-                descriptor_words: Vec::new(),
-            });
-            new_dton.name = name.clone();
-            dton.tones.push(new_dton);
+        while self.tone.tones.len() < reserved_index {
+            self.tone.tones.push(empty_tone_stub());
+        }
+        if reserved_index == self.tone.tones.len() {
+            self.tone.tones.push(new_tone);
+        } else {
+            self.tone.tones[reserved_index] = new_tone;
         }
 
-        // Rebuild UI track list (offsets will be recalculated during save).
+        if !dton_is_template && !bgm_bank {
+            if let Some(dton) = self.dton.as_mut() {
+                dton.raw_payload = None;
+                let template_dton = dton
+                    .tones
+                    .iter()
+                    .find(|row| !row.name.eq_ignore_ascii_case("Default"))
+                    .cloned()
+                    .or_else(|| dton.tones.first().cloned());
+
+                let mut new_dton = template_dton.unwrap_or_else(|| ToneDes {
+                    hash: 0,
+                    unk1: 0,
+                    name: name.clone(),
+                    data: Vec::new(),
+                    raw_data: Vec::new(),
+                    descriptor_words: Vec::new(),
+                });
+                new_dton.name = name.clone();
+                if existed && reserved_index < dton.tones.len() {
+                    dton.tones[reserved_index] = new_dton;
+                } else {
+                    dton.tones.push(new_dton);
+                }
+            }
+        }
+
         self.rebuild_tracks_view();
 
         Ok(hex_id)
@@ -368,6 +755,21 @@ impl Nus3bankFile {
             })?
             .clone();
 
+        let stub_raw = self
+            .tone
+            .tones
+            .iter()
+            .enumerate()
+            .filter(|(i, t)| {
+                *i != track.tone_index
+                    && t.removed
+                    && !t.raw_meta.is_empty()
+                    && t.raw_meta.len() < 104
+            })
+            .min_by_key(|(_, t)| t.raw_meta.len())
+            .map(|(_, t)| (t.raw_meta.clone(), t.hash, t.unk1, t.meta_prefix.clone()))
+            .unwrap_or_else(|| (empty_tone_stub_raw_meta(), 0, 0, Vec::new()));
+
         let tone = self.tone.tones.get_mut(track.tone_index).ok_or_else(|| {
             Nus3bankError::InvalidFormat {
                 reason: format!("Tone index out of bounds for track {}", hex_id),
@@ -377,8 +779,18 @@ impl Nus3bankFile {
         tone.removed = true;
         tone.payload.clear();
         tone.size = 0;
+        tone.offset = 0;
+        tone.name.clear();
+        let (raw, hash, unk1, prefix) = stub_raw;
+        tone.raw_meta = raw;
+        tone.hash = hash;
+        tone.unk1 = unk1;
+        tone.meta_prefix = prefix;
+        tone.pack_offset_field_pos = None;
+        tone.pack_size_field_pos = None;
+        tone.meta_size = tone.raw_meta.len() as u32;
 
-        // Keep the entry but mark it removed; the writer will filter removed tones.
+        // Keep the TONE slot. Do not compact the pointer table; OB looks up by index.
         self.rebuild_tracks_view();
 
         Ok(())

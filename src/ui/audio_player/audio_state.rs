@@ -46,38 +46,38 @@ pub struct AudioState {
     /// Current audio file being played (if any)
     #[serde(skip)]
     pub current_audio: Option<AudioFile>,
-    
+
     /// Is the audio currently playing
     #[serde(skip)]
     pub is_playing: bool,
-    
+
     /// Current playback position in seconds
     #[serde(skip)]
     pub current_position: f32,
-    
+
     /// Total duration in seconds
     #[serde(skip)]
     pub total_duration: f32,
-    
+
     /// Current volume (0.0 - 100.0)
     #[serde(skip)]
     pub volume: f32,
-    
+
     /// Is the audio muted
     pub is_muted: bool,
-    
+
     /// Previous volume before mute
     #[serde(skip)]
     pub previous_volume: f32,
-    
+
     /// Custom loop start point in seconds (None = start from beginning)
     #[serde(skip)]
     pub loop_start: Option<f32>,
-    
+
     /// Custom loop end point in seconds (None = loop to end)
     #[serde(skip)]
     pub loop_end: Option<f32>,
-    
+
     /// Whether to use custom loop points
     #[serde(skip)]
     pub use_custom_loop: bool,
@@ -90,17 +90,17 @@ pub struct AudioState {
     /// Independent of queue `loop_mode`. Default off for sequential listening.
     #[serde(skip)]
     pub honor_track_loop: bool,
-    
+
     /// Current queue loop mode (repeat off / one / all)
     pub loop_mode: LoopMode,
-    
+
     /// Whether shuffle mode is enabled
     pub shuffle: bool,
-    
+
     /// Current playlist (UI table order: filtered + sorted; never re-sorted by ID)
     #[serde(skip)]
     pub playlist: Vec<AudioFileInfo>,
-    
+
     /// Index of the current track in the playlist
     #[serde(skip)]
     pub current_track_index: Option<usize>,
@@ -218,18 +218,18 @@ pub struct AudioFile {
     /// Temporary playback file path (native only)
     #[cfg(not(target_arch = "wasm32"))]
     pub playback_path: Option<String>,
-    
+
     /// Audio file name
     pub name: String,
-    
+
     /// Audio file type
     pub file_type: String,
-    
+
     /// Audio file ID
     pub id: String,
-    
+
     /// Temporary file path for web playback
-    /// 
+    ///
     /// Web Audio API requires a URL to play audio, so we need to create a temporary
     /// file that can be accessed via URL for playback
     #[cfg(target_arch = "wasm32")]
@@ -268,13 +268,13 @@ impl Default for AudioState {
             waveform_generation: 0,
             waveform_rx: None,
         };
-        
+
         // Try to initialize the audio backend
         match state.init_audio_backend() {
             Ok(_) => log::info!("Audio backend initialized successfully"),
             Err(e) => log::error!("Failed to initialize audio backend: {}", e),
         }
-        
+
         state
     }
 }
@@ -284,80 +284,103 @@ impl AudioState {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Initialize the audio backend
     fn init_audio_backend(&mut self) -> Result<(), String> {
         // Create a new platform-specific audio backend
         let mut backend = Box::new(PlatformAudioBackend::new());
-        
+
         // Initialize the backend
         backend.init()?;
-        
+
         // Store the backend
         self.audio_backend = Some(backend);
-        
+
         Ok(())
     }
-    
-    /// Play or pause the audio
+
+    /// Play or pause the audio.
+    ///
+    /// Pause/resume an already-loaded buffer. `play_audio` (decode from disk) runs only
+    /// when no handle is loaded (first play or after an explicit stop).
     pub fn toggle_play(&mut self) {
-        // Toggle playing state
-        self.is_playing = !self.is_playing;
-        
-        if let Some(backend) = &mut self.audio_backend {
-            if self.is_playing {
-                // If starting playback and we have audio data
-                if let Some(audio) = &self.current_audio {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        let playback_path = audio
-                            .playback_path
-                            .as_deref()
-                            .unwrap_or(&audio.file_path);
-
-                        // If we're resuming from a position other than the beginning,
-                        // we need to set the position after starting playback
-                        let position = self.current_position;
-
-                        if let Err(e) = backend.play_audio(playback_path) {
-                            log::error!("Failed to play audio: {}", e);
-                            self.is_playing = false;
-                            return;
-                        }
-
-                        // Get actual duration from backend
-                        self.total_duration = backend.get_duration();
-
-                        // Apply current volume setting
-                        if let Err(e) = backend.set_volume(self.volume) {
-                            log::error!("Failed to apply volume: {}", e);
-                        }
-
-                        // If we're resuming from a non-zero position, seek to that position
-                        if position > 0.0 {
-                            if let Err(e) = backend.set_position(position) {
-                                log::error!("Failed to seek to position {}: {}", position, e);
-                                // Continue playback even if seeking fails
-                            }
-                        }
-                    }
-                }
-            } else if let Err(e) = backend.pause() {
-                // Only log as debug if no audio is playing, as this is expected behavior
+        if self.is_playing {
+            self.is_playing = false;
+            if let Some(backend) = &mut self.audio_backend
+                && let Err(e) = backend.pause()
+            {
                 if e.contains("No audio playing") {
                     log::debug!("Pause called but no audio is currently playing");
                 } else {
-                    log::error!("Failed to pause audio: {}", e);
+                    log::error!("Failed to pause audio: {e}");
                 }
+            }
+            return;
+        }
+
+        if self.current_audio.is_none() {
+            return;
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let playback_path = {
+                let audio = self.current_audio.as_ref().expect("checked above");
+                audio
+                    .playback_path
+                    .as_deref()
+                    .unwrap_or(&audio.file_path)
+                    .to_owned()
+            };
+            let at_end =
+                self.total_duration > 0.0 && self.current_position >= self.total_duration - 0.05;
+            if at_end {
+                self.current_position = 0.0;
+            }
+            let position = self.current_position;
+
+            let Some(backend) = self.audio_backend.as_mut() else {
+                return;
+            };
+
+            // Finished clips leave a Stopped kira handle; resume() is a no-op.
+            // play_audio reuses the cached StaticSoundData when the path matches.
+            let start_result = if backend.is_loaded() {
+                backend.resume()
+            } else {
+                backend.play_audio(&playback_path)
+            };
+            if let Err(e) = start_result {
+                log::error!("Failed to play audio: {e}");
+                self.is_playing = false;
+                return;
+            }
+
+            self.is_playing = true;
+            let duration = backend.get_duration();
+            if duration > 0.0 {
+                self.total_duration = duration;
+            }
+            if let Err(e) = backend.set_volume(self.volume) {
+                log::error!("Failed to apply volume: {e}");
+            }
+            if at_end {
+                if let Err(e) = backend.set_position(0.0) {
+                    log::error!("Failed to rewind to start: {e}");
+                }
+            } else if position > 0.0
+                && let Err(e) = backend.set_position(position)
+            {
+                log::error!("Failed to seek to position {position}: {e}");
             }
         }
     }
-    
+
     /// Stop the audio playback
     pub fn stop(&mut self) {
         self.is_playing = false;
         self.current_position = 0.0;
-        
+
         if let Some(backend) = &mut self.audio_backend {
             if let Err(e) = backend.stop() {
                 // Only log as debug if no audio is playing, as this is expected behavior
@@ -369,7 +392,7 @@ impl AudioState {
             }
         }
     }
-    
+
     /// Toggle mute state
     pub fn toggle_mute(&mut self) {
         if self.is_muted {
@@ -382,7 +405,7 @@ impl AudioState {
             self.volume = 0.0;
             self.is_muted = true;
         }
-        
+
         // Update backend volume
         if let Some(backend) = &mut self.audio_backend {
             if let Err(e) = backend.set_volume(self.volume) {
@@ -390,7 +413,7 @@ impl AudioState {
             }
         }
     }
-    
+
     /// Set a new audio file for playback
     pub fn set_audio(&mut self, audio: AudioFile) {
         // Stop any current playback
@@ -401,7 +424,8 @@ impl AudioState {
         // cleanup_temp_audio would delete the file we are about to play.
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let reusing_same_path = self.current_audio
+            let reusing_same_path = self
+                .current_audio
                 .as_ref()
                 .and_then(|a| a.playback_path.as_deref())
                 .zip(audio.playback_path.as_deref())
@@ -421,20 +445,20 @@ impl AudioState {
 
         // Set new audio file
         self.current_audio = Some(audio);
-        
+
         // Apply current volume setting to the audio backend
         if let Some(backend) = &mut self.audio_backend {
             if let Err(e) = backend.set_volume(self.volume) {
                 log::error!("Failed to apply volume to new audio: {}", e);
             }
         }
-        
+
         // Play the new audio right away
         // Set is_playing to false first, so toggle_play will set it to true and start playback
         self.is_playing = false;
         self.toggle_play();
     }
-    
+
     /// Clear the current audio
     pub fn clear_audio(&mut self) {
         self.stop();
@@ -498,14 +522,17 @@ impl AudioState {
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => false,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                println!("[PERF] async waveform worker disconnected (gen={})", self.waveform_generation);
+                println!(
+                    "[PERF] async waveform worker disconnected (gen={})",
+                    self.waveform_generation
+                );
                 self.waveform_rx = None;
                 self.waveform_loading = false;
                 false
             }
         }
     }
-    
+
     /// Set the current position in seconds
     pub fn set_position(&mut self, position: f32) {
         let max = if self.total_duration > 0.0 {
@@ -568,14 +595,14 @@ impl AudioState {
         self.is_seeking = false;
         self.set_position(position);
     }
-    
+
     /// Set the volume (0.0 - 1.0)
     pub fn set_volume(&mut self, volume: f32) {
         self.volume = volume.clamp(0.0, 1.0);
         if self.volume > 0.0 {
             self.is_muted = false;
         }
-        
+
         // Update backend volume
         if let Some(backend) = &mut self.audio_backend {
             if let Err(e) = backend.set_volume(self.volume) {
@@ -620,7 +647,7 @@ impl AudioState {
             }
         }
     }
-    
+
     /// Update playback state from backend
     pub fn update_from_backend(&mut self) {
         // Pick up waveform results without blocking
@@ -702,7 +729,7 @@ impl AudioState {
                     }
                 }
             }
-            
+
             // Check if we're actually playing
             self.is_playing = backend.is_playing();
         }
@@ -718,7 +745,7 @@ impl AudioState {
             }
         }
     }
-    
+
     /// Set loop points / enable flag for the current track (metadata + wave marks).
     /// Does not force A-B playback; that is controlled by `honor_track_loop`.
     pub fn set_loop_points(
@@ -740,8 +767,7 @@ impl AudioState {
     /// Apply default honor flag after loop points are resolved for a newly loaded track.
     /// Sequential/All queue modes leave A-B off so auto-next works; Repeat one enables it.
     pub fn apply_default_honor_for_load(&mut self) {
-        self.honor_track_loop =
-            self.enable_loop && matches!(self.loop_mode, LoopMode::Single);
+        self.honor_track_loop = self.enable_loop && matches!(self.loop_mode, LoopMode::Single);
     }
 
     pub fn toggle_honor_track_loop(&mut self) {
@@ -899,21 +925,21 @@ impl AudioState {
         }
         self.shuffle_bag = bag;
     }
-    
+
     /// Get formatted current position (MM:SS)
     pub fn format_position(&self) -> String {
         let minutes = (self.current_position / 60.0).floor() as u32;
         let seconds = (self.current_position % 60.0).floor() as u32;
         format!("{:02}:{:02}", minutes, seconds)
     }
-    
+
     /// Get formatted total duration (MM:SS)
     pub fn format_duration(&self) -> String {
         let minutes = (self.total_duration / 60.0).floor() as u32;
         let seconds = (self.total_duration % 60.0).floor() as u32;
         format!("{:02}:{:02}", minutes, seconds)
     }
-    
+
     /// Get playback progress as a ratio (0.0 - 1.0)
     pub fn progress(&self) -> f32 {
         if self.total_duration > 0.0 {
@@ -1054,5 +1080,98 @@ mod tests {
             "new track's WAV must not be touched by cleanup"
         );
         let _ = std::fs::remove_file(&wav_b);
+    }
+
+    #[test]
+    fn transport_pause_then_resume_does_not_reload() {
+        use crate::ui::audio_player::audio_backend::recording::{CallLog, RecordingAudioBackend};
+
+        let log = CallLog::new();
+        let mut state = AudioState::default();
+        state.audio_backend = Some(Box::new(RecordingAudioBackend::new(log.clone())));
+        state.current_audio = Some(dummy_audio(Some("dummy_main.wav".to_owned())));
+        state.total_duration = 1.0;
+
+        state.toggle_play();
+        assert!(state.is_playing, "first play must start playback");
+        assert_eq!(
+            log.play_audio_count(),
+            1,
+            "first play loads from the path once"
+        );
+
+        state.toggle_play();
+        assert!(!state.is_playing, "second toggle must pause");
+        assert_eq!(
+            log.play_audio_count(),
+            1,
+            "pause must not call play_audio/from_file"
+        );
+        assert!(
+            log.pause_count() >= 1,
+            "pause must be issued to the backend"
+        );
+
+        state.toggle_play();
+        assert!(state.is_playing, "third toggle must resume");
+        assert_eq!(
+            log.play_audio_count(),
+            1,
+            "pause then resume must not reload the path"
+        );
+        assert!(
+            log.resume_count() >= 1,
+            "resume must be used instead of a second from_file"
+        );
+        let paths = log.play_audio_paths();
+        assert_eq!(
+            paths.as_slice(),
+            &["dummy_main.wav".to_owned()],
+            "only the original playback path may be passed to play_audio"
+        );
+    }
+
+    #[test]
+    fn transport_restart_after_end_does_not_resume() {
+        use crate::ui::audio_player::audio_backend::recording::{CallLog, RecordingAudioBackend};
+
+        let log = CallLog::new();
+        let mut state = AudioState::default();
+        state.audio_backend = Some(Box::new(RecordingAudioBackend::new(log.clone())));
+        state.current_audio = Some(dummy_audio(Some("dummy_main.wav".to_owned())));
+        state.total_duration = 1.0;
+
+        state.toggle_play();
+        assert!(state.is_playing, "clip must start");
+        assert_eq!(log.play_audio_count(), 1, "first play loads once");
+        let resumes_before_end = log.resume_count();
+
+        state.set_position(1.0);
+        state.update_from_backend();
+        assert!(
+            !state.is_playing,
+            "backend must report not playing after the clip finishes"
+        );
+
+        state.toggle_play();
+        assert!(
+            state.is_playing,
+            "Play/Space after the clip ends must start a new instance"
+        );
+        assert_eq!(
+            log.play_audio_count(),
+            2,
+            "finished clips are not resumable; play_audio (cached replay) must run"
+        );
+        assert_eq!(
+            log.resume_count(),
+            resumes_before_end,
+            "restart-after-end must not call resume on a Stopped handle"
+        );
+        assert!(
+            state.current_position < 0.05,
+            "restart-after-end must rewind the playhead; got {}",
+            state.current_position
+        );
     }
 }

@@ -1,11 +1,12 @@
 // UI component modules
-mod top_panel;
-mod file_list;
-pub mod main_area;  // Make this public
 pub mod audio_player; // Audio player module
-pub mod waveform; // Sound-wave visualization
+mod file_list;
+pub mod main_area; // Make this public
+pub mod shortcuts;
+mod top_panel;
 pub mod update_log; // Version update notice + history
+pub mod waveform; // Sound-wave visualization
 
-pub use top_panel::TopPanel;
 pub use file_list::FileList;
 pub use main_area::MainArea;
+pub use top_panel::TopPanel;

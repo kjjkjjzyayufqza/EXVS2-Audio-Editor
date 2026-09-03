@@ -404,7 +404,14 @@ impl Nus3bankParser {
             names.push(name);
         }
 
-        Ok(GrpSection { names })
+        Ok(GrpSection {
+            names,
+            raw_payload: if section.len() >= 8 {
+                Some(section[8..].to_vec())
+            } else {
+                None
+            },
+        })
     }
 
     pub(crate) fn parse_dton(section: &[u8]) -> Result<DtonSection, Nus3bankError> {
@@ -492,7 +499,14 @@ impl Nus3bankParser {
             });
         }
 
-        Ok(DtonSection { tones })
+        Ok(DtonSection {
+            tones,
+            raw_payload: if section.len() >= 8 {
+                Some(section[8..].to_vec())
+            } else {
+                None
+            },
+        })
     }
 
     fn parse_dton_descriptor_words(raw_data: &[u8]) -> Vec<u32> {
@@ -513,7 +527,13 @@ impl Nus3bankParser {
         let _section_size = BinaryReader::read_u32_le(&mut r)?;
 
         let count = BinaryReader::read_u32_le(&mut r)? as usize;
-        let start = r.position();
+        // Vanilla OB TONE offsets are from the payload origin (count at 0 ⇒
+        // 8 bytes after magic+size). Editor-written SE banks add a 4-byte pad
+        // after the pointer table and store offsets from after the count
+        // (12). Pick the origin that yields unshifted live descriptors
+        // (`0, flags0, flags1, name` at +12), not only BGM `0x8427FFFF`.
+        let payload_origin = 8u64;
+        let after_count_origin = r.position();
 
         let mut entries: Vec<(u32, u32)> = Vec::with_capacity(count);
         for _ in 0..count {
@@ -524,9 +544,36 @@ impl Nus3bankParser {
 
         let mut tones = Vec::with_capacity(count);
         let section_end = section.len() as u64;
+        let origin = {
+            let unshifted_hits = |origin: u64| -> usize {
+                entries
+                    .iter()
+                    .filter(|(offset, reported_meta_size)| {
+                        let meta_start = origin + *offset as u64;
+                        if meta_start >= section_end {
+                            return false;
+                        }
+                        let meta_end =
+                            (meta_start + *reported_meta_size as u64).min(section_end);
+                        if meta_end <= meta_start {
+                            return false;
+                        }
+                        super::ob_tone_decode::unshifted_name_len_pos(
+                            &section[meta_start as usize..meta_end as usize],
+                        )
+                        .is_some()
+                    })
+                    .count()
+            };
+            if unshifted_hits(payload_origin) >= 1 {
+                payload_origin
+            } else {
+                after_count_origin
+            }
+        };
         for tone_idx in 0..count {
             let (offset, reported_meta_size) = entries[tone_idx];
-            let meta_start = start + offset as u64;
+            let meta_start = origin + offset as u64;
             if meta_start >= section_end {
                 return Err(Nus3bankError::InvalidFormat {
                     reason: format!("TONE meta offset out of bounds (index={})", tone_idx),
@@ -537,7 +584,7 @@ impl Nus3bankParser {
             // truncate the meta block and later cause exports to lose required fields (e.g. `end[]`).
             // Prefer using the next entry's offset as the boundary when possible.
             let next_meta_end = if tone_idx + 1 < count {
-                start + entries[tone_idx + 1].0 as u64
+                origin + entries[tone_idx + 1].0 as u64
             } else {
                 section_end
             };
@@ -574,6 +621,8 @@ impl Nus3bankParser {
                     raw_meta,
                     pack_offset_field_pos: None,
                     pack_size_field_pos: None,
+                    name_len_pos: None,
+                    descriptor_words: Vec::new(),
                     hash,
                     unk1,
                     name,
@@ -612,6 +661,7 @@ impl Nus3bankParser {
             meta: &[u8],
             tone_idx: usize,
             prefix_len: usize,
+            name_at: usize,
         ) -> Result<ToneMeta, Nus3bankError> {
             let mut c = Cursor::new(meta);
 
@@ -623,6 +673,13 @@ impl Nus3bankParser {
 
             let hash = BinaryReader::read_i32_le(&mut c)?;
             let unk1 = BinaryReader::read_i32_le(&mut c)?;
+            if name_at < c.position() as usize || name_at >= meta.len() {
+                return Err(Nus3bankError::InvalidFormat {
+                    reason: format!("Invalid TONE name offset (index={})", tone_idx),
+                });
+            }
+            c.seek(SeekFrom::Start(name_at as u64))?;
+            let name_len_pos = name_at;
             let name_len = BinaryReader::read_u8(&mut c)? as usize;
             if name_len == 0 || (c.position() + name_len as u64) > meta.len() as u64 {
                 return Err(Nus3bankError::InvalidFormat {
@@ -630,6 +687,7 @@ impl Nus3bankParser {
                 });
             }
             let name = BinaryReader::read_string_exact(&mut c, name_len - 1)?;
+            let name = name.split('\0').next().unwrap_or("").to_string();
             BinaryReader::skip(&mut c, 1)?;
             c.seek(SeekFrom::Start(align4_pos(c.position())))?;
 
@@ -782,6 +840,22 @@ impl Nus3bankParser {
                 } else {
                     None
                 },
+                name_len_pos: Some(name_len_pos),
+                descriptor_words: super::ob_tone_decode::ob_name_len_pos(meta)
+                    .map(|_| {
+                        let mut words = Vec::new();
+                        let mut off = 12;
+                        while off + 4 <= meta.len() {
+                            let w = u32::from_le_bytes(meta[off..off + 4].try_into().unwrap());
+                            words.push(w);
+                            off += 4;
+                            if (w as i32) >= 0 {
+                                break;
+                            }
+                        }
+                        words
+                    })
+                    .unwrap_or_default(),
                 hash,
                 unk1,
                 name,
@@ -801,8 +875,18 @@ impl Nus3bankParser {
             })
         }
 
-        let a = try_parse(meta, tone_idx, 0);
-        let b = try_parse(meta, tone_idx, 8);
+        if let Some(name_at) = super::ob_tone_decode::ob_name_len_pos(meta) {
+            if let Ok(parsed) = try_parse(meta, tone_idx, 0, name_at) {
+                return Ok(parsed);
+            }
+        }
+
+        let a = try_parse(meta, tone_idx, 0, prefix_name_at(0));
+        let b = try_parse(meta, tone_idx, 8, prefix_name_at(8));
+
+        fn prefix_name_at(prefix_len: usize) -> usize {
+            prefix_len + 8
+        }
 
         match (a, b) {
             (Ok(x), Ok(y)) => {
@@ -815,7 +899,13 @@ impl Nus3bankParser {
                         s += 2;
                     }
                     if t.offset >= 0 && t.size >= 0 {
-                        s += 1;
+                        // 0x3F800000 (1.0f) is a common false pack offset when
+                        // the name cursor lands in the param block.
+                        if t.offset > 200_000_000 || t.size > 80_000_000 {
+                            s -= 6;
+                        } else {
+                            s += 1;
+                        }
                     }
                     if t.offsets.len() <= 0x1000 {
                         s += 1;
@@ -828,11 +918,7 @@ impl Nus3bankParser {
                     }
                     s
                 };
-                if score(&y) > score(&x) {
-                    Ok(y)
-                } else {
-                    Ok(x)
-                }
+                if score(&y) > score(&x) { Ok(y) } else { Ok(x) }
             }
             (Ok(x), Err(_)) => Ok(x),
             (Err(_), Ok(y)) => Ok(y),
@@ -845,6 +931,8 @@ impl Nus3bankParser {
                     raw_meta: meta.to_vec(),
                     pack_offset_field_pos: None,
                     pack_size_field_pos: None,
+                    name_len_pos: None,
+                    descriptor_words: Vec::new(),
                     hash: 0,
                     unk1: 0,
                     name: String::new(),

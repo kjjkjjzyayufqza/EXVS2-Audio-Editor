@@ -1,5 +1,5 @@
 use base64::Engine as _;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::structures::{AudioTrack, Nus3bankFile, RawSection, TocEntry, ToneMeta};
 
@@ -86,6 +86,8 @@ fn tone_meta_json(t: &ToneMeta, opt: &DebugJsonOptions) -> Value {
         "raw_meta_len": t.raw_meta.len(),
         "pack_offset_field_pos": t.pack_offset_field_pos,
         "pack_size_field_pos": t.pack_size_field_pos,
+        "name_len_pos": t.name_len_pos,
+        "descriptor_words": t.descriptor_words,
         "hash": t.hash,
         "unk1": t.unk1,
         "name": t.name,

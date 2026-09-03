@@ -1,5 +1,7 @@
 # NUS3BANK Add Audio Implementation Guide (Current Rust Implementation)
 
+> **OB TONE name splice (2026-08-29):** `parse_tone_meta_block` locates the name after presence-mask continuation words. `rewrite_name_in_raw_meta` splices at `name_len_pos`. `save` / `add_track` run `ob_tone_decode::probe_tone_record`. Template DTON writes `raw_payload` byte-for-byte. Evidence: `docs/ob-tone-decode-av-from-save.md`. Plan: `docs/plan-fix-ob-tone-descriptor-save.md`.
+
 ## Overview
 
 本文件描述 **EXVS2 Audio Editor 当前的 Rust NUS3BANK 实现**如何添加音频，以及在写回时如何同时更新 `TONE` 与 `PACK`。

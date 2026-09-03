@@ -18,7 +18,7 @@ impl ToastMessage {
             color,
         }
     }
-    
+
     /// Check if the toast message has expired
     pub fn has_expired(&self) -> bool {
         self.expires_at <= Instant::now()
