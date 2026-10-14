@@ -80,6 +80,30 @@ fn is_riff_wav(data: &[u8]) -> bool {
     data.len() >= 12 && data.starts_with(b"RIFF") && data.get(8..12) == Some(&b"WAVE"[..])
 }
 
+/// RIFF/WAVE with a `data` chunk that declares at least one byte.
+/// Header-only, so save-enable checks do not spawn the IS14 encoder.
+pub fn is_nonempty_riff_wav(data: &[u8]) -> bool {
+    if !is_riff_wav(data) {
+        return false;
+    }
+    let mut offset = 12usize;
+    while offset + 8 <= data.len() {
+        let id = &data[offset..offset + 4];
+        let size = u32::from_le_bytes(data[offset + 4..offset + 8].try_into().unwrap_or([0; 4]))
+            as usize;
+        if id == b"data" {
+            return size > 0;
+        }
+        let padded = size + (size & 1);
+        let next = offset.saturating_add(8).saturating_add(padded);
+        if next <= offset {
+            break;
+        }
+        offset = next;
+    }
+    false
+}
+
 /// Pass through existing BNSF/IS14. Encode RIFF/WAVE. Reject anything else.
 pub fn ensure_bnsf_is14(data: Vec<u8>) -> Result<Vec<u8>, Nus3bankError> {
     if is_bnsf_is14(&data) {
@@ -386,4 +410,19 @@ pub fn write_minimal_wav_sine(path: &Path, sample_rate: u32, n_samples: u32) {
         writer.write_sample(s as i16).unwrap();
     }
     writer.finalize().unwrap();
+}
+
+#[test]
+fn nonempty_riff_wav_checks_data_chunk_without_decoding() {
+    let empty = [
+        b'R', b'I', b'F', b'F', 0x24, 0, 0, 0, b'W', b'A', b'V', b'E', b'f', b'm', b't', b' ',
+        16, 0, 0, 0, 1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x80, 0x3e, 0, 0, 2, 0, 16, 0, b'd', b'a',
+        b't', b'a', 0, 0, 0, 0,
+    ];
+    assert!(!is_nonempty_riff_wav(&empty));
+    let mut with_samples = empty.to_vec();
+    with_samples[40..44].copy_from_slice(&2u32.to_le_bytes());
+    with_samples.extend_from_slice(&[0, 0]);
+    assert!(is_nonempty_riff_wav(&with_samples));
+    assert!(!is_nonempty_riff_wav(b"BNSF"));
 }

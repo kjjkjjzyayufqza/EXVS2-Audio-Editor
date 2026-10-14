@@ -10,9 +10,78 @@ use nus3audio::Nus3audioFile;
 use std::sync::mpsc;
 use std::time::Instant;
 
+fn search_column_tag(column: SearchColumn) -> u8 {
+    match column {
+        SearchColumn::All => 0,
+        SearchColumn::Name => 1,
+        SearchColumn::Id => 2,
+        SearchColumn::Size => 3,
+        SearchColumn::Filename => 4,
+        SearchColumn::Type => 5,
+    }
+}
+
+fn sort_column_tag(column: SortColumn) -> u8 {
+    match column {
+        SortColumn::None => 0,
+        SortColumn::Name => 1,
+        SortColumn::Id => 2,
+        SortColumn::Size => 3,
+        SortColumn::Filename => 4,
+        SortColumn::Type => 5,
+    }
+}
+
 impl MainArea {
+    /// Filtered, sorted track list. Recomputes only when the query, sort, or rows change.
+    pub fn filtered_audio_files(&mut self) -> Vec<AudioFileInfo> {
+        self.rebuild_filter_cache_if_needed();
+        self.filter_cache.clone()
+    }
+
+    pub(super) fn rebuild_filter_cache_if_needed(&mut self) {
+        let key = self.filter_fingerprint();
+        if self.filter_cache_key == Some(key) {
+            return;
+        }
+        self.filter_cache = self.compute_filtered_audio_files();
+        self.filter_cache_key = Some(key);
+    }
+
+    pub(super) fn filter_fingerprint(&self) -> u64 {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        let mut mix = |bytes: &[u8]| {
+            for byte in bytes {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x100_0000_01b3);
+            }
+            hash ^= 0xff;
+            hash = hash.wrapping_mul(0x100_0000_01b3);
+        };
+        mix(self.search_query.as_bytes());
+        mix(&[
+            search_column_tag(self.search_column),
+            sort_column_tag(self.sort_column),
+            u8::from(self.sort_ascending),
+        ]);
+        let Some(files) = &self.audio_files else {
+            return hash;
+        };
+        mix(&files.len().to_le_bytes());
+        for file in files {
+            mix(file.name.as_bytes());
+            mix(file.id.as_bytes());
+            mix(file.filename.as_bytes());
+            mix(file.file_type.as_bytes());
+            mix(file.hex_id.as_deref().unwrap_or("").as_bytes());
+            mix(&file.size.to_le_bytes());
+            mix(&[u8::from(file.is_nus3bank)]);
+        }
+        hash
+    }
+
     /// Get filtered audio files based on search query and column, then sort them
-    pub fn filtered_audio_files(&self) -> Vec<AudioFileInfo> {
+    fn compute_filtered_audio_files(&self) -> Vec<AudioFileInfo> {
         if let Some(audio_files) = &self.audio_files {
             // First, filter the files based on search criteria
             let mut filtered_files = if self.search_query.is_empty() {

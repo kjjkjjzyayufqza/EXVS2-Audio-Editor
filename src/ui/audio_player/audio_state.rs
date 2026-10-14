@@ -854,7 +854,7 @@ impl AudioState {
     }
 
     /// Refresh playlist from the live table order while preserving the playing track identity.
-    pub fn sync_playlist_preserving_current(&mut self, playlist: Vec<AudioFileInfo>) {
+    pub fn sync_playlist_preserving_current(&mut self, playlist: &[AudioFileInfo]) {
         let identity = self
             .current_audio
             .as_ref()
@@ -872,17 +872,17 @@ impl AudioState {
                 .zip(playlist.iter())
                 .any(|(a, b)| a.name != b.name || a.id != b.id);
 
-        self.playlist = playlist;
+        if order_changed {
+            self.playlist = playlist.to_vec();
+            self.shuffle_bag.clear();
+        }
         if let Some((name, id)) = identity {
             self.current_track_index = self
                 .playlist
                 .iter()
                 .position(|f| f.name == name && f.id == id);
-        } else {
+        } else if order_changed {
             self.current_track_index = None;
-        }
-        if order_changed {
-            self.shuffle_bag.clear();
         }
     }
 

@@ -1,14 +1,23 @@
 {
-  "version": "0.8.1",
+  "version": "0.8.2",
   "download_url": "https://github.com/kjjkjjzyayufqza/EXVS2-Audio-Editor/releases/latest",
   "changelog": [
-    "Playback: track A-B loop is optional (amber chip) so auto-next no longer gets stuck on looped tracks",
-    "Queue follows live table order (search + sort); fairer shuffle bag",
-    "All dialogs are draggable; About layout and support links improved",
-    "New app icon (EXE + taskbar) and refreshed README with screenshots",
-    "Buy Me A Coffee links in README, About, and GitHub homepage"
+    "Batch replace converts the new audio once and reuses it for every selected track",
+    "nus3audio only: shrink selected or all tracks to high-quality VBR MP3 (same rate and channels; in-file loop points are not copied)",
+    "Save failures explain read-only vs file-in-use, and can retry as administrator without truncating the original",
+    "Faster track list, and NUS3BANK save checks no longer run the encoder just to decide"
   ],
   "history": [
+    {
+      "version": "0.8.2",
+      "date": "2026-10-14",
+      "changes": [
+        "Batch replace converts the new audio once and reuses it for every selected track",
+        "nus3audio only: shrink selected or all tracks to high-quality VBR MP3 (same rate and channels; in-file loop points are not copied)",
+        "Save failures explain read-only vs file-in-use, and can retry as administrator without truncating the original",
+        "Faster track list, and NUS3BANK save checks no longer run the encoder just to decide"
+      ]
+    },
     {
       "version": "0.8.1",
       "date": "2026-08-11",

@@ -7,6 +7,7 @@ mod fonts;
 mod locale;
 mod localized;
 pub mod nus3bank;
+mod save_io;
 mod ui;
 mod version_check;
 

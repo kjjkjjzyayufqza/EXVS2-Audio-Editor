@@ -14,7 +14,7 @@ impl MainArea {
     pub fn render_audio_table(
         &mut self,
         ui: &mut Ui,
-        filtered_audio_files: Vec<AudioFileInfo>,
+        filtered_audio_files: &[AudioFileInfo],
         files_count: usize,
         available_height: f32,
         available_width: f32,
@@ -35,6 +35,8 @@ impl MainArea {
             edit_prop: bool,
             replace_new: bool,
             replace_empty: bool,
+            compress_mp3_selected: bool,
+            compress_mp3_all: bool,
             remove_selected: bool,
             debug_convert_all_wav: bool,
         }
@@ -51,6 +53,8 @@ impl MainArea {
             edit_prop: false,
             replace_new: false,
             replace_empty: false,
+            compress_mp3_selected: false,
+            compress_mp3_all: false,
             remove_selected: false,
             debug_convert_all_wav: false,
         };
@@ -144,6 +148,17 @@ impl MainArea {
                 if ui
                     .button(RichText::new(format!(
                         "{} {}",
+                        regular::MUSIC_NOTE,
+                        localized::compress_mp3_btn()
+                    )))
+                    .on_hover_text(localized::compress_mp3_selected_tooltip())
+                    .clicked()
+                {
+                    action_data.compress_mp3_selected = true;
+                }
+                if ui
+                    .button(RichText::new(format!(
+                        "{} {}",
                         regular::TRASH,
                         localized::remove_btn()
                     )))
@@ -158,6 +173,14 @@ impl MainArea {
 
             // More Actions
             ui.menu_button(localized::more_menu(), |ui| {
+                if ui
+                    .button(localized::compress_mp3_all())
+                    .on_hover_text(localized::compress_mp3_all_tooltip())
+                    .clicked()
+                {
+                    action_data.compress_mp3_all = true;
+                    ui.close();
+                }
                 if ui
                     .button(localized::debug_convert_all())
                     .on_hover_text(localized::debug_convert_tooltip())
@@ -196,7 +219,7 @@ impl MainArea {
         if let Some(player) = self.audio_player.as_ref() {
             let state = player.get_audio_state();
             if let Ok(mut state) = state.lock() {
-                state.sync_playlist_preserving_current(filtered_audio_files.clone());
+                state.sync_playlist_preserving_current(filtered_audio_files);
             }
         }
 
@@ -274,6 +297,30 @@ impl MainArea {
                 &localized::confirm_replace_empty_title(),
                 &localized::confirm_replace_empty_body(selected_count),
             );
+        }
+
+        if action_data.compress_mp3_selected || action_data.compress_mp3_all {
+            let is_nus3audio = self
+                .selected_file
+                .as_deref()
+                .is_some_and(|path| path.to_ascii_lowercase().ends_with(".nus3audio"));
+            if !is_nus3audio {
+                self.add_toast(localized::compress_mp3_audio_only(), Color32::GOLD);
+            } else if action_data.compress_mp3_selected {
+                self.pending_compress_mp3_selected = true;
+                self.pending_compress_mp3_all = false;
+                self.confirm_modal.open(
+                    &localized::confirm_compress_mp3_selected_title(),
+                    &localized::confirm_compress_mp3_selected_body(selected_count),
+                );
+            } else {
+                self.pending_compress_mp3_all = true;
+                self.pending_compress_mp3_selected = false;
+                self.confirm_modal.open(
+                    &localized::confirm_compress_mp3_all_title(),
+                    &localized::confirm_compress_mp3_all_body(),
+                );
+            }
         }
 
         if action_data.remove_selected {
@@ -441,7 +488,7 @@ impl MainArea {
                                 {
                                     let mut state = state.lock().unwrap();
                                     state.update_playlist(
-                                        filtered_audio_files.clone(),
+                                        filtered_audio_files.to_vec(),
                                         &audio_info.name,
                                         &audio_info.id,
                                     );
@@ -576,7 +623,13 @@ impl MainArea {
                     }
                 }
             }
-            // If there is a pending replace with empty wav action, perform it
+            // Shrink selected or all NUS3AUDIO tracks to high-quality MP3.
+            else if self.pending_compress_mp3_selected || self.pending_compress_mp3_all {
+                let selected_only = self.pending_compress_mp3_selected;
+                self.pending_compress_mp3_selected = false;
+                self.pending_compress_mp3_all = false;
+                self.run_mp3_compress(selected_only, &mut toasts_to_add);
+            }
             else if self.pending_replace_empty {
                 self.pending_replace_empty = false;
 
@@ -868,6 +921,9 @@ impl MainArea {
                 self.pending_export_all = false;
             } else if self.pending_replace_empty {
                 self.pending_replace_empty = false;
+            } else if self.pending_compress_mp3_selected || self.pending_compress_mp3_all {
+                self.pending_compress_mp3_selected = false;
+                self.pending_compress_mp3_all = false;
             } else if self.pending_debug_convert_all_wav {
                 self.pending_debug_convert_all_wav = false;
             } else if self.pending_remove_selected {
@@ -974,95 +1030,111 @@ impl MainArea {
                         // Retrieve the file path chosen during the dialog (from representative)
                         let rep_path_opt =
                             ReplaceUtils::get_replacement_path(&audio_info.name, &audio_info.id);
-                        if rep_path_opt.is_none() {
-                            toasts_to_add
-                                .push((localized::no_replacement_path().to_string(), Color32::RED));
-                            return;
-                        }
-                        let rep_path = rep_path_opt.unwrap();
-                        let rep_path_ref = rep_path.as_path();
-
-                        if let Some(ref mut audio_files) = self.audio_files {
-                            use std::collections::HashMap;
-                            let mut index_by_key: HashMap<String, usize> = HashMap::new();
-                            for (i, f) in audio_files.iter().enumerate() {
-                                index_by_key.insert(format!("{}:{}", f.name, f.id), i);
-                            }
-
-                            let mut replaced_count: usize = 0;
-                            for key in self.selected_items.clone().into_iter() {
-                                if let Some(&idx) = index_by_key.get(&key) {
-                                    let target_info = audio_files[idx].clone();
-                                    match ReplaceUtils::process_replacement_with_loop_settings(
-                                        &target_info,
-                                        Some(rep_path_ref),
-                                        loop_start,
-                                        loop_end,
-                                        use_custom_loop,
-                                        enable_loop,
-                                        self.loop_settings_modal.settings.gain_db,
-                                    ) {
-                                        Ok(new_audio_info) => {
-                                            audio_files[idx] = new_audio_info;
-                                            replaced_count += 1;
+                        if let Some(rep_path) = rep_path_opt {
+                            let prepared = ReplaceUtils::prepare_replacement_audio(
+                                rep_path.as_path(),
+                                loop_start,
+                                loop_end,
+                                use_custom_loop,
+                                enable_loop,
+                                self.loop_settings_modal.settings.gain_db,
+                            );
+                            match prepared {
+                                Ok(prepared) => {
+                                    if let Some(ref mut audio_files) = self.audio_files {
+                                        use std::collections::HashMap;
+                                        let mut index_by_key: HashMap<String, usize> =
+                                            HashMap::new();
+                                        for (i, f) in audio_files.iter().enumerate() {
+                                            index_by_key.insert(format!("{}:{}", f.name, f.id), i);
                                         }
-                                        Err(e) => {
+
+                                        let mut replaced_count: usize = 0;
+                                        for key in self.selected_items.clone().into_iter() {
+                                            if let Some(&idx) = index_by_key.get(&key) {
+                                                let target_info = audio_files[idx].clone();
+                                                match ReplaceUtils::apply_prepared_replacement(
+                                                    &target_info,
+                                                    &prepared,
+                                                    loop_start,
+                                                    loop_end,
+                                                    use_custom_loop,
+                                                    enable_loop,
+                                                ) {
+                                                    Ok(new_audio_info) => {
+                                                        audio_files[idx] = new_audio_info;
+                                                        replaced_count += 1;
+                                                    }
+                                                    Err(e) => {
+                                                        toasts_to_add.push((
+                                                            localized::failed_process_replacement_key(
+                                                                &key, &e,
+                                                            ),
+                                                            Color32::RED,
+                                                        ));
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        self.file_count = Some(audio_files.len());
+
+                                        let loop_message = if use_custom_loop {
+                                            let start_str = loop_start.map_or(
+                                                localized::loop_word_start().to_string(),
+                                                |s| format!("{:.2}s", s),
+                                            );
+                                            let end_str = loop_end.map_or(
+                                                localized::loop_word_end().to_string(),
+                                                |e| format!("{:.2}s", e),
+                                            );
+                                            localized::loop_parenthetical_range(&start_str, &end_str)
+                                        } else {
+                                            localized::loop_parenthetical_full().to_string()
+                                        };
+
+                                        if replaced_count > 0 {
+                                            if let Some(audio_player) = &mut self.audio_player {
+                                                if let Err(e) =
+                                                    audio_player.load_audio(audio_info, file_path)
+                                                {
+                                                    log::error!(
+                                                        "Failed to play replacement after batch: {e}"
+                                                    );
+                                                    toasts_to_add.push((
+                                                        localized::prepare_playback_audio_failed()
+                                                            .to_string(),
+                                                        Color32::RED,
+                                                    ));
+                                                }
+                                            }
+
+                                            self.selected_items.clear();
                                             toasts_to_add.push((
-                                                localized::failed_process_replacement_key(&key, &e),
-                                                Color32::RED,
+                                                localized::replaced_in_memory_count(
+                                                    replaced_count,
+                                                    &loop_message,
+                                                ),
+                                                Color32::GREEN,
+                                            ));
+                                        } else {
+                                            toasts_to_add.push((
+                                                localized::no_matching_replace().to_string(),
+                                                Color32::GOLD,
                                             ));
                                         }
                                     }
                                 }
-                            }
-
-                            self.file_count = Some(audio_files.len());
-
-                            let loop_message = if use_custom_loop {
-                                let start_str = loop_start
-                                    .map_or(localized::loop_word_start().to_string(), |s| {
-                                        format!("{:.2}s", s)
-                                    });
-                                let end_str = loop_end
-                                    .map_or(localized::loop_word_end().to_string(), |e| {
-                                        format!("{:.2}s", e)
-                                    });
-                                localized::loop_parenthetical_range(&start_str, &end_str)
-                            } else {
-                                localized::loop_parenthetical_full().to_string()
-                            };
-
-                            if replaced_count > 0 {
-                                // Play the representative track via full load (uses in-memory replacement)
-                                if let Some(audio_player) = &mut self.audio_player {
-                                    if let Err(e) = audio_player.load_audio(audio_info, file_path) {
-                                        log::error!(
-                                            "Failed to play replacement after batch: {}",
-                                            e
-                                        );
-                                        toasts_to_add.push((
-                                            localized::prepare_playback_audio_failed().to_string(),
-                                            Color32::RED,
-                                        ));
-                                    }
+                                Err(e) => {
+                                    toasts_to_add.push((
+                                        localized::failed_process_replacement(&e),
+                                        Color32::RED,
+                                    ));
                                 }
-
-                                // Clear all selected items after successful batch replacement
-                                self.selected_items.clear();
-
-                                toasts_to_add.push((
-                                    localized::replaced_in_memory_count(
-                                        replaced_count,
-                                        &loop_message,
-                                    ),
-                                    Color32::GREEN,
-                                ));
-                            } else {
-                                toasts_to_add.push((
-                                    localized::no_matching_replace().to_string(),
-                                    Color32::GOLD,
-                                ));
                             }
+                        } else {
+                            toasts_to_add
+                                .push((localized::no_replacement_path().to_string(), Color32::RED));
                         }
                     } else {
                         // Single item flow (existing behavior)
@@ -1189,7 +1261,7 @@ impl MainArea {
             };
             let state = player.get_audio_state();
             let mut state = state.lock().unwrap();
-            state.sync_playlist_preserving_current(visible);
+            state.sync_playlist_preserving_current(&visible);
 
             if state.playlist.is_empty() {
                 Err(localized::no_tracks_in_queue())
@@ -1242,7 +1314,7 @@ impl MainArea {
             };
             let state = player.get_audio_state();
             let mut state = state.lock().unwrap();
-            state.sync_playlist_preserving_current(visible);
+            state.sync_playlist_preserving_current(&visible);
 
             if state.playlist.is_empty() {
                 Err(localized::no_tracks_in_queue())
@@ -1277,6 +1349,65 @@ impl MainArea {
             Err(msg) => {
                 self.add_toast(msg, Color32::from_rgb(220, 180, 80));
             }
+        }
+    }
+
+    fn run_mp3_compress(&mut self, selected_only: bool, toasts: &mut Vec<(String, Color32)>) {
+        let Some(path) = self.selected_file.clone() else {
+            toasts.push((localized::no_file_selected(), Color32::GOLD));
+            return;
+        };
+        if !path.to_ascii_lowercase().ends_with(".nus3audio") {
+            toasts.push((localized::compress_mp3_audio_only(), Color32::GOLD));
+            return;
+        }
+        let Some(audio_files) = self.audio_files.clone() else {
+            toasts.push((localized::no_audio_list(), Color32::GOLD));
+            return;
+        };
+
+        let tracks: Vec<AudioFileInfo> = if selected_only {
+            audio_files
+                .into_iter()
+                .filter(|info| {
+                    self.selected_items
+                        .contains(&format!("{}:{}", info.name, info.id))
+                })
+                .collect()
+        } else {
+            audio_files
+        };
+        if tracks.is_empty() {
+            toasts.push((localized::no_matching_replace().to_string(), Color32::GOLD));
+            return;
+        }
+
+        let report = super::mp3_compress::compress_tracks(&path, &tracks);
+        if let Some(files) = self.audio_files.as_mut() {
+            for updated in report.updated {
+                if let Some(slot) = files
+                    .iter_mut()
+                    .find(|info| info.name == updated.name && info.id == updated.id)
+                {
+                    *slot = updated;
+                }
+            }
+        }
+
+        for err in report.errors.iter().take(8) {
+            toasts.push((err.clone(), Color32::RED));
+        }
+        let color = if report.failed == 0 {
+            Color32::GREEN
+        } else {
+            Color32::GOLD
+        };
+        toasts.push((
+            localized::compress_mp3_done(report.compressed, report.skipped, report.failed),
+            color,
+        ));
+        if selected_only && report.compressed > 0 {
+            self.selected_items.clear();
         }
     }
 

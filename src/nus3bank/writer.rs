@@ -1,5 +1,3 @@
-use std::fs;
-
 use super::{
     binary_utils::BinaryReader,
     error::Nus3bankError,
@@ -115,7 +113,7 @@ impl Nus3bankWriter {
         let total_size = out.len().saturating_sub(8) as u32;
         out[4..8].copy_from_slice(&BinaryReader::write_u32_le(total_size));
 
-        fs::write(path, out)?;
+        crate::save_io::write_replacing(path.as_ref(), &out).map_err(Nus3bankError::Save)?;
         Ok(())
     }
 

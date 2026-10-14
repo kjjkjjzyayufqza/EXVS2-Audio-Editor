@@ -10,6 +10,7 @@ mod grp_list_modal;
 mod grp_pending;
 mod grp_template;
 mod loop_settings_modal;
+mod mp3_compress;
 mod nus3audio_file_utils;
 mod prop_edit_modal;
 mod prop_pending;

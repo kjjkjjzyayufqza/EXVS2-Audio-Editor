@@ -11,7 +11,9 @@ use std::fs;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::dton_pending;
 use super::dton_tones_modal::apply_dton_tones_to_file;
@@ -44,6 +46,27 @@ static LOOP_SETTINGS: Lazy<Mutex<HashMap<String, StoredLoopSettings>>> =
 // Key format: "file_path:audio_name"; value: replacement file path.
 static REPLACEMENT_FILE_PATHS: Lazy<Mutex<HashMap<String, PathBuf>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn unique_temp_path(prefix: &str, ext: &str) -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "{prefix}_{}_{ms}_{n}.{ext}",
+        std::process::id()
+    ))
+}
+
+/// Decoded replacement shared by every target in a batch replace.
+/// The source file is converted once; each track only stores a copy of these bytes.
+pub struct PreparedReplacement {
+    pub bytes: Vec<u8>,
+    pub filename: String,
+    pub file_type: String,
+}
 
 /// Utility functions for replacing audio files
 pub struct ReplaceUtils;
@@ -106,9 +129,8 @@ impl ReplaceUtils {
             return Err(format!("vgmstream-cli not found at {:?}", vgmstream_path));
         }
 
-        let temp_dir = std::env::temp_dir();
-        let input_path = temp_dir.join("nus3bank_in.wav");
-        let output_path = temp_dir.join("nus3bank_out_pcm.wav");
+        let input_path = unique_temp_path("nus3_pcm_in", "bin");
+        let output_path = unique_temp_path("nus3_pcm_out", "wav");
 
         std::fs::write(&input_path, data)
             .map_err(|e| format!("Failed to write temp input audio: {}", e))?;
@@ -149,33 +171,8 @@ impl ReplaceUtils {
         Ok(wav_data)
     }
 
-    /// Replace audio data in memory only (does not modify the actual file on disk)
-    /// Supports both NUS3AUDIO and NUS3BANK files
-    pub fn replace_in_memory(
-        audio_file_info: &AudioFileInfo,
-        replacement_file_path: &str,
-    ) -> Result<AudioFileInfo, String> {
-        // Load the replacement file data (must succeed before any temp cleanup)
-        let replacement_data = match fs::read(replacement_file_path) {
-            Ok(data) => data,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to read replacement file '{}': {}",
-                    replacement_file_path, e
-                ));
-            }
-        };
-
-        if replacement_data.is_empty() {
-            return Err(format!(
-                "Replacement file is empty: {}",
-                replacement_file_path
-            ));
-        }
-
-        // Create the key based on file type
-        let key = if audio_file_info.is_nus3bank {
-            // For NUS3BANK, use hex_id:name format
+    pub(crate) fn replacement_map_key(audio_file_info: &AudioFileInfo) -> String {
+        if audio_file_info.is_nus3bank {
             format!(
                 "{}:{}",
                 audio_file_info
@@ -185,58 +182,162 @@ impl ReplaceUtils {
                 audio_file_info.name
             )
         } else {
-            // For NUS3AUDIO, use original name:id format
             format!("{}:{}", audio_file_info.name, audio_file_info.id)
+        }
+    }
+
+    /// Store already-decoded replacement bytes. Does not read or convert a file.
+    pub(crate) fn store_replacement_bytes(
+        audio_file_info: &AudioFileInfo,
+        replacement_data: Vec<u8>,
+        filename: String,
+        file_type: String,
+    ) -> Result<AudioFileInfo, String> {
+        if replacement_data.is_empty() {
+            return Err("Replacement audio is empty".to_string());
+        }
+
+        let key = Self::replacement_map_key(audio_file_info);
+        let size = replacement_data.len();
+        println!("Storing replacement bytes: key={key} size={size} type={file_type}");
+
+        let mut map = REPLACED_AUDIO_DATA
+            .lock()
+            .map_err(|_| "Failed to lock replacement data map".to_string())?;
+        map.insert(key, replacement_data);
+
+        Ok(AudioFileInfo {
+            name: audio_file_info.name.clone(),
+            id: audio_file_info.id.clone(),
+            size,
+            filename,
+            file_type,
+            hex_id: audio_file_info.hex_id.clone(),
+            is_nus3bank: audio_file_info.is_nus3bank,
+        })
+    }
+
+    /// Decode `source_path` once (vgmstream, optional gain) into memory.
+    /// Callers that replace many tracks must reuse the returned bytes.
+    pub fn prepare_replacement_audio(
+        source_path: &Path,
+        loop_start: Option<f32>,
+        loop_end: Option<f32>,
+        use_custom_loop: bool,
+        enable_loop: bool,
+        gain_db: f32,
+    ) -> Result<PreparedReplacement, String> {
+        if !source_path.exists() {
+            return Err(format!(
+                "Replacement source file does not exist: {:?}",
+                source_path
+            ));
+        }
+
+        println!("Decoding replacement once: {:?}", source_path);
+
+        let decoded_path = match Self::process_with_vgmstream(
+            source_path,
+            loop_start,
+            loop_end,
+            use_custom_loop,
+            enable_loop,
+        ) {
+            Ok(path) => path,
+            Err(e) => {
+                println!("Warning: Failed to process file with vgmstream: {e}");
+                let lower = source_path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if lower == "wav" {
+                    source_path.to_path_buf()
+                } else {
+                    return Err(format!("Failed to decode replacement with vgmstream: {e}"));
+                }
+            }
         };
 
-        let is_wav = replacement_data.len() >= 12
-            && &replacement_data[0..4] == b"RIFF"
-            && &replacement_data[8..12] == b"WAVE";
-        println!(
-            "Storing replacement bytes: key={} size={} bytes wav={} from={}",
-            key,
-            replacement_data.len(),
-            is_wav,
-            replacement_file_path
-        );
+        let gain_processed_path = if gain_db.abs() > f32::EPSILON {
+            match Self::apply_wav_gain(&decoded_path, gain_db) {
+                Ok(path) => path,
+                Err(e) => {
+                    println!("Warning: Failed to apply gain: {e}. Using decoded file.");
+                    decoded_path.clone()
+                }
+            }
+        } else {
+            decoded_path.clone()
+        };
 
-        // Store the replacement data in our static HashMap (source of truth for playback)
-        {
-            let map_result = REPLACED_AUDIO_DATA.lock();
-            if let Ok(mut map) = map_result {
-                map.insert(key.clone(), replacement_data.clone());
-            } else {
-                return Err("Failed to lock replacement data map".to_string());
+        let bytes = fs::read(&gain_processed_path).map_err(|e| {
+            format!(
+                "Failed to read decoded replacement '{}': {}",
+                gain_processed_path.display(),
+                e
+            )
+        });
+
+        for path in [&decoded_path, &gain_processed_path] {
+            if path.as_path() != source_path && path.exists() {
+                if let Err(e) = fs::remove_file(path) {
+                    println!("Warning: failed to clean temp {:?}: {}", path, e);
+                }
             }
         }
 
-        // Do NOT overwrite REPLACEMENT_FILE_PATHS with processed temp paths.
-        // That map must keep the user-selected source file (mp3/wav/…).
-        // Processed temps are deleted after read; pointing at them breaks re-process / batch.
+        let bytes = bytes?;
+        if bytes.is_empty() {
+            return Err("Decoded replacement audio is empty".to_string());
+        }
 
-        // Get the filename for the new AudioFileInfo
-        let filename = Path::new(replacement_file_path)
+        let is_wav = bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE";
+        let filename = source_path
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
+        println!(
+            "Replacement decoded once: {} bytes from {:?}",
+            bytes.len(),
+            source_path
+        );
 
-        // Create a new AudioFileInfo with the replacement data
-        let new_audio_info = AudioFileInfo {
-            name: audio_file_info.name.clone(),
-            id: audio_file_info.id.clone(),
-            size: replacement_data.len(),
+        Ok(PreparedReplacement {
+            bytes,
             filename,
             file_type: if is_wav {
                 "WAV".to_string()
             } else {
-                audio_file_info.file_type.clone()
+                "Unknown".to_string()
             },
-            hex_id: audio_file_info.hex_id.clone(),
-            is_nus3bank: audio_file_info.is_nus3bank,
-        };
+        })
+    }
 
-        Ok(new_audio_info)
+    /// Attach a previously decoded replacement to one track. Does not convert audio.
+    pub fn apply_prepared_replacement(
+        audio_file_info: &AudioFileInfo,
+        prepared: &PreparedReplacement,
+        loop_start: Option<f32>,
+        loop_end: Option<f32>,
+        use_custom_loop: bool,
+        enable_loop: bool,
+    ) -> Result<AudioFileInfo, String> {
+        let info = Self::store_replacement_bytes(
+            audio_file_info,
+            prepared.bytes.clone(),
+            prepared.filename.clone(),
+            prepared.file_type.clone(),
+        )?;
+        Self::store_loop_settings(
+            audio_file_info,
+            loop_start,
+            loop_end,
+            use_custom_loop,
+            enable_loop,
+        );
+        Ok(info)
     }
 
     /// Process audio file with vgmstream-cli to add loop points
@@ -253,21 +354,9 @@ impl ReplaceUtils {
             return Err(format!("vgmstream-cli not found at {:?}", vgmstream_path));
         }
 
-        // Unique temp path per invocation — same source filename used for many tracks
-        // would otherwise overwrite a shared looping_*.wav and race with cleanup.
-        let temp_dir = std::env::temp_dir();
-        let stem = file_path.file_stem().unwrap_or_default().to_string_lossy();
-        let stem_safe: String = stem
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .take(48)
-            .collect();
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let temp_filename = format!("looping_{}_{}_{}.wav", stem_safe, std::process::id(), stamp);
-        let temp_output_path = temp_dir.join(&temp_filename);
+        // Unique temp path per invocation. Batch replace decodes once, but a second
+        // replace in the same millisecond must not reuse this file.
+        let temp_output_path = unique_temp_path("looping", "wav");
         let temp_output_path_str = temp_output_path.to_string_lossy().to_string();
 
         println!(
@@ -331,7 +420,6 @@ impl ReplaceUtils {
         let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         let result = command.args(args_ref).output();
-        println!("vgmstream-cli command result: {:?}", result);
 
         match result {
             Ok(output) => {
@@ -402,15 +490,8 @@ impl ReplaceUtils {
             .map_err(|e| format!("Failed to open WAV for gain: {}", e))?;
         let spec = reader.spec();
 
-        // Prepare output path
-        let parent_dir: PathBuf = input_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::temp_dir());
-        let out_path = parent_dir.join(format!(
-            "gain_{}",
-            input_path.file_name().unwrap_or_default().to_string_lossy()
-        ));
+        // Always write beside other temps. Never drop a gain_*.wav next to the user's file.
+        let out_path = unique_temp_path("gain", "wav");
 
         let mut writer = hound::WavWriter::create(&out_path, spec)
             .map_err(|e| format!("Failed to create output WAV: {}", e))?;
@@ -523,151 +604,51 @@ impl ReplaceUtils {
         enable_loop: bool,
         gain_db: f32,
     ) -> Result<AudioFileInfo, String> {
-        // 打印调试信息
-        println!(
-            "Attempting to process replacement for: {} (ID: {})",
-            audio_file_info.name, audio_file_info.id
-        );
-
-        // Create key for hashmaps - Use the original audio name and ID
         let key = format!("{}:{}", audio_file_info.name, audio_file_info.id);
-        println!("Using hashmap key: {}", key);
-
-        // Get the file path from the provided path or from the stored paths
         let actual_file_path = if let Some(path) = file_path {
-            println!("Using provided file path: {:?}", path);
             path.to_path_buf()
+        } else if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
+            map.get(&key)
+                .cloned()
+                .ok_or_else(|| format!("No replacement file path found for key: {key}"))?
         } else {
-            // 打印存储的所有文件路径键，用于诊断
-            if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
-                println!("Available replacement files in storage:");
-                for (k, v) in map.iter() {
-                    println!("  Key: {}, Path: {:?}", k, v);
-                }
-            }
-
-            if let Ok(map) = REPLACEMENT_FILE_PATHS.lock() {
-                if let Some(path) = map.get(&key) {
-                    println!("Found stored file path: {:?}", path);
-                    path.clone()
-                } else {
-                    return Err(format!("No replacement file path found for key: {}", key));
-                }
-            } else {
-                return Err("Failed to access replacement file paths".to_string());
-            }
+            return Err("Failed to access replacement file paths".to_string());
         };
 
-        println!("Using actual file path: {:?}", actual_file_path);
-
-        if !actual_file_path.exists() {
-            return Err(format!(
-                "Replacement source file does not exist: {:?}",
-                actual_file_path
-            ));
-        }
-
-        // Always decode through vgmstream first so MP3/IDSP/etc become a stable WAV,
-        // then apply gain on the WAV (hound cannot open mp3).
-        let decoded_path = match Self::process_with_vgmstream(
+        let prepared = Self::prepare_replacement_audio(
             &actual_file_path,
             loop_start,
             loop_end,
             use_custom_loop,
             enable_loop,
-        ) {
-            Ok(path) => path,
-            Err(e) => {
-                println!("Warning: Failed to process file with vgmstream: {}", e);
-                // Fall back to the raw source only if it is already a WAV
-                let lower = actual_file_path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("")
-                    .to_ascii_lowercase();
-                if lower == "wav" {
-                    actual_file_path.clone()
-                } else {
-                    return Err(format!("Failed to decode replacement with vgmstream: {e}"));
-                }
-            }
-        };
-
-        let gain_processed_path = if gain_db.abs() > std::f32::EPSILON {
-            match Self::apply_wav_gain(&decoded_path, gain_db) {
-                Ok(p) => {
-                    println!("Successfully applied gain to file: {:?}", p);
-                    p
-                }
-                Err(e) => {
-                    println!("Warning: Failed to apply gain: {}. Using decoded file.", e);
-                    decoded_path.clone()
-                }
-            }
-        } else {
-            decoded_path.clone()
-        };
-
-        // Read into memory BEFORE deleting temps
-        let result =
-            Self::replace_in_memory(audio_file_info, gain_processed_path.to_str().unwrap());
-
-        if let Ok(ref info) = result {
-            println!(
-                "Replacement stored for {} ({}): size={} filename={}",
-                info.name, info.id, info.size, info.filename
-            );
-        }
-
-        // Store loop settings under every key variant used by play / replace lookups
-        Self::store_loop_settings(
+            gain_db,
+        )?;
+        Self::apply_prepared_replacement(
             audio_file_info,
+            &prepared,
             loop_start,
             loop_end,
             use_custom_loop,
             enable_loop,
-        );
-
-        // Clean up temporary files only (never the user-selected source)
-        for p in [&decoded_path, &gain_processed_path] {
-            if p.as_path() != actual_file_path.as_path() && p.exists() {
-                match fs::remove_file(p) {
-                    Ok(()) => println!("Cleaned up temporary file: {:?}", p),
-                    Err(e) => println!("Warning: failed to clean temp {:?}: {}", p, e),
-                }
-            }
-        }
-
-        result
+        )
     }
 
     /// Get the replacement audio data for a specific audio file (unified for both file types)
     pub fn get_replacement_data_unified(audio_file_info: &AudioFileInfo) -> Option<Vec<u8>> {
         let keys = Self::loop_setting_keys(audio_file_info);
 
-        println!("Looking for replacement data with keys: {:?}", keys);
         if let Ok(map) = REPLACED_AUDIO_DATA.lock() {
             for key in &keys {
                 if let Some(data) = map.get(key) {
-                    println!(
-                        "Found replacement data for {} via key {} ({} bytes)",
-                        audio_file_info.name,
-                        key,
-                        data.len()
-                    );
                     return Some(data.clone());
                 }
             }
-            println!(
-                "No replacement data found for {}. Available keys:",
-                audio_file_info.name
-            );
-            for stored_key in map.keys() {
-                println!("  - {}", stored_key);
-            }
             None
         } else {
-            println!("Failed to access replacement data map");
+            println!(
+                "Failed to access replacement data map for {}",
+                audio_file_info.name
+            );
             None
         }
     }
@@ -792,11 +773,15 @@ impl ReplaceUtils {
     pub fn apply_replacements_and_save(
         original_file_path: &str,
         save_path: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), crate::save_io::SaveWriteError> {
         // Load the original NUS3AUDIO file
         let mut nus3_file = match Nus3audioFile::open(original_file_path) {
             Ok(file) => file,
-            Err(e) => return Err(format!("Failed to open NUS3AUDIO file: {}", e)),
+            Err(e) => {
+                return Err(crate::save_io::SaveWriteError::other(format!(
+                    "Failed to open NUS3AUDIO file: {e}"
+                )));
+            }
         };
 
         // Apply all replacements from our static HashMap
@@ -842,11 +827,19 @@ impl ReplaceUtils {
                 Err(_) => continue, // Skip if ID is invalid
             };
 
-            // Add the new audio file
+            // A later replace/compress stores bytes under name:id. Prefer those over the
+            // original pending-add payload so newly added tracks keep the edited audio.
+            let key = format!("{name}:{id}");
+            let data = REPLACED_AUDIO_DATA
+                .lock()
+                .ok()
+                .and_then(|map| map.get(&key).cloned())
+                .unwrap_or(data);
+
             nus3_file.files.push(AudioFile {
                 id: id_val,
                 name: name.clone(),
-                data: data.clone(),
+                data,
             });
             println!("Added audio file: {} (ID: {})", name, id);
         }
@@ -857,11 +850,22 @@ impl ReplaceUtils {
         // Write the modified NUS3AUDIO data to memory buffer
         nus3_file.write(&mut output_buffer);
 
-        // Write the buffer to the save file
-        match fs::write(save_path, output_buffer) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to write updated file: {}", e)),
+        crate::save_io::write_replacing(Path::new(save_path), &output_buffer)
+    }
+
+    /// Drop in-memory bank edits that were just written to disk.
+    pub fn clear_saved_bank_pending(file_path: &str) {
+        if !file_path.to_lowercase().ends_with(".nus3bank") {
+            return;
         }
+        Nus3bankReplacer::clear_for_file(file_path);
+        if grp_pending::has(file_path) {
+            let _ = grp_pending::clear(file_path);
+        }
+        if dton_pending::has(file_path) {
+            let _ = dton_pending::clear(file_path);
+        }
+        let _ = prop_pending::clear(file_path);
     }
 
     /// Replace target audio in memory with an empty WAV buffer, preserving name and id
@@ -887,39 +891,12 @@ impl ReplaceUtils {
             0x00, 0x00, 0x00, 0x00, // Subchunk2Size = 0
         ];
 
-        let replacement_data = EMPTY_WAV_HEADER.to_vec();
-
-        // Store into in-memory replacement map using consistent key format
-        let key = if audio_file_info.is_nus3bank {
-            // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
-            format!(
-                "{}:{}",
-                audio_file_info
-                    .hex_id
-                    .as_ref()
-                    .unwrap_or(&audio_file_info.id),
-                audio_file_info.name
-            )
-        } else {
-            // For NUS3AUDIO, use original name:id format
-            format!("{}:{}", audio_file_info.name, audio_file_info.id)
-        };
-        if let Ok(mut map) = REPLACED_AUDIO_DATA.lock() {
-            map.insert(key, replacement_data.clone());
-        }
-
-        // Create a new AudioFileInfo reflecting the empty wav size and filename
-        let new_audio_info = AudioFileInfo {
-            name: audio_file_info.name.clone(),
-            id: audio_file_info.id.clone(),
-            size: replacement_data.len(),
-            filename: format!("{}_empty.wav", audio_file_info.filename),
-            file_type: "WAV Audio".to_string(),
-            hex_id: audio_file_info.hex_id.clone(),
-            is_nus3bank: audio_file_info.is_nus3bank,
-        };
-
-        Ok(new_audio_info)
+        Self::store_replacement_bytes(
+            audio_file_info,
+            EMPTY_WAV_HEADER.to_vec(),
+            format!("{}_empty.wav", audio_file_info.filename),
+            "WAV Audio".to_string(),
+        )
     }
 
     /// Get the sample rate from a WAV file
@@ -1085,7 +1062,7 @@ impl ReplaceUtils {
     pub fn apply_replacements_and_save_unified(
         original_file_path: &str,
         save_path: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), crate::save_io::SaveWriteError> {
         if original_file_path.to_lowercase().ends_with(".nus3bank") {
             // NUS3BANK: WAV preview bytes are encoded to BNSF/IS14 in apply_to_file.
             // Bridge UI in-memory replacements into Nus3bankReplacer cache
@@ -1125,14 +1102,21 @@ impl ReplaceUtils {
             }
 
             let mut nus3bank_file =
-                crate::nus3bank::structures::Nus3bankFile::open(original_file_path)
-                    .map_err(|e| format!("Failed to open NUS3BANK file: {}", e))?;
+                crate::nus3bank::structures::Nus3bankFile::open(original_file_path).map_err(|e| {
+                    crate::save_io::SaveWriteError::other(format!(
+                        "Failed to open NUS3BANK file: {e}"
+                    ))
+                })?;
 
             crate::nus3bank::replace::Nus3bankReplacer::apply_to_file(
                 original_file_path,
                 &mut nus3bank_file,
             )
-            .map_err(|e| format!("Failed to apply NUS3BANK operations: {}", e))?;
+            .map_err(|e| {
+                crate::save_io::SaveWriteError::other(format!(
+                    "Failed to apply NUS3BANK operations: {e}"
+                ))
+            })?;
 
             if let Some(names) = grp_pending::get(original_file_path) {
                 apply_grp_names_to_file(&mut nus3bank_file, names);
@@ -1146,19 +1130,14 @@ impl ReplaceUtils {
                 apply_prop_to_file(&mut nus3bank_file, Some(prop));
             }
 
-            nus3bank_file
-                .save(save_path)
-                .map_err(|e| format!("Failed to save NUS3BANK file: {}", e))?;
+            nus3bank_file.save(save_path).map_err(|e| match e {
+                crate::nus3bank::error::Nus3bankError::Save(inner) => inner,
+                other => crate::save_io::SaveWriteError::other(format!(
+                    "Failed to save NUS3BANK file: {other}"
+                )),
+            })?;
 
-            crate::nus3bank::replace::Nus3bankReplacer::clear_for_file(original_file_path);
-
-            if grp_pending::has(original_file_path) {
-                let _ = grp_pending::clear(original_file_path);
-            }
-
-            if dton_pending::has(original_file_path) {
-                let _ = dton_pending::clear(original_file_path);
-            }
+            Self::clear_saved_bank_pending(original_file_path);
 
             Ok(())
         } else {

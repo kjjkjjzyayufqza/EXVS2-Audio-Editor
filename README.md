@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.8.1-blue" />
+  <img alt="Version" src="https://img.shields.io/badge/version-0.8.2-blue" />
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D6" />
   <img alt="Language" src="https://img.shields.io/badge/rust-1.97+-orange" />
   <a href="https://www.buymeacoffee.com/kjjkjjzyayx">

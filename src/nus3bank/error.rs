@@ -17,6 +17,8 @@ pub enum Nus3bankError {
     InvalidHexId { hex_id: String },
     /// IO error
     Io(std::io::Error),
+    /// Destination replace failed. Preserves busy vs access-denied for the UI.
+    Save(crate::save_io::SaveWriteError),
     /// UTF-8 conversion error
     Utf8(std::string::FromUtf8Error),
 
@@ -54,6 +56,7 @@ impl fmt::Display for Nus3bankError {
                 write!(f, "Invalid hex ID format: {}", hex_id)
             }
             Nus3bankError::Io(err) => write!(f, "IO error: {}", err),
+            Nus3bankError::Save(err) => write!(f, "{}", err),
             Nus3bankError::Utf8(err) => write!(f, "UTF-8 conversion error: {}", err),
 
             Nus3bankError::InvalidFormat { reason } => {

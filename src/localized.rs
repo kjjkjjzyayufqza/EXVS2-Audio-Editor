@@ -129,8 +129,53 @@ pub fn save_success_body(count: usize, path: &str) -> String {
 }
 
 #[inline]
-pub fn save_failed_msg(err: &str) -> String {
-    rust_i18n::t!("save_failed_msg", err = err).to_string()
+pub fn save_failed_busy(path: &str, os: &str) -> String {
+    rust_i18n::t!("save_failed_busy", path = path, os = os).to_string()
+}
+
+#[inline]
+pub fn save_failed_denied(path: &str, os: &str) -> String {
+    rust_i18n::t!("save_failed_denied", path = path, os = os).to_string()
+}
+
+#[inline]
+pub fn save_failed_detail(detail: &str) -> String {
+    rust_i18n::t!("save_failed_detail", detail = detail).to_string()
+}
+
+#[inline]
+pub fn save_elevate_btn() -> String {
+    rust_i18n::t!("save_elevate_btn").to_string()
+}
+
+#[inline]
+pub fn save_elevate_ok(path: &str) -> String {
+    rust_i18n::t!("save_elevate_ok", path = path).to_string()
+}
+
+#[inline]
+pub fn save_elevate_cancelled() -> String {
+    rust_i18n::t!("save_elevate_cancelled").to_string()
+}
+
+#[inline]
+pub fn save_elevate_failed(err: &str) -> String {
+    rust_i18n::t!("save_elevate_failed", err = err).to_string()
+}
+
+#[inline]
+pub fn save_elevate_unsupported() -> String {
+    rust_i18n::t!("save_elevate_unsupported").to_string()
+}
+
+#[inline]
+pub fn save_backup_failed(err: &str) -> String {
+    rust_i18n::t!("save_backup_failed", err = err).to_string()
+}
+
+#[inline]
+pub fn save_success_written(path: &str) -> String {
+    rust_i18n::t!("save_success_written", path = path).to_string()
 }
 
 #[inline]
@@ -231,11 +276,6 @@ pub fn save_success_export_title() -> String {
 #[inline]
 pub fn save_success_export_body(path: &str) -> String {
     rust_i18n::t!("save_success_export_body", path = path).to_string()
-}
-
-#[inline]
-pub fn save_failed_export(err: &str) -> String {
-    rust_i18n::t!("save_failed_export", err = err).to_string()
 }
 
 #[inline]
@@ -466,6 +506,56 @@ pub fn clear_btn() -> String {
 #[inline]
 pub fn clear_wav_tooltip() -> String {
     rust_i18n::t!("clear_wav_tooltip").to_string()
+}
+
+#[inline]
+pub fn compress_mp3_btn() -> String {
+    rust_i18n::t!("compress_mp3_btn").to_string()
+}
+
+#[inline]
+pub fn compress_mp3_selected_tooltip() -> String {
+    rust_i18n::t!("compress_mp3_selected_tooltip").to_string()
+}
+
+#[inline]
+pub fn compress_mp3_all() -> String {
+    rust_i18n::t!("compress_mp3_all").to_string()
+}
+
+#[inline]
+pub fn compress_mp3_all_tooltip() -> String {
+    rust_i18n::t!("compress_mp3_all_tooltip").to_string()
+}
+
+#[inline]
+pub fn compress_mp3_audio_only() -> String {
+    rust_i18n::t!("compress_mp3_audio_only").to_string()
+}
+
+#[inline]
+pub fn confirm_compress_mp3_selected_title() -> String {
+    rust_i18n::t!("confirm_compress_mp3_selected_title").to_string()
+}
+
+#[inline]
+pub fn confirm_compress_mp3_selected_body(n: usize) -> String {
+    rust_i18n::t!("confirm_compress_mp3_selected_body", n = n).to_string()
+}
+
+#[inline]
+pub fn confirm_compress_mp3_all_title() -> String {
+    rust_i18n::t!("confirm_compress_mp3_all_title").to_string()
+}
+
+#[inline]
+pub fn confirm_compress_mp3_all_body() -> String {
+    rust_i18n::t!("confirm_compress_mp3_all_body").to_string()
+}
+
+#[inline]
+pub fn compress_mp3_done(c: usize, s: usize, f: usize) -> String {
+    rust_i18n::t!("compress_mp3_done", c = c, s = s, f = f).to_string()
 }
 
 #[inline]

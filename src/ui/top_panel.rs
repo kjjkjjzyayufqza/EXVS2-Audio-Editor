@@ -4,7 +4,16 @@ use crate::ui::main_area::Nus3audioFileUtils;
 use crate::ui::update_log;
 use egui::{Context, Id, Ui};
 use once_cell::sync::Lazy;
+use std::path::Path;
 use std::sync::Mutex;
+
+#[derive(Clone)]
+struct ModalAction {
+    dest: String,
+    staged: String,
+    /// Reload the open file after a successful elevated save.
+    reload: bool,
+}
 
 // Modal dialog information
 #[derive(Clone, Default)]
@@ -15,19 +24,124 @@ struct ModalInfo {
     is_error: bool,
     /// Optional clickable links shown under the message (label, url)
     links: Vec<(String, String)>,
+    /// Present when the user can retry the write with administrator rights.
+    action: Option<ModalAction>,
+    /// Full file written beside the user temp dir. Deleted on dismiss.
+    staged_cleanup: Option<String>,
 }
 
 // Using Lazy and Mutex for thread-safe access to modal info
 static MODAL_INFO: Lazy<Mutex<ModalInfo>> = Lazy::new(|| Mutex::new(ModalInfo::default()));
 
 // Helper functions to manage the modal state
+fn discard_staged(modal: &mut ModalInfo) {
+    if let Some(path) = modal.staged_cleanup.take() {
+        let _ = std::fs::remove_file(path);
+    }
+    modal.action = None;
+}
+
 fn show_modal(title: impl AsRef<str>, message: impl AsRef<str>, is_error: bool) {
     if let Ok(mut modal) = MODAL_INFO.lock() {
+        discard_staged(&mut modal);
         modal.open = true;
         modal.title = title.as_ref().to_string();
         modal.message = message.as_ref().to_string();
         modal.is_error = is_error;
         modal.links.clear();
+    }
+}
+
+fn show_save_denied(path: String, message: String, staged: String, reload: bool) {
+    if let Ok(mut modal) = MODAL_INFO.lock() {
+        discard_staged(&mut modal);
+        modal.open = true;
+        modal.title = localized::save_failed_title();
+        modal.message = message;
+        modal.is_error = true;
+        modal.links.clear();
+        modal.staged_cleanup = Some(staged.clone());
+        #[cfg(windows)]
+        {
+            modal.action = Some(ModalAction {
+                dest: path,
+                staged,
+                reload,
+            });
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (path, reload);
+        }
+    }
+}
+
+fn set_modal_message(message: impl AsRef<str>) {
+    if let Ok(mut modal) = MODAL_INFO.lock() {
+        modal.open = true;
+        modal.is_error = true;
+        modal.message = message.as_ref().to_string();
+    }
+}
+
+fn present_save_error(err: crate::save_io::SaveWriteError, reload: bool) {
+    match err {
+        crate::save_io::SaveWriteError::Busy { path, os } => {
+            show_modal(
+                localized::save_failed_title(),
+                localized::save_failed_busy(&path, &os),
+                true,
+            );
+        }
+        crate::save_io::SaveWriteError::Denied { path, os, staged } => {
+            show_save_denied(
+                path.clone(),
+                localized::save_failed_denied(&path, &os),
+                staged.display().to_string(),
+                reload,
+            );
+        }
+        crate::save_io::SaveWriteError::Other { detail } => {
+            show_modal(
+                localized::save_failed_title(),
+                localized::save_failed_detail(&detail),
+                true,
+            );
+        }
+    }
+}
+
+fn run_elevated_save(action: ModalAction, app: Option<&mut crate::TemplateApp>) {
+    match crate::save_io::elevate_replace(Path::new(&action.dest), Path::new(&action.staged)) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&action.staged);
+            if let Ok(mut modal) = MODAL_INFO.lock() {
+                modal.staged_cleanup = None;
+                modal.action = None;
+            }
+            if action.reload {
+                Nus3audioFileUtils::clear_changes();
+                crate::ui::main_area::ExportUtils::clear_wav_cache_for_file(&action.dest);
+                crate::ui::main_area::ReplaceUtils::clear_saved_bank_pending(&action.dest);
+                if let Some(app) = app {
+                    app.main_area_mut().force_reload_selected_file();
+                }
+            }
+            show_modal(
+                localized::save_successful_title(),
+                localized::save_elevate_ok(&action.dest),
+                false,
+            );
+        }
+        Err(crate::save_io::ElevateError::Cancelled) => {
+            set_modal_message(localized::save_elevate_cancelled());
+        }
+        Err(crate::save_io::ElevateError::Unsupported) => {
+            set_modal_message(localized::save_elevate_unsupported());
+        }
+        Err(crate::save_io::ElevateError::Failed(msg)) => {
+            set_modal_message(localized::save_elevate_failed(&msg));
+        }
     }
 }
 
@@ -38,6 +152,7 @@ fn show_modal_with_links(
     is_error: bool,
 ) {
     if let Ok(mut modal) = MODAL_INFO.lock() {
+        discard_staged(&mut modal);
         modal.open = true;
         modal.title = title.as_ref().to_string();
         modal.message = message.as_ref().to_string();
@@ -58,6 +173,7 @@ impl TopPanel {
 
         // Show modal dialog if needed
         let mut should_close_modal = false;
+        let mut elevate_request: Option<ModalAction> = None;
         let modal_data = if let Ok(modal) = MODAL_INFO.lock() {
             if modal.open {
                 Some(modal.clone())
@@ -72,18 +188,37 @@ impl TopPanel {
             // Fixed id keeps drag position across different modal titles.
             // Do NOT use .anchor() — it makes the window immovable.
             let screen_center = ctx.content_rect().center();
-            egui::Window::new(&modal.title)
+            let title = if modal.is_error {
+                egui::RichText::new(&modal.title)
+                    .strong()
+                    .color(ctx.global_style().visuals.error_fg_color)
+            } else {
+                egui::RichText::new(&modal.title).strong()
+            };
+            egui::Window::new(title)
                 .id(Id::new("top_panel_modal"))
                 .collapsible(false)
                 .resizable(true)
                 .movable(true)
-                .default_width(440.0)
-                .min_width(400.0)
+                .default_width(480.0)
+                .min_width(420.0)
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(screen_center)
                 .show(&ctx, |ui| {
-                    ui.set_min_width(380.0);
-                    ui.label(egui::RichText::new(&modal.message).size(14.0));
+                    ui.set_min_width(400.0);
+                    let mut body = egui::RichText::new(&modal.message).size(14.0);
+                    if modal.is_error {
+                        body = body.color(ui.visuals().error_fg_color);
+                    }
+                    egui::ScrollArea::vertical()
+                        .id_salt("top_panel_modal_body")
+                        .max_height(240.0)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::Label::new(body).wrap_mode(egui::TextWrapMode::Wrap),
+                            );
+                        });
 
                     if !modal.links.is_empty() {
                         ui.add_space(10.0);
@@ -98,10 +233,26 @@ impl TopPanel {
                     }
 
                     ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button(localized::ok()).clicked() {
+                            if ui
+                                .add(egui::Button::new(localized::ok()).min_size(egui::vec2(96.0, 40.0)))
+                                .clicked()
+                            {
                                 should_close_modal = true;
+                            }
+                            if modal.action.is_some()
+                                && ui
+                                    .add(
+                                        egui::Button::new(localized::save_elevate_btn())
+                                            .min_size(egui::vec2(180.0, 40.0)),
+                                    )
+                                    .clicked()
+                            {
+                                elevate_request = modal.action.clone();
                             }
                         });
                     });
@@ -109,8 +260,13 @@ impl TopPanel {
         }
 
         // Update modal state after the window is displayed
+        if let Some(action) = elevate_request {
+            run_elevated_save(action, app.as_deref_mut());
+        }
+
         if should_close_modal {
             if let Ok(mut modal) = MODAL_INFO.lock() {
+                discard_staged(&mut modal);
                 modal.open = false;
             }
         }
@@ -160,15 +316,22 @@ impl TopPanel {
                                     );
                                     return;
                                 }
+                                let saved_count =
+                                    Nus3audioFileUtils::get_pending_changes_count();
                                 match Nus3audioFileUtils::save_changes_to_file(&file_path) {
-                                    Ok(_) => {
+                                    Ok(backup_warning) => {
                                         println!("Changes saved successfully to: {}", file_path);
+                                        let mut body = if saved_count == 0 {
+                                            localized::save_success_written(&file_path)
+                                        } else {
+                                            localized::save_success_body(saved_count, &file_path)
+                                        };
+                                        if let Some(err) = backup_warning {
+                                            body.push_str(&localized::save_backup_failed(&err));
+                                        }
                                         show_modal(
                                             localized::save_successful_title(),
-                                            &localized::save_success_body(
-                                                Nus3audioFileUtils::get_pending_changes_count(),
-                                                &file_path,
-                                            ),
+                                            &body,
                                             false,
                                         );
 
@@ -181,11 +344,7 @@ impl TopPanel {
                                     }
                                     Err(e) => {
                                         println!("Failed to save changes: {}", e);
-                                        show_modal(
-                                            localized::save_failed_title(),
-                                            &localized::save_failed_msg(&e.to_string()),
-                                            true,
-                                        );
+                                        present_save_error(e, true);
                                     }
                                 }
                             }
@@ -332,14 +491,8 @@ impl TopPanel {
                 );
             }
             Err(e) => {
-                eprintln!("File save fail: {}", e);
-
-                // Show error dialog
-                show_modal(
-                    localized::save_failed_title(),
-                    &localized::save_failed_export(&e.to_string()),
-                    true,
-                );
+                eprintln!("File save fail: {e}");
+                present_save_error(e, false);
             }
         }
     }

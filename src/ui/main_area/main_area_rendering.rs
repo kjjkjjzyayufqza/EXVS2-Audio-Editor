@@ -47,19 +47,31 @@ impl MainArea {
                 self.render_toolbar(ui);
 
                 // 3. Main Content Area - The Table
-                if let Some(_audio_files) = &self.audio_files {
-                    // Get filtered and sorted audio files
-                    let filtered_audio_files = self.filtered_audio_files();
+                if self.audio_files.is_some() {
+                    self.rebuild_filter_cache_if_needed();
+                    let key_before = self.filter_cache_key;
+                    self.filter_cache_key = None;
+                    let filtered_audio_files = std::mem::take(&mut self.filter_cache);
                     let files_count = filtered_audio_files.len();
 
-                    // Render the table with audio files
                     self.render_audio_table(
                         ui,
-                        filtered_audio_files,
+                        &filtered_audio_files,
                         files_count,
                         available_height - 120.0, // Adjust for header and toolbar
                         available_width,
                     );
+
+                    // Put the list back when this frame did not change the rows.
+                    // A nested rebuild (key set again) wins over the snapshot.
+                    if self.filter_cache_key.is_none() {
+                        if let Some(key) = key_before {
+                            if self.filter_fingerprint() == key {
+                                self.filter_cache = filtered_audio_files;
+                                self.filter_cache_key = Some(key);
+                            }
+                        }
+                    }
                 } else if let Some(error) = &self.error_message {
                     ui.centered_and_justified(|ui| {
                         ui.colored_label(Color32::RED, error);

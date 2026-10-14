@@ -326,6 +326,13 @@ impl Nus3bankReplacer {
         let hex_ids: Vec<String> = file.tracks.iter().map(|t| t.hex_id.clone()).collect();
 
         for hex_id in hex_ids {
+            let needs_encode = file
+                .get_track_by_hex_id(&hex_id)
+                .and_then(|track| track.audio_data.as_deref())
+                .is_some_and(super::bnsf::is_nonempty_riff_wav);
+            if !needs_encode {
+                continue;
+            }
             let Some(payload) = file
                 .get_track_by_hex_id(&hex_id)
                 .and_then(|t| t.audio_data.clone())
@@ -388,11 +395,7 @@ impl Nus3bankReplacer {
             if tone.removed {
                 continue;
             }
-            if super::bnsf::encode_nonempty_wav_payload(tone.payload.clone())
-                .ok()
-                .flatten()
-                .is_some()
-            {
+            if super::bnsf::is_nonempty_riff_wav(&tone.payload) {
                 return true;
             }
             let Some(clock) = super::bnsf::parse_bnsf_clock(&tone.payload) else {

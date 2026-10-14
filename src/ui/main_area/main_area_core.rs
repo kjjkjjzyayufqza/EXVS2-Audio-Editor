@@ -116,12 +116,26 @@ pub struct MainArea {
     #[serde(skip)]
     pub pending_debug_convert_all_wav: bool,
 
+    // Pending NUS3AUDIO shrink-to-MP3 (selected tracks, or every track)
+    #[serde(skip)]
+    pub pending_compress_mp3_selected: bool,
+
+    #[serde(skip)]
+    pub pending_compress_mp3_all: bool,
+
     /// Current UI language (synced from [`crate::TemplateApp`] each frame).
     #[serde(skip)]
     pub ui_locale: crate::Locale,
 
     #[serde(skip)]
     pub file_load_receiver: Option<mpsc::Receiver<FileLoadResult>>,
+
+    /// Fingerprint of the inputs that produced `filter_cache`. `None` means the cache is empty.
+    #[serde(skip)]
+    pub(super) filter_cache_key: Option<u64>,
+
+    #[serde(skip)]
+    pub(super) filter_cache: Vec<AudioFileInfo>,
 }
 
 impl Default for MainArea {
@@ -198,9 +212,14 @@ impl MainArea {
             // Initialize pending debug convert all wav
             pending_debug_convert_all_wav: false,
 
+            pending_compress_mp3_selected: false,
+            pending_compress_mp3_all: false,
+
             ui_locale: crate::Locale::En,
 
             file_load_receiver: None,
+            filter_cache_key: None,
+            filter_cache: Vec::new(),
         }
     }
 

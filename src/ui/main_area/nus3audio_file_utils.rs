@@ -24,9 +24,9 @@ impl Nus3audioFileUtils {
         audio_info: &AudioFileInfo,
         selected_file_path: Option<&str>,
     ) -> Result<(), String> {
-        // Use consistent key format based on file type to match replace_in_memory
+        // Use the same key format as ReplaceUtils::replacement_map_key.
         let key = if audio_info.is_nus3bank {
-            // For NUS3BANK, use hex_id:name format (consistent with replace_in_memory)
+            // For NUS3BANK, use hex_id:name format (same as replacement_map_key)
             format!(
                 "{}:{}",
                 audio_info.hex_id.as_ref().unwrap_or(&audio_info.id),
@@ -66,26 +66,28 @@ impl Nus3audioFileUtils {
     }
 
     /// Save all pending changes to the file
-    pub fn save_changes_to_file(file_path: &str) -> Result<(), String> {
-        // Try to create a backup of the original file first
-        let backup_path = format!("{}.backup", file_path);
-        match std::fs::copy(file_path, &backup_path) {
-            Ok(_) => println!("Created backup at {}", backup_path),
-            Err(e) => println!("Warning: Failed to create backup: {}", e),
-        }
-
-        // Use unified method to apply all in-memory replacements and save the file (supports both NUS3AUDIO and NUS3BANK)
-        match super::replace_utils::ReplaceUtils::apply_replacements_and_save_unified(
-            file_path, file_path,
-        ) {
+    /// Save pending edits. `Ok(Some(msg))` means the file was written but the `.backup` copy failed.
+    pub fn save_changes_to_file(
+        file_path: &str,
+    ) -> Result<Option<String>, crate::save_io::SaveWriteError> {
+        let backup_path = format!("{file_path}.backup");
+        let backup_warning = match std::fs::copy(file_path, &backup_path) {
             Ok(_) => {
-                Self::clear_changes();
-                // Invalidate WAV cache for this file since on-disk content changed
-                super::export_utils::ExportUtils::clear_wav_cache_for_file(file_path);
-                Ok(())
+                println!("Created backup at {backup_path}");
+                None
             }
-            Err(e) => Err(format!("Failed to write updated file: {}", e)),
-        }
+            Err(e) => {
+                println!("Warning: Failed to create backup: {e}");
+                Some(e.to_string())
+            }
+        };
+
+        super::replace_utils::ReplaceUtils::apply_replacements_and_save_unified(
+            file_path, file_path,
+        )?;
+        Self::clear_changes();
+        super::export_utils::ExportUtils::clear_wav_cache_for_file(file_path);
+        Ok(backup_warning)
     }
 
     /// Check if there are any pending changes
@@ -198,6 +200,26 @@ impl Nus3audioFileUtils {
         }
 
         Self::register_add_audio(audio_info, audio_data)
+    }
+
+    /// True when this track exists only as a pending add (not yet in the file on disk).
+    pub fn has_pending_add(audio_name: &str, audio_id: &str) -> bool {
+        let key = format!("{audio_name}:{audio_id}");
+        FILE_CHANGES.lock().ok().is_some_and(|changes| {
+            matches!(changes.get(&key), Some(FileChangeType::Add(_, _, _)))
+        })
+    }
+
+    /// Replace the payload of a pending add without cloning the previous bytes.
+    pub fn replace_pending_add_data(audio_name: &str, audio_id: &str, data: Vec<u8>) -> bool {
+        let key = format!("{audio_name}:{audio_id}");
+        if let Ok(mut changes) = FILE_CHANGES.lock()
+            && let Some(FileChangeType::Add(_, _, slot)) = changes.get_mut(&key)
+        {
+            *slot = data;
+            return true;
+        }
+        false
     }
 
     /// Get pending added audio data for a specific audio file
